@@ -1,0 +1,66 @@
+plate = {
+    # ─────────────────────────────────────────────
+    # Identity / persistence
+    # ─────────────────────────────────────────────
+    "plate_id": str,                 # e.g. "Plate_A_01"
+
+    # Raw uploads (stored so the plate can be re-analysed)
+    "uploads": {
+        "data_bytes": bytes,         # plate reader Excel file
+        "plate_bytes": bytes,        # plate map Excel file
+    },
+
+    # Parameters used for the most recent analysis
+    "params": {
+        "read_interval_min": int,
+        "pathlength_cm_": float,
+        "clip_time_series": (float, float),   # (start_h, end_h)
+        "remove_wells": list[str] | False,    # ["A1", "B3"] or False
+        "blank": bool,
+        "excel_header_row": int,
+        "window_points": int,
+        "sg_window": int,
+        "sg_poly": int,
+        "lag_frac": float,
+    },
+
+    # ─────────────────────────────────────────────
+    # Plate-level derived data
+    # ─────────────────────────────────────────────
+    "plate_map": pd.DataFrame,        # 8×12 map of well → name / BLANK / False
+    "baseline": pd.DataFrame,         # time-indexed blank OD (may be empty)
+
+    # ─────────────────────────────────────────────
+    # Per-well data (all keyed by well ID, e.g. "A1")
+    # ─────────────────────────────────────────────
+    "name": {
+        "A1": str,                    # sample name from plate map
+        ...
+    },
+
+    "raw_data": {
+        "A1": pd.DataFrame,           # Time, value, od_1cm
+        ...
+    },
+
+    "processed_data": {
+        "A1": pd.DataFrame,           # Time, baseline_corrected
+        ...
+    },
+
+    # SINGLE SOURCE OF TRUTH for results
+    "growth_stats": {
+        "A1": {
+            "Maximum OD600": float,           # A
+            "Maximum U": float,               # B
+            "Lag Time (hours)": float,        # C
+            "lag_phase_end": float,
+            "exponential_phase_end": float,
+            "t_mu": float | nan,
+            "y_mu": float | nan,
+            "b": float | nan,
+            "t_peak": float | nan,
+        },
+        ...
+    },
+}
