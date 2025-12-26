@@ -518,10 +518,10 @@ def _vlines(
                 y0=m * x0 + b0,
                 x1=x1,
                 y1=m * x1 + b0,
-                line=dict(width=5, color="blue"),
+                line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
             )
 
-    # --- phase boundary vertical lines (your original job) ---
+    # --- phase boundary vertical lines ---
     for x in xs:
         if np.isfinite(x):
             try:

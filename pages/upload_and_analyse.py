@@ -116,8 +116,7 @@ def render_plate_table(grid: pd.DataFrame):
 # ──────────────────────────────────────────────────────────────────────────────
 # App
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Upload + Analyse", layout="wide")
-st.title("Upload + Analyse")
+st.title("1) Upload a datafile and a plate map")
 
 ss = init_state()
 
@@ -153,121 +152,123 @@ if st.button(
     st.success(f"Saved uploads for {plate_id}")
 
 st.divider()
+st.title("2) Select the analysis parameters")
 
-with st.container(border=True):
-    ready = sorted(ss.plates)
-    plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-    params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+ready = sorted(ss.plates)
+plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
-    pcol, acol = st.columns(2)
+pcol, acol = st.columns(2)
 
-    with pcol:
-        st.subheader("Parsing options")
-        a, b = st.columns(2)
-        read_interval_min = a.number_input(
-            "Read interval (min)", 1, 120, int(params0["read_interval_min"])
-        )
-        pl_cm = b.number_input(
-            "pathlength_cm",
-            value=float(params0["pathlength_cm_"]),
-            step=0.01,
-            format="%.3f",
-        )
+with pcol:
+    st.subheader("Parsing options")
+    a, b = st.columns(2)
+    read_interval_min = a.number_input(
+        "Read interval (min)", 1, 120, int(params0["read_interval_min"])
+    )
+    pl_cm = b.number_input(
+        "Pathlength (cm)",
+        value=float(params0["pathlength_cm_"]),
+        step=0.01,
+        format="%.3f",
+    )
 
-        st.subheader("Time window for analysis")
-        a, b = st.columns(2)
-        clip_time_series = (
-            float(
-                a.number_input(
-                    "Start (h)", 0.0, 1e6, float(params0["clip_time_series"][0]), 0.5
-                )
-            ),
-            float(
-                b.number_input(
-                    "End (h)", 0.0, 1e6, float(params0["clip_time_series"][1]), 0.5
-                )
-            ),
-        )
+    st.subheader("Time window for analysis")
+    a, b = st.columns(2)
+    clip_time_series = (
+        float(
+            a.number_input(
+                "Start (h)", 0.0, 1e6, float(params0["clip_time_series"][0]), 0.5
+            )
+        ),
+        float(
+            b.number_input(
+                "End (h)", 0.0, 1e6, float(params0["clip_time_series"][1]), 0.5
+            )
+        ),
+    )
 
-        blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
+    blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
 
-        rm_default = (
-            ",".join(params0["remove_wells"]) if params0.get("remove_wells") else ""
-        )
-        rm_txt = st.text_input("Exclude wells (e.g. A9,A10,B1)", rm_default)
-        remove_wells = parse_remove_wells(rm_txt)
+    rm_default = (
+        ",".join(params0["remove_wells"]) if params0.get("remove_wells") else ""
+    )
+    rm_txt = st.text_input("Exclude wells (e.g. A9,A10,B1)", rm_default)
+    remove_wells = parse_remove_wells(rm_txt)
 
-        excel_header_row = st.number_input(
-            "Excel header row", value=int(params0["excel_header_row"]), step=1
-        )
+    excel_header_row = st.number_input(
+        "Excel header row", value=int(params0["excel_header_row"]), step=1
+    )
 
-    with acol:
-        st.subheader("Analysis options")
-        window_points = st.number_input(
-            "Window size for maximum growth rate (points)",
-            5,
-            200,
-            int(params0["window_points"]),
-            1,
-        )
+with acol:
+    st.subheader("Analysis options")
+    window_points = st.number_input(
+        "Window size for maximum growth rate (points)",
+        5,
+        200,
+        int(params0["window_points"]),
+        1,
+    )
 
-        params = dict(
-            read_interval_min=int(read_interval_min),
-            pathlength_cm_=float(pl_cm),
-            clip_time_series=clip_time_series,
-            remove_wells=remove_wells,
-            blank=bool(blank),
-            excel_header_row=int(excel_header_row),
-            window_points=int(window_points),
-            sg_window=int(params0.get("sg_window", 15)),
-            sg_poly=int(params0.get("sg_poly", 2)),
-        )
-
-        st.divider()
-
-        # Preview grid
-        if plate_id:
-            rec = ss.plates.get(plate_id, {})
-            if rec.get("uploads"):
-                tmp = {"uploads": rec["uploads"], "params": params}  # params from UI
-                plate_preview = analyse_plate(tmp)
-                present = set(plate_preview.get("growth_stats", {}).keys())
-
-                grid = build_symbol_grid(
-                    plate_map=plate_preview["plate_map"],
-                    present=present,
-                    remove_wells=params["remove_wells"],
-                    blank=params["blank"],
-                )
-                st.caption(
-                    "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
-                )
-                render_plate_table(grid)
-            else:
-                st.info("Upload files for this plate to preview/analyse.")
+    params = dict(
+        read_interval_min=int(read_interval_min),
+        pathlength_cm_=float(pl_cm),
+        clip_time_series=clip_time_series,
+        remove_wells=remove_wells,
+        blank=bool(blank),
+        excel_header_row=int(excel_header_row),
+        window_points=int(window_points),
+        sg_window=int(params0.get("sg_window", 15)),
+        sg_poly=int(params0.get("sg_poly", 2)),
+    )
 
     st.divider()
 
-    if st.button(
-        "Remove selected plate",
-        type="primary",
-        use_container_width=True,
-        disabled=not plate_id,
-    ):
-        ss.plates.pop(plate_id, None)
-        st.success(f"Removed {plate_id}")
-        st.rerun()
-
-    if st.button(
-        "Analyse selected plate",
-        type="primary",
-        use_container_width=True,
-        disabled=not plate_id,
-    ):
+    # Preview grid
+    if plate_id:
         rec = ss.plates.get(plate_id, {})
-        if not rec.get("uploads"):
-            st.error("No uploads found for this plate.")
+        if rec.get("uploads"):
+            tmp = {"uploads": rec["uploads"], "params": params}  # params from UI
+            plate_preview = analyse_plate(tmp)
+            present = set(plate_preview.get("growth_stats", {}).keys())
+
+            grid = build_symbol_grid(
+                plate_map=plate_preview["plate_map"],
+                present=present,
+                remove_wells=params["remove_wells"],
+                blank=params["blank"],
+            )
+            st.caption(
+                "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
+            )
+            render_plate_table(grid)
         else:
-            rec["params"] = params
-            ss.plates[plate_id] = analyse_plate(rec)
-            st.toast(f"Analysed {plate_id}", duration="infinite")
+            st.info("Upload files for this plate to preview/analyse.")
+
+st.divider()
+
+st.title("3) Click analyse")
+
+if st.button(
+    "Remove selected plate",
+    type="primary",
+    use_container_width=True,
+    disabled=not plate_id,
+):
+    ss.plates.pop(plate_id, None)
+    st.success(f"Removed {plate_id}")
+    st.rerun()
+
+if st.button(
+    "Analyse selected plate",
+    type="primary",
+    use_container_width=True,
+    disabled=not plate_id,
+):
+    rec = ss.plates.get(plate_id, {})
+    if not rec.get("uploads"):
+        st.error("No uploads found for this plate.")
+    else:
+        rec["params"] = params
+        ss.plates[plate_id] = analyse_plate(rec)
+        st.toast(f"Analysed {plate_id}", duration="infinite")
