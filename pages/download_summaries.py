@@ -2,7 +2,6 @@
 import streamlit as st
 from pages.analysis_shared import require_plates, ui_growth_summaries, ui_export
 
-st.set_page_config(page_title="Download summaries", layout="wide")
 st.title("Download summaries")
 
 plates = require_plates()

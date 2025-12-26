@@ -1,9 +1,6 @@
 import streamlit as st
 
-st.set_page_config(
-    page_title="Microtitre Growth Analysis",
-    layout="wide",
-)
+st.set_page_config(page_title="TheGrowthAnalysisApp", layout="wide", page_icon="🦠")
 
 nav = st.navigation(
     [

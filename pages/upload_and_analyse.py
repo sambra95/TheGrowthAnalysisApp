@@ -19,7 +19,6 @@ DEFAULT_PARAMS = dict(
     clip_time_series=(0.0, 72.0),
     remove_wells=False,
     blank=True,
-    excel_header_row=60,
     window_points=15,
     sg_window=15,
     sg_poly=2,
@@ -149,19 +148,21 @@ if st.button(
         plate_bytes=map_file.getvalue(),
         params=DEFAULT_PARAMS,
     )
-    st.success(f"Saved uploads for {plate_id}")
+    st.toast(f"Saved uploads for {plate_id}")
 
 st.divider()
 st.title("2) Select the analysis parameters")
 
 ready = sorted(ss.plates)
-plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
 pcol, acol = st.columns(2)
 
 with pcol:
-    st.subheader("Parsing options")
+    st.subheader("Analysis Parameters")
+    st.divider()
+    plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+    params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+
     a, b = st.columns(2)
     read_interval_min = a.number_input(
         "Read interval (min)", 1, 120, int(params0["read_interval_min"])
@@ -173,7 +174,6 @@ with pcol:
         format="%.3f",
     )
 
-    st.subheader("Time window for analysis")
     a, b = st.columns(2)
     clip_time_series = (
         float(
@@ -190,18 +190,15 @@ with pcol:
 
     blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
 
-    rm_default = (
-        ",".join(params0["remove_wells"]) if params0.get("remove_wells") else ""
-    )
-    rm_txt = st.text_input("Exclude wells (e.g. A9,A10,B1)", rm_default)
-    remove_wells = parse_remove_wells(rm_txt)
-
-    excel_header_row = st.number_input(
-        "Excel header row", value=int(params0["excel_header_row"]), step=1
+    remove_wells = st.multiselect(
+        "Exclude wells",
+        options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
+        default=[],
     )
 
-with acol:
-    st.subheader("Analysis options")
+    # preserve your False sentinel behavior
+    remove_wells = remove_wells if remove_wells else False
+
     window_points = st.number_input(
         "Window size for maximum growth rate (points)",
         5,
@@ -210,13 +207,15 @@ with acol:
         1,
     )
 
+with acol:
+    st.subheader("Plate Overview")
+
     params = dict(
         read_interval_min=int(read_interval_min),
         pathlength_cm_=float(pl_cm),
         clip_time_series=clip_time_series,
         remove_wells=remove_wells,
         blank=bool(blank),
-        excel_header_row=int(excel_header_row),
         window_points=int(window_points),
         sg_window=int(params0.get("sg_window", 15)),
         sg_poly=int(params0.get("sg_poly", 2)),
@@ -242,22 +241,24 @@ with acol:
                 "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
             )
             render_plate_table(grid)
+
+            st.divider()
+
+            if st.button(
+                "Remove selected plate",
+                type="primary",
+                use_container_width=True,
+                disabled=not plate_id,
+            ):
+                ss.plates.pop(plate_id, None)
+                st.rerun()
+
         else:
             st.info("Upload files for this plate to preview/analyse.")
 
 st.divider()
 
 st.title("3) Click analyse")
-
-if st.button(
-    "Remove selected plate",
-    type="primary",
-    use_container_width=True,
-    disabled=not plate_id,
-):
-    ss.plates.pop(plate_id, None)
-    st.success(f"Removed {plate_id}")
-    st.rerun()
 
 if st.button(
     "Analyse selected plate",

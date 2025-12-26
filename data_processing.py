@@ -160,31 +160,36 @@ def _plate_name_map(plate_bytes):
     return plate, {f"{r}{c}": plate.loc[r, c] for r in ROWS for c in COLS}
 
 
-def _clean_export(df, header_row, read_interval_min):
-    df = _read_excel_bytes(df, header=int(header_row))
-    df = df.drop(
-        columns=[c for c in ("Unnamed: 0", "T° 600") if c in df.columns],
-        errors="ignore",
-    )
+def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
+    """
+    New format: rows=timepoints, cols=wells. Optional 'Time' column.
+    Produces Time in hours.
+    """
+    df = _read_excel_bytes(data_bytes, header=0)
     df = df.replace(",", ".", regex=True)
-    if "Time" not in df.columns:
-        raise ValueError("Expected a 'Time' column in the plate reader export.")
 
-    z = df.index[df["Time"] == 0].to_list()
-    if len(z) >= 2:
-        df = df.iloc[: z[1]].copy()
+    if "Time" in df.columns:
+        t = pd.to_numeric(df["Time"], errors="coerce")
+        df = df.drop(columns=["Time"])
+    else:
+        # assume each row is a timepoint, evenly spaced
+        t = pd.Series(np.arange(len(df)) * int(read_interval_min))
 
-    df["Time"] = np.arange(len(df)) * int(read_interval_min)
+    # keep only well-like columns (A1..H12) if extras exist
+    valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}
+    well_cols = [c for c in df.columns if str(c).strip().upper() in valid_wells]
+    df = df[well_cols].copy()
+    df.columns = [str(c).strip().upper() for c in df.columns]
+
+    df.insert(0, "Time", t / 60.0)  # hours
+    for c in df.columns[1:]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
 
 def _empty_plate():
     return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}}
 
-
-# data_processing.py
-import numpy as np
-import pandas as pd
 
 BAD_FIT = {
     "Maximum OD600": 0.0,
@@ -202,7 +207,6 @@ BAD_FIT = {
 def load_plate(
     plates: dict, plate_id: str, *, data_bytes: bytes, plate_bytes: bytes, params: dict
 ):
-    """Create/update a plate record only (no processing)."""
     rec = plates.setdefault(plate_id, {})
     rec["uploads"] = {"data_bytes": data_bytes, "plate_bytes": plate_bytes}
     rec["params"] = params
@@ -210,18 +214,17 @@ def load_plate(
 
 
 def analyse_plate(record: dict):
-    """Process one plate record using saved uploads + params; return updated record."""
     u = (record or {}).get("uploads") or {}
     p = (record or {}).get("params") or {}
 
     plate_map, name_map = _plate_name_map(u["plate_bytes"])
-    df = _clean_export(u["data_bytes"], p["excel_header_row"], p["read_interval_min"])
+    df = _read_table(u["data_bytes"], p["read_interval_min"])  # <- new reader
 
     long = df.melt(id_vars="Time", var_name="well", value_name="value")
+    long["well"] = long["well"].astype(str).str.upper()
     long["name"] = long["well"].map(name_map).fillna("False")
     long = long[long["name"] != "False"].copy()
 
-    long["Time"] = pd.to_numeric(long["Time"]) / 60.0
     long["value"] = pd.to_numeric(long["value"], errors="coerce")
 
     clip = p.get("clip_time_series", False)
@@ -231,7 +234,7 @@ def analyse_plate(record: dict):
 
     rm = p.get("remove_wells", False)
     if rm:
-        long = long[~long["well"].isin(rm)].copy()
+        long = long[~long["well"].isin([w.upper() for w in rm])].copy()
 
     long["od_1cm"] = long["value"] / float(p["pathlength_cm_"])
 
@@ -278,7 +281,6 @@ def analyse_plate(record: dict):
         plate["processed_data"][well] = processed
         plate["growth_stats"][well] = fit
 
-    # write results back into the same record (keep uploads/params for re-analysis)
     record.update(plate)
     return record
 
