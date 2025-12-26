@@ -1,5 +1,5 @@
 import streamlit as st
-from pages.analysis_shared import require_plates, window_well_view
+from functions.check_growth_fits import require_plates, window_well_view
 
 st.title("Check Growth Fits")
 

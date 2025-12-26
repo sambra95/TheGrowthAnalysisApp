@@ -1,5 +1,5 @@
 import streamlit as st
-from pages.analysis_shared import require_plates, replicates_view, window_plate_view
+from functions.plate_overviews import require_plates, replicates_view, window_plate_view
 
 st.title("Plate Overviews")
 

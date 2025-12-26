@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 import streamlit as st
 
-from data_processing import ALL_WELLS, smooth
+from functions.data_processing import ALL_WELLS, smooth
 
 
 # --- helpers ------------------------------------------------------------------
@@ -183,10 +183,106 @@ def plot_mean_growth(plates, sel, t_start=0.0, t_end=72.0):
 
 
 # --- growth stats ----------------------------------------------------------------
+# def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
+#     """
+#     long_df columns expected: plate, well, sample_name, metric, value
+#     sample_order: list of sample names in desired x order
+#     """
+#     if long_df is None or long_df.empty:
+#         fig = go.Figure()
+#         fig.update_layout(title="Growth statistics", height=400)
+#         return fig
+
+#     metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
+#     long_df = long_df.copy()
+
+#     # enforce category order
+#     cat = pd.CategoricalDtype(
+#         categories=[s for s in sample_order if s in long_df["sample_name"].unique()],
+#         ordered=True,
+#     )
+#     long_df["sample_name"] = long_df["sample_name"].astype(cat)
+
+#     agg = (
+#         long_df.groupby(["sample_name", "metric"], as_index=False)["value"]
+#         .agg(mean="mean", sd="std")
+#         .fillna({"sd": 0.0})
+#         .sort_values(["sample_name", "metric"], kind="stable")
+#     )
+
+#     fig = make_subplots(rows=3, cols=1, subplot_titles=metrics, vertical_spacing=0.08)
+
+#     for r, m in enumerate(metrics, 1):
+#         a = agg[agg["metric"] == m].sort_values("sample_name", kind="stable")
+#         p = long_df[long_df["metric"] == m].sort_values("sample_name", kind="stable")
+
+#         fig.add_trace(
+#             go.Bar(
+#                 x=a["sample_name"],
+#                 y=a["mean"],
+#                 error_y=dict(type="data", array=a["sd"], visible=True),
+#                 hovertemplate="Sample=%{x}<br>Mean=%{y:.4f}<extra></extra>",
+#                 showlegend=False,
+#                 marker=dict(
+#                     line=dict(
+#                         color="black",
+#                         width=1.5,  # tweak thickness here
+#                     )
+#                 ),
+#             ),
+#             row=r,
+#             col=1,
+#         )
+
+#         fig.add_trace(
+#             go.Box(
+#                 x=p["sample_name"],
+#                 y=p["value"].to_numpy(float),
+#                 boxpoints="all",
+#                 jitter=0.35,
+#                 pointpos=0,
+#                 fillcolor="rgba(0,0,0,0)",
+#                 line=dict(width=0),
+#                 marker=dict(size=6, opacity=0.8),
+#                 text=(p["plate"].astype(str) + " " + p["well"].astype(str)).tolist(),
+#                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
+#                 showlegend=False,
+#             ),
+#             row=r,
+#             col=1,
+#         )
+
+#         fig.update_xaxes(
+#             showgrid=False,
+#             categoryorder="array",
+#             categoryarray=sample_order,
+#             row=r,
+#             col=1,
+#         )
+#         fig.update_yaxes(showgrid=False, range=[0, None], row=r, col=1)
+
+#     fig.update_layout(
+#         title="Growth statistics", height=1400, margin=dict(t=60), showlegend=False
+#     )
+#     return fig
+
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
 def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
     """
     long_df columns expected: plate, well, sample_name, metric, value
-    sample_order: list of sample names in desired x order
+    sample_order: list of sample_name strings in desired order (e.g. ["V9(K317N)_37.5", ...])
+
+    Creates:
+      - Strain = part before last underscore
+      - Condition = part after last underscore
+
+    Plots:
+      - x-axis: Condition
+      - legend/color group: Strain
     """
     if long_df is None or long_df.empty:
         fig = go.Figure()
@@ -194,75 +290,126 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
         return fig
 
     metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
-    long_df = long_df.copy()
+    df = long_df.copy()
 
-    # enforce category order
-    cat = pd.CategoricalDtype(
-        categories=[s for s in sample_order if s in long_df["sample_name"].unique()],
-        ordered=True,
+    # ---- split sample_name -> Strain / Condition (split on LAST underscore) ----
+    s = df["sample_name"].astype(str)
+
+    has_us = s.str.contains("_", regex=False)
+    parts = s.where(has_us, s + "_")  # ensure rsplit always returns 2 parts
+    strain_cond = parts.str.rsplit("_", n=1, expand=True)
+
+    df["Strain"] = strain_cond[0].where(has_us, s)
+    df["Condition"] = strain_cond[1].where(has_us, "")
+
+    # ---- build condition order from sample_order (which is sample_name order) ----
+    condition_order = []
+    if sample_order:
+        for nm in sample_order:
+            nm = str(nm)
+            if "_" in nm:
+                cond = nm.rsplit("_", 1)[1]
+            else:
+                cond = ""
+            if cond not in condition_order:
+                condition_order.append(cond)
+
+    # fallback if sample_order didn't yield anything useful
+    if not condition_order:
+        condition_order = list(pd.unique(df["Condition"]))
+
+    # categorical for stable ordering on x-axis
+    df["Condition"] = df["Condition"].astype(
+        pd.CategoricalDtype(categories=condition_order, ordered=True)
     )
-    long_df["sample_name"] = long_df["sample_name"].astype(cat)
 
     agg = (
-        long_df.groupby(["sample_name", "metric"], as_index=False)["value"]
+        df.groupby(["Condition", "Strain", "metric"], as_index=False)["value"]
         .agg(mean="mean", sd="std")
         .fillna({"sd": 0.0})
-        .sort_values(["sample_name", "metric"], kind="stable")
+        .sort_values(["Condition", "Strain", "metric"], kind="stable")
     )
 
     fig = make_subplots(rows=3, cols=1, subplot_titles=metrics, vertical_spacing=0.08)
 
+    # one legend entry per strain (only on first row)
+    strains = [x for x in pd.unique(df["Strain"]) if pd.notna(x)]
+
     for r, m in enumerate(metrics, 1):
-        a = agg[agg["metric"] == m].sort_values("sample_name", kind="stable")
-        p = long_df[long_df["metric"] == m].sort_values("sample_name", kind="stable")
+        a = agg[agg["metric"] == m].sort_values(["Condition", "Strain"], kind="stable")
+        p = df[df["metric"] == m].sort_values(["Condition", "Strain"], kind="stable")
 
-        fig.add_trace(
-            go.Bar(
-                x=a["sample_name"],
-                y=a["mean"],
-                error_y=dict(type="data", array=a["sd"], visible=True),
-                hovertemplate="Sample=%{x}<br>Mean=%{y:.4f}<extra></extra>",
-                showlegend=False,
-                marker=dict(
-                    line=dict(
-                        color="black",
-                        width=1.5,  # tweak thickness here
-                    )
+        # grouped bars + grouped box points, both keyed by Strain
+        for strain in strains:
+            a_s = a[a["Strain"] == strain]
+            p_s = p[p["Strain"] == strain]
+
+            # mean +/- sd bar
+            fig.add_trace(
+                go.Bar(
+                    x=a_s["Condition"],
+                    y=a_s["mean"],
+                    error_y=dict(type="data", array=a_s["sd"], visible=True),
+                    name=strain,
+                    legendgroup=strain,
+                    offsetgroup=strain,
+                    showlegend=(r == 1),
+                    hovertemplate=(
+                        "Strain=%{fullData.name}<br>"
+                        "Condition=%{x}<br>"
+                        "Mean=%{y:.4f}<extra></extra>"
+                    ),
+                    marker=dict(
+                        line=dict(color="black", width=1.5),
+                    ),
                 ),
-            ),
-            row=r,
-            col=1,
-        )
+                row=r,
+                col=1,
+            )
 
-        fig.add_trace(
-            go.Box(
-                x=p["sample_name"],
-                y=p["value"].to_numpy(float),
-                boxpoints="all",
-                jitter=0.35,
-                pointpos=0,
-                fillcolor="rgba(0,0,0,0)",
-                line=dict(width=0),
-                marker=dict(size=6, opacity=1),
-                text=(p["plate"].astype(str) + " " + p["well"].astype(str)).tolist(),
-                hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
-                showlegend=False,
-            ),
-            row=r,
-            col=1,
-        )
+            # replicate distribution
+            fig.add_trace(
+                go.Box(
+                    x=p_s["Condition"],
+                    y=p_s["value"].to_numpy(float),
+                    name=strain,
+                    legendgroup=strain,
+                    offsetgroup=strain,
+                    showlegend=False,
+                    boxpoints="all",
+                    jitter=0.35,
+                    pointpos=0,
+                    fillcolor="rgba(0,0,0,0)",
+                    line=dict(width=0),
+                    marker=dict(size=6, opacity=0.8),
+                    text=(
+                        p_s["plate"].astype(str) + " " + p_s["well"].astype(str)
+                    ).tolist(),
+                    hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
+                ),
+                row=r,
+                col=1,
+            )
 
         fig.update_xaxes(
             showgrid=False,
+            type="category",
             categoryorder="array",
-            categoryarray=sample_order,
+            categoryarray=condition_order,
             row=r,
             col=1,
+            title_text="Condition" if r == 3 else None,
         )
         fig.update_yaxes(showgrid=False, range=[0, None], row=r, col=1)
 
     fig.update_layout(
-        title="Growth statistics", height=1400, margin=dict(t=60), showlegend=False
+        title="Growth statistics",
+        height=1400,
+        margin=dict(t=60),
+        barmode="group",  # key for grouped bars by strain within each condition
+        boxmode="group",  # group boxes similarly
+        legend_title_text="Strain",
+        showlegend=True,
     )
     return fig
 

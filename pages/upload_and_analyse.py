@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 
-from data_processing import load_plate, analyse_plate  # updated import
+from functions.data_processing import load_plate, analyse_plate  # updated import
 
 ROWS = list("ABCDEFGH")
 COLS = list(range(1, 13))
