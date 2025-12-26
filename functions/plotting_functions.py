@@ -40,6 +40,29 @@ def _iter_wells(plates: dict):
 
 
 # --- replicates ----------------------------------------------------------------
+def plot_replicates_scatter(curves_df: pd.DataFrame, t_start=0.0, t_end=72.0):
+    if curves_df is None or curves_df.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            xaxis_title="Time (hours)",
+            yaxis_title="OD600 (baseline-corrected)",
+            height=600,
+        )
+        return fig
+
+    d = curves_df.copy()
+    d = d[(d["Time"] >= t_start) & (d["Time"] <= t_end)]
+
+    fig = px.scatter(
+        d,
+        x="Time",
+        y="baseline_corrected",
+        color="Sample Name",
+        hover_data=["plate", "well", "key"],
+    )
+    return fig
+
+
 def plot_replicates_by_sample(plates: dict):
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
@@ -104,40 +127,34 @@ def plot_replicates_by_sample(plates: dict):
 
 
 # --- mean growth ----------------------------------------------------------------
-def plot_mean_growth(plates, sel, t_start=0.0, t_end=72.0):
-    items = list(_iter_wells(plates))
+def plot_mean_growth(
+    curves_df: pd.DataFrame, sample_order: list[str], t_start=0.0, t_end=72.0
+):
+    """
+    curves_df columns expected:
+      Sample Name, Time, baseline_corrected
+      (plate/well/key optional, not used here)
+    """
+    d = curves_df.copy()
+    if d.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            xaxis_title="Time (hours)",
+            yaxis_title="OD600 (baseline-corrected)",
+            height=600,
+        )
+        return fig
 
-    if sel:
-        ordered_names = list(dict.fromkeys([n for n in sel if n]))
-    else:
-        ordered_names, seen = [], set()
-        for _, _, _, nm, _, _ in items:
-            nm = (nm or "").strip()
-            if nm and nm not in ("False", "BLANK") and nm not in seen:
-                seen.add(nm)
-                ordered_names.append(nm)
-
-    sel = set(ordered_names)
-
-    rows = []
-    for pid, _, well, nm, d, _ in items:
-        nm = (nm or "").strip()
-        if nm in sel and d is not None and not d.empty:
-            rows.append(
-                pd.DataFrame(
-                    {"name": nm, "Time": d["Time"], "y": d["baseline_corrected"]}
-                )
-            )
-
-    d = (
-        pd.concat(rows, ignore_index=True)
-        if rows
-        else pd.DataFrame(columns=["name", "Time", "y"])
-    )
+    # time window
     d = d[(d["Time"] >= t_start) & (d["Time"] <= t_end)]
 
+    # enforce ordering
+    ordered_names = list(dict.fromkeys([n for n in (sample_order or []) if n]))
+    if not ordered_names:
+        ordered_names = _unique_preserve_order(d["Sample Name"].astype(str).tolist())
+
     agg = (
-        d.groupby(["name", "Time"], as_index=False)["y"]
+        d.groupby(["Sample Name", "Time"], as_index=False)["baseline_corrected"]
         .agg(mean="mean", sd="std")
         .fillna({"sd": 0.0})
     )
@@ -146,9 +163,10 @@ def plot_mean_growth(plates, sel, t_start=0.0, t_end=72.0):
 
     fig = go.Figure()
     for nm in ordered_names:
-        sub = agg[agg["name"] == nm].sort_values("Time")
+        sub = agg[agg["Sample Name"] == nm].sort_values("Time")
         if sub.empty:
             continue
+
         fig.add_trace(
             go.Scatter(
                 x=pd.concat([sub["Time"], sub["Time"][::-1]]),
@@ -183,106 +201,25 @@ def plot_mean_growth(plates, sel, t_start=0.0, t_end=72.0):
 
 
 # --- growth stats ----------------------------------------------------------------
-# def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
-#     """
-#     long_df columns expected: plate, well, sample_name, metric, value
-#     sample_order: list of sample names in desired x order
-#     """
-#     if long_df is None or long_df.empty:
-#         fig = go.Figure()
-#         fig.update_layout(title="Growth statistics", height=400)
-#         return fig
-
-#     metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
-#     long_df = long_df.copy()
-
-#     # enforce category order
-#     cat = pd.CategoricalDtype(
-#         categories=[s for s in sample_order if s in long_df["sample_name"].unique()],
-#         ordered=True,
-#     )
-#     long_df["sample_name"] = long_df["sample_name"].astype(cat)
-
-#     agg = (
-#         long_df.groupby(["sample_name", "metric"], as_index=False)["value"]
-#         .agg(mean="mean", sd="std")
-#         .fillna({"sd": 0.0})
-#         .sort_values(["sample_name", "metric"], kind="stable")
-#     )
-
-#     fig = make_subplots(rows=3, cols=1, subplot_titles=metrics, vertical_spacing=0.08)
-
-#     for r, m in enumerate(metrics, 1):
-#         a = agg[agg["metric"] == m].sort_values("sample_name", kind="stable")
-#         p = long_df[long_df["metric"] == m].sort_values("sample_name", kind="stable")
-
-#         fig.add_trace(
-#             go.Bar(
-#                 x=a["sample_name"],
-#                 y=a["mean"],
-#                 error_y=dict(type="data", array=a["sd"], visible=True),
-#                 hovertemplate="Sample=%{x}<br>Mean=%{y:.4f}<extra></extra>",
-#                 showlegend=False,
-#                 marker=dict(
-#                     line=dict(
-#                         color="black",
-#                         width=1.5,  # tweak thickness here
-#                     )
-#                 ),
-#             ),
-#             row=r,
-#             col=1,
-#         )
-
-#         fig.add_trace(
-#             go.Box(
-#                 x=p["sample_name"],
-#                 y=p["value"].to_numpy(float),
-#                 boxpoints="all",
-#                 jitter=0.35,
-#                 pointpos=0,
-#                 fillcolor="rgba(0,0,0,0)",
-#                 line=dict(width=0),
-#                 marker=dict(size=6, opacity=0.8),
-#                 text=(p["plate"].astype(str) + " " + p["well"].astype(str)).tolist(),
-#                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
-#                 showlegend=False,
-#             ),
-#             row=r,
-#             col=1,
-#         )
-
-#         fig.update_xaxes(
-#             showgrid=False,
-#             categoryorder="array",
-#             categoryarray=sample_order,
-#             row=r,
-#             col=1,
-#         )
-#         fig.update_yaxes(showgrid=False, range=[0, None], row=r, col=1)
-
-#     fig.update_layout(
-#         title="Growth statistics", height=1400, margin=dict(t=60), showlegend=False
-#     )
-#     return fig
-
-import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-
-def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
+def plot_growth_stats(
+    long_df: pd.DataFrame,
+    *,
+    x_col: str = "Sample Name",
+    legend_col: str | None = None,  # "Strain" / "Condition" / None
+    x_order: list[str] | None = None,
+    legend_order: list[str] | None = None,
+):
     """
-    long_df columns expected: plate, well, sample_name, metric, value
-    sample_order: list of sample_name strings in desired order (e.g. ["V9(K317N)_37.5", ...])
+    long_df expected columns: plate, well, sample_name, metric, value
 
-    Creates:
-      - Strain = part before last underscore
-      - Condition = part after last underscore
+    x_col: "Sample Name" | "Strain" | "Condition"
+    legend_col: None | "Strain" | "Condition"
+    x_order: desired order for x values (strings)
+    legend_order: desired order for legend groups (strings), only used if legend_col != None
 
-    Plots:
-      - x-axis: Condition
-      - legend/color group: Strain
+    Splitting rule:
+      - If ANY sample_name contains "_" -> create Strain/Condition by split at FIRST underscore
+      - Otherwise, do not add those columns (but function will still work with x_col="Sample Name", legend_col=None)
     """
     if long_df is None or long_df.empty:
         fig = go.Figure()
@@ -292,89 +229,105 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
     metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
     df = long_df.copy()
 
-    # ---- split sample_name -> Strain / Condition (split on LAST underscore) ----
+    # ---- optionally derive Strain/Condition from sample_name (split on FIRST underscore) ----
     s = df["sample_name"].astype(str)
+    has_split = s.str.contains("_", regex=False).any()
+    if has_split:
+        sc = s.str.split("_", n=1, expand=True)
+        df["Strain"] = sc[0]
+        df["Condition"] = sc[1].fillna("")
+    # If not split, do NOT create these columns (requirement #1)
 
-    has_us = s.str.contains("_", regex=False)
-    parts = s.where(has_us, s + "_")  # ensure rsplit always returns 2 parts
-    strain_cond = parts.str.rsplit("_", n=1, expand=True)
+    # ---- map UI names to actual df columns ----
+    col_map = {
+        "Sample Name": "sample_name",
+        "Strain": "Strain",
+        "Condition": "Condition",
+    }
+    if x_col not in col_map:
+        x_col = "Sample Name"
+    x_df_col = col_map[x_col]
 
-    df["Strain"] = strain_cond[0].where(has_us, s)
-    df["Condition"] = strain_cond[1].where(has_us, "")
-
-    # ---- build condition order from sample_order (which is sample_name order) ----
-    condition_order = []
-    if sample_order:
-        for nm in sample_order:
-            nm = str(nm)
-            if "_" in nm:
-                cond = nm.rsplit("_", 1)[1]
+    if legend_col is not None:
+        if legend_col not in col_map:
+            legend_col = None
+        else:
+            legend_df_col = col_map[legend_col]
+            # If user chose Strain/Condition but we didn't create them, drop back safely
+            if legend_df_col not in df.columns:
+                legend_col = None
             else:
-                cond = ""
-            if cond not in condition_order:
-                condition_order.append(cond)
+                legend_df_col = legend_df_col
 
-    # fallback if sample_order didn't yield anything useful
-    if not condition_order:
-        condition_order = list(pd.unique(df["Condition"]))
+    # If x axis requested Strain/Condition but absent, fall back to Sample Name
+    if x_df_col not in df.columns:
+        x_col = "Sample Name"
+        x_df_col = "sample_name"
 
-    # categorical for stable ordering on x-axis
-    df["Condition"] = df["Condition"].astype(
-        pd.CategoricalDtype(categories=condition_order, ordered=True)
+    # ---- x order categorical for stable ordering ----
+    if not x_order:
+        x_order = list(pd.unique(df[x_df_col].astype(str)))
+
+    df["_x"] = (
+        df[x_df_col]
+        .astype(str)
+        .astype(pd.CategoricalDtype(categories=list(x_order), ordered=True))
     )
 
+    # ---- legend groups ----
+    if legend_col is None:
+        groups = [None]
+    else:
+        if not legend_order:
+            legend_order = list(pd.unique(df[legend_df_col].astype(str)))
+        # enforce requested legend order
+        groups = [g for g in legend_order if g in set(df[legend_df_col].astype(str))]
+        # include any stragglers at end
+        for g in pd.unique(df[legend_df_col].astype(str)):
+            if g not in groups:
+                groups.append(g)
+
+    # ---- aggregate ----
+    group_cols = ["_x", "metric"]
+    if legend_col is not None:
+        group_cols.insert(1, legend_df_col)
+
     agg = (
-        df.groupby(["Condition", "Strain", "metric"], as_index=False)["value"]
+        df.groupby(group_cols, as_index=False)["value"]
         .agg(mean="mean", sd="std")
         .fillna({"sd": 0.0})
-        .sort_values(["Condition", "Strain", "metric"], kind="stable")
+        .sort_values(group_cols, kind="stable")
     )
 
     fig = make_subplots(rows=3, cols=1, subplot_titles=metrics, vertical_spacing=0.08)
 
-    # one legend entry per strain (only on first row)
-    strains = [x for x in pd.unique(df["Strain"]) if pd.notna(x)]
-
     for r, m in enumerate(metrics, 1):
-        a = agg[agg["metric"] == m].sort_values(["Condition", "Strain"], kind="stable")
-        p = df[df["metric"] == m].sort_values(["Condition", "Strain"], kind="stable")
+        a = agg[agg["metric"] == m].copy()
+        p = df[df["metric"] == m].copy()
 
-        # grouped bars + grouped box points, both keyed by Strain
-        for strain in strains:
-            a_s = a[a["Strain"] == strain]
-            p_s = p[p["Strain"] == strain]
-
-            # mean +/- sd bar
+        if legend_col is None:
+            # Single series (no legend grouping)
             fig.add_trace(
                 go.Bar(
-                    x=a_s["Condition"],
-                    y=a_s["mean"],
-                    error_y=dict(type="data", array=a_s["sd"], visible=True),
-                    name=strain,
-                    legendgroup=strain,
-                    offsetgroup=strain,
-                    showlegend=(r == 1),
+                    x=a["_x"],
+                    y=a["mean"],
+                    error_y=dict(type="data", array=a["sd"], visible=True),
+                    name="",
+                    showlegend=False,
                     hovertemplate=(
-                        "Strain=%{fullData.name}<br>"
-                        "Condition=%{x}<br>"
-                        "Mean=%{y:.4f}<extra></extra>"
+                        f"{x_col}=%{{x}}<br>" "Mean=%{y:.4f}<extra></extra>"
                     ),
-                    marker=dict(
-                        line=dict(color="black", width=1.5),
-                    ),
+                    marker=dict(line=dict(color="black", width=1.5)),
                 ),
                 row=r,
                 col=1,
             )
 
-            # replicate distribution
             fig.add_trace(
                 go.Box(
-                    x=p_s["Condition"],
-                    y=p_s["value"].to_numpy(float),
-                    name=strain,
-                    legendgroup=strain,
-                    offsetgroup=strain,
+                    x=p["_x"],
+                    y=p["value"].to_numpy(float),
+                    name="",
                     showlegend=False,
                     boxpoints="all",
                     jitter=0.35,
@@ -383,22 +336,70 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
                     line=dict(width=0),
                     marker=dict(size=6, opacity=0.8),
                     text=(
-                        p_s["plate"].astype(str) + " " + p_s["well"].astype(str)
+                        p["plate"].astype(str) + " " + p["well"].astype(str)
                     ).tolist(),
                     hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
                 ),
                 row=r,
                 col=1,
             )
+        else:
+            # One legend entry per group, in user-defined order
+            for g in groups:
+                a_g = a[a[legend_df_col].astype(str) == str(g)]
+                p_g = p[p[legend_df_col].astype(str) == str(g)]
+
+                fig.add_trace(
+                    go.Bar(
+                        x=a_g["_x"],
+                        y=a_g["mean"],
+                        error_y=dict(type="data", array=a_g["sd"], visible=True),
+                        name=str(g),
+                        legendgroup=str(g),
+                        offsetgroup=str(g),
+                        showlegend=(r == 1),
+                        hovertemplate=(
+                            f"{legend_col}=%{{fullData.name}}<br>"
+                            f"{x_col}=%{{x}}<br>"
+                            "Mean=%{y:.4f}<extra></extra>"
+                        ),
+                        marker=dict(line=dict(color="black", width=1.5)),
+                    ),
+                    row=r,
+                    col=1,
+                )
+
+                fig.add_trace(
+                    go.Box(
+                        x=p_g["_x"],
+                        y=p_g["value"].to_numpy(float),
+                        name=str(g),
+                        legendgroup=str(g),
+                        offsetgroup=str(g),
+                        showlegend=False,
+                        boxpoints="all",
+                        jitter=0.35,
+                        pointpos=0,
+                        fillcolor="rgba(0,0,0,0)",
+                        line=dict(width=0),
+                        marker=dict(size=6, opacity=0.8),
+                        text=(
+                            p_g["plate"].astype(str) + " " + p_g["well"].astype(str)
+                        ).tolist(),
+                        hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
+                    ),
+                    row=r,
+                    col=1,
+                )
 
         fig.update_xaxes(
             showgrid=False,
             type="category",
             categoryorder="array",
-            categoryarray=condition_order,
+            categoryarray=list(x_order),
             row=r,
             col=1,
-            title_text="Condition" if r == 3 else None,
+            title_text=x_col if r == 3 else None,
         )
         fig.update_yaxes(showgrid=False, range=[0, None], row=r, col=1)
 
@@ -406,10 +407,10 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
         title="Growth statistics",
         height=1400,
         margin=dict(t=60),
-        barmode="group",  # key for grouped bars by strain within each condition
-        boxmode="group",  # group boxes similarly
-        legend_title_text="Strain",
-        showlegend=True,
+        barmode="group",
+        boxmode="group",
+        legend_title_text=(legend_col if legend_col else ""),
+        showlegend=bool(legend_col),
     )
     return fig
 

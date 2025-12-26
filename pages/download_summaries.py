@@ -6,10 +6,8 @@ st.title("Download Processed Datasets and Plots")
 
 plates = require_plates()
 
-st.subheader("Export Processed Data")
 ui_export(plates)
 
 st.divider()
 
-st.subheader("Plot Processed Data")
 ui_growth_summaries(plates)
