@@ -4,6 +4,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import io, zipfile
+from streamlit_sortables import sort_items
 
 from data_processing import ALL_WELLS
 from plotting_functions import (
@@ -247,28 +249,8 @@ def _unique_preserve_order(seq):
 # ---------------- Fragments used by pages ----------------
 @st.fragment
 def ui_replicates(plates: dict):
-    t_over, t_zoom = st.tabs(["Overview", "Per Sample View"])
 
-    with t_over:
-        st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
-
-    with t_zoom:
-        sample = st.selectbox("Sample", _sample_names(plates), key="rep_zoom_sample")
-        d = _processed_df_for_sample(plates, sample)
-
-        fig = px.scatter(
-            d,
-            x="Time",
-            y="baseline_corrected",
-            color="key",
-            hover_data={"key": True, "plate": True, "well": True, "Time": ":.2f"},
-            title=f"Replicates – {sample}",
-        )
-        fig.update_traces(marker_size=5)
-        fig.update_layout(showlegend=False)
-        fig.update_xaxes(showgrid=False, title="Time (hours)")
-        fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
 
 
 @st.fragment
@@ -321,14 +303,103 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     st.plotly_chart(fig_d2, use_container_width=True)
 
 
+def _numeric_cols(df: pd.DataFrame) -> list[str]:
+    return [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
+
+def _processed_short_form_for_plate(p: dict) -> pd.DataFrame:
+    """
+    Short form processed data:
+    - one shared Time column
+    - each well is a column (values from baseline_corrected)
+    """
+    parts = []
+    for well, d in (p.get("processed_data") or {}).items():
+        if d is None or getattr(d, "empty", True):
+            continue
+        if "Time" not in d.columns or "baseline_corrected" not in d.columns:
+            continue
+
+        tmp = d[["Time", "baseline_corrected"]].copy()
+        tmp = tmp.rename(columns={"baseline_corrected": well})
+        parts.append(tmp)
+
+    if not parts:
+        return pd.DataFrame()
+
+    # Outer-join all wells on Time (preserve all timepoints)
+    out = parts[0]
+    for nxt in parts[1:]:
+        out = out.merge(nxt, on="Time", how="outer")
+
+    out = out.sort_values("Time", kind="stable").reset_index(drop=True)
+    return out
+
+
+def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
+    gs = (
+        pd.DataFrame.from_dict(p.get("growth_stats") or {}, orient="index")
+        .rename_axis("well")
+        .reset_index()
+    )
+    return gs
+
+
+def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
+    """
+    Each sample is one row:
+    - mean of numeric columns across wells in that sample
+    - plus SD columns (suffix _SD) for each numeric column
+    """
+    nm_by_well = p.get("name") or {}
+    gs = _growth_stats_per_well_df(p)
+    if gs.empty:
+        return gs
+
+    gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
+    gs = gs[
+        (gs["Sample Name"] != "")
+        & (gs["Sample Name"] != "False")
+        & (gs["Sample Name"] != "BLANK")
+    ]
+
+    if gs.empty:
+        return gs
+
+    num = _numeric_cols(gs)
+    group = gs.groupby("Sample Name", dropna=False)
+
+    mean_df = group[num].mean().reset_index()
+    sd_df = group[num].std(ddof=1).reset_index()
+
+    # Rename sd columns -> <col>_SD then merge
+    sd_df = sd_df.rename(columns={c: f"{c}_SD" for c in num})
+    out = mean_df.merge(sd_df, on="Sample Name", how="left")
+
+    # Optional: also include wells list for traceability
+    wells_list = (
+        group["well"]
+        .apply(lambda s: ", ".join(sorted(s.astype(str))))
+        .reset_index(name="Wells")
+    )
+    out = out.merge(wells_list, on="Sample Name", how="left")
+
+    # Put Wells near front
+    cols = ["Sample Name", "Wells"] + [
+        c for c in out.columns if c not in ("Sample Name", "Wells")
+    ]
+    return out[cols]
+
+
 @st.fragment
 def ui_growth_summaries(plates: dict):
+    # ---------- build selection table (one row per plate+sample) ----------
     rows = []
     for pid, p in plates.items():
         by_name: dict[str, list[str]] = {}
         for well, nm in (p.get("name") or {}).items():
             nm = (nm or "").strip()
-            if not nm or nm in ("False", "BLANK"):
+            if not nm or nm in {"False", "BLANK"}:
                 continue
             by_name.setdefault(nm, []).append(well)
 
@@ -343,31 +414,38 @@ def ui_growth_summaries(plates: dict):
     )
     ids = opt["_id"].tolist()
 
+    # ---------- selection state (keep existing, drop stale, add new) ----------
     sel_key = "growth_combined_sel"
-    order_key = "growth_combined_order"
-    st.session_state.setdefault(sel_key, {sid: False for sid in ids})
-    st.session_state[sel_key] = {
-        sid: st.session_state[sel_key].get(sid, False) for sid in ids
-    }
+    sel = st.session_state.setdefault(sel_key, {})
+    st.session_state[sel_key] = {sid: bool(sel.get(sid, False)) for sid in ids}
+    sel = st.session_state[sel_key]
+
+    max_t = float(_max_time_hours(plates, default=72.0))
+
+    # ---------- order state (drag-to-sort) ----------
+    order_key = "growth_stats_sample_order"  # list[str]
+    order_sig_key = "growth_stats_sample_order_sig"  # tuple[str]
+    order_ver_key = "growth_stats_sample_order_ver"  # int (forces remount)
+
     st.session_state.setdefault(order_key, [])
+    st.session_state.setdefault(order_ver_key, 0)
 
-    max_t = _max_time_hours(plates, default=72.0)
+    def _selected_ids_in_display_order() -> list[str]:
+        return [sid for sid in ids if sel.get(sid, False)]
 
+    def _selected_samples(sel_ids: list[str]) -> list[str]:
+        return _unique_preserve_order([sid.split("||", 1)[1] for sid in sel_ids])
+
+    # ---------- form ----------
     with st.form("growth_combined_form"):
-        t0, t1 = st.slider(
-            "Plot time window (hours) — used for Mean growth",
-            min_value=0.0,
-            max_value=float(max_t),
-            value=(0.0, float(min(72.0, max_t))),
-            step=0.5,
-        )
-
+        # selection table header
         h1, h2, h3, h4 = st.columns([1, 1, 1.2, 0.8])
         h1.markdown("**Plate**")
         h2.markdown("**Sample Name**")
         h3.markdown("**Wells**")
         h4.markdown("**Include**")
 
+        # selection table
         with st.container(height=380):
             for sid, plate, name, wells in zip(
                 ids, opt["Plate"], opt["Sample Name"], opt["Wells"]
@@ -376,86 +454,275 @@ def ui_growth_summaries(plates: dict):
                 c1.write(plate)
                 c2.write(name)
                 c3.write(wells)
+                sel[sid] = bool(c4.checkbox("", value=sel[sid], key=f"{sel_key}:{sid}"))
 
-                prev = bool(st.session_state.get(f"{sel_key}:{sid}", False))
-                c4.checkbox("", key=f"{sel_key}:{sid}")
-                now = bool(st.session_state.get(f"{sel_key}:{sid}", False))
-                if now and not prev and sid not in st.session_state[order_key]:
-                    st.session_state[order_key].append(sid)
+        # ---- plot controls moved here (with buttons) ----
+        with st.container():
+            t0, t1 = st.slider(
+                "Plot time window (hours) — used for Mean growth",
+                min_value=0.0,
+                max_value=max_t,
+                value=(0.0, min(72.0, max_t)),
+                step=0.5,
+            )
 
-        b1, b2 = st.columns(2)
-        apply_stats = b1.form_submit_button(
-            "Generate growth stats plot", type="primary", use_container_width=True
-        )
-        apply_mean = b2.form_submit_button(
-            "Generate mean growth plot", type="primary", use_container_width=True
-        )
+            sel_ids = _selected_ids_in_display_order()
+            sel_samples = _selected_samples(sel_ids)
 
-    def _selected_ids_in_order() -> list[str]:
-        sel = [
-            sid
-            for sid in st.session_state[order_key]
-            if st.session_state.get(f"{sel_key}:{sid}", False)
-        ]
-        sel.extend(
-            sid
-            for sid in ids
-            if st.session_state.get(f"{sel_key}:{sid}", False) and sid not in sel
-        )
-        return sel
+            # keep current order, drop deselected, append new (in display order)
+            cur_order = [s for s in st.session_state[order_key] if s in sel_samples]
+            for s in sel_samples:
+                if s not in cur_order:
+                    cur_order.append(s)
+            st.session_state[order_key] = cur_order
+
+            sig = tuple(sel_samples)
+            if st.session_state.get(order_sig_key) != sig:
+                st.session_state[order_sig_key] = sig
+                st.session_state[order_ver_key] += 1
+
+            if sel_samples:
+                st.markdown("**Drag to set sample order (x-axis):**")
+                st.session_state[order_key] = sort_items(
+                    st.session_state[order_key],
+                    key=f"growth_stats_sortable_{st.session_state[order_ver_key]}",
+                )
+            else:
+                st.info("Select one or more samples above to enable ordering.")
+
+            b1, b2, b3 = st.columns(3)
+            apply_stats = b1.form_submit_button(
+                "Generate growth stats plot",
+                type="primary",
+                use_container_width=True,
+                key="growth_combined_apply_stats",
+            )
+            apply_mean = b2.form_submit_button(
+                "Generate mean growth plot",
+                type="primary",
+                use_container_width=True,
+                key="growth_combined_apply_mean",
+            )
+            apply_reps = b3.form_submit_button(
+                "Generate replicates plot",
+                type="primary",
+                use_container_width=True,
+                key="growth_combined_apply_reps",
+            )
+
+    # ---------- post-submit plotting ----------
+    sel_ids = _selected_ids_in_display_order()
+    sel_samples = _selected_samples(sel_ids)
+    ordered = [s for s in st.session_state[order_key] if s in sel_samples]
 
     if apply_stats:
-        sel_ids = _selected_ids_in_order()
-        long_df, sample_order = _build_growth_stats_long_df(plates, sel_ids)
-        st.plotly_chart(
-            plot_growth_stats(long_df, sample_order), use_container_width=True
-        )
+        long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
+        st.plotly_chart(plot_growth_stats(long_df, ordered), use_container_width=True)
 
     if apply_mean:
-        sel_ids = _selected_ids_in_order()
-        sel_samples = _unique_preserve_order([sid.split("||", 1)[1] for sid in sel_ids])
         st.plotly_chart(
-            plot_mean_growth(plates, sel_samples, t_start=t0, t_end=t1),
+            plot_mean_growth(plates, ordered, t_start=t0, t_end=t1),
             use_container_width=True,
         )
 
+    if apply_reps:
+        frames = []
+        for sample in sel_samples:
+            d = _processed_df_for_sample(plates, sample)
+            if d is not None and not d.empty:
+                frames.append(d.assign(sample=sample))
 
-@st.fragment
-def ui_export(plates: dict):
-    pid = st.selectbox("Plate", sorted(plates), key="export_plate")
-    p = plates[pid]
-    nm_by_well = p.get("name") or {}
+        reps_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        if reps_df.empty:
+            st.info("No replicate data found for the selected samples.")
+            return
 
-    rows = []
-    for well, d in (p.get("processed_data") or {}).items():
-        if d is None or d.empty:
+        reps_df = reps_df[(reps_df["Time"] >= t0) & (reps_df["Time"] <= t1)]
+        if reps_df.empty:
+            st.info(
+                "No replicate data found for the selected samples in this time window."
+            )
+            return
+
+        fig = px.scatter(
+            reps_df,
+            x="Time",
+            y="baseline_corrected",
+            color="sample",
+            hover_data={
+                "sample": True,
+                "key": True,
+                "plate": True,
+                "well": True,
+                "Time": ":.2f",
+            },
+            title="Replicates – selected samples",
+        )
+        fig.update_traces(marker_size=5)
+        fig.update_layout(showlegend=True)
+        fig.update_xaxes(showgrid=False, title="Time (hours)")
+        fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def _processed_wide_for_plate(
+    p: dict, pid: str, *, value_col: str = "baseline_corrected"
+) -> pd.DataFrame:
+    """
+    Return wide/short-form processed data: index=Time, columns=well, values=value_col.
+    """
+    processed = p.get("processed_data") or {}
+
+    frames = []
+    for well, d in processed.items():
+        if d is None or getattr(d, "empty", True):
             continue
-        rows.append(d.assign(plate=pid, well=well, name=(nm_by_well.get(well) or "")))
+        if "Time" not in d.columns or value_col not in d.columns:
+            continue
 
-    out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
-    st.dataframe(out, use_container_width=True)
+        frames.append(
+            d[["Time", value_col]]
+            .rename(columns={value_col: well})
+            .drop_duplicates(subset=["Time"], keep="first")
+        )
 
-    baseline = p.get("baseline")
-    if baseline is not None and hasattr(baseline, "empty") and not baseline.empty:
-        st.write("Baseline")
-        st.dataframe(baseline, use_container_width=True)
+    if not frames:
+        return pd.DataFrame()
 
-    st.download_button(
-        "Download processed data CSV",
-        out.to_csv(index=False).encode("utf-8"),
-        f"{pid}_processed_growth_data.csv",
-    )
+    out = frames[0]
+    for f in frames[1:]:
+        out = out.merge(f, on="Time", how="outer")
 
+    out = out.sort_values("Time", kind="stable").reset_index(drop=True)
+    return out
+
+
+def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
     gs = (
         pd.DataFrame.from_dict(p.get("growth_stats") or {}, orient="index")
         .rename_axis("well")
         .reset_index()
     )
-    gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
+    return gs
+
+
+def _growth_stats_mean_for_sample_df(
+    p: dict, *, sample_col: str = "Sample Name"
+) -> pd.DataFrame:
+    """
+    Each well is a replicate. Output is one row per sample with mean and SD columns for each numeric metric.
+    """
+    nm_by_well = p.get("name") or {}
+    gs = _growth_stats_per_well_df(p)
+
+    if gs.empty:
+        return gs
+
+    gs[sample_col] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
+    gs = gs[gs[sample_col].astype(str).str.len() > 0].copy()
+
+    # numeric metrics = everything numeric except 'well' and sample name
+    numeric_cols = [
+        c
+        for c in gs.columns
+        if c not in ("well", sample_col) and pd.api.types.is_numeric_dtype(gs[c])
+    ]
+
+    if not numeric_cols:
+        # still return one row per sample (just counts)
+        out = gs.groupby(sample_col, as_index=False).agg(n_wells=("well", "count"))
+        return out
+
+    agg = {c: ["mean", "std"] for c in numeric_cols}
+    out = gs.groupby(sample_col).agg(agg)
+    out.columns = [f"{c}_{stat}" for (c, stat) in out.columns.to_list()]
+    out = out.reset_index()
+
+    # Optional: include replicate count
+    out["n_wells"] = (
+        gs.groupby(sample_col)["well"].count().reindex(out[sample_col]).to_numpy()
+    )
+
+    return out
+
+
+@st.fragment
+def ui_export(plates: dict):
+    # --- download controls at the top ---
+
+    value_col = st.selectbox(
+        "Processed data value column",
+        options=["baseline_corrected", "raw", "od600", "value"],
+        index=0,
+        help="Which column from processed_data to export into the wide table. Must exist in each well dataframe.",
+        key="export_value_col",
+    )
+
+    gs_mode = st.radio(
+        "Growth stats format",
+        options=["per_well", "mean_for_sample"],
+        index=0,
+        horizontal=True,
+        key="export_gs_mode",
+    )
+
+    # Build a ZIP of all plates
+    def _build_zip_bytes() -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as z:
+            for pid, p in plates.items():
+                # processed (wide)
+                wide = _processed_wide_for_plate(p, pid, value_col=value_col)
+                if not wide.empty:
+                    z.writestr(
+                        f"{pid}/{pid}_processed_{value_col}_wide.csv",
+                        wide.to_csv(index=False),
+                    )
+
+                # baseline (optional)
+                baseline = p.get("baseline")
+                if (
+                    baseline is not None
+                    and hasattr(baseline, "empty")
+                    and not baseline.empty
+                ):
+                    z.writestr(
+                        f"{pid}/{pid}_baseline.csv", baseline.to_csv(index=False)
+                    )
+
+                # growth stats
+                nm_by_well = p.get("name") or {}
+
+                if gs_mode == "per_well":
+                    gs = _growth_stats_per_well_df(p)
+                    if not gs.empty:
+                        gs["Sample Name"] = gs["well"].map(
+                            lambda w: (nm_by_well.get(w) or "").strip()
+                        )
+                        z.writestr(
+                            f"{pid}/{pid}_growth_stats_per_well.csv",
+                            gs.to_csv(index=False),
+                        )
+                else:
+                    gs2 = _growth_stats_mean_for_sample_df(p)
+                    if not gs2.empty:
+                        z.writestr(
+                            f"{pid}/{pid}_growth_stats_mean_for_sample.csv",
+                            gs2.to_csv(index=False),
+                        )
+
+        buf.seek(0)
+        return buf.getvalue()
+
+    zip_bytes = _build_zip_bytes()
+
     st.download_button(
-        "Download growth stats CSV",
-        gs.to_csv(index=False).encode("utf-8"),
-        f"{pid}_growth_stats.csv",
+        "Download Tables",
+        data=zip_bytes,
+        file_name="growth_export_tables.zip",
+        mime="application/zip",
+        use_container_width=True,
+        type="primary",
     )
 
 

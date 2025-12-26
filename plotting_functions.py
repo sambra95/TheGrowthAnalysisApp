@@ -223,10 +223,17 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
                 error_y=dict(type="data", array=a["sd"], visible=True),
                 hovertemplate="Sample=%{x}<br>Mean=%{y:.4f}<extra></extra>",
                 showlegend=False,
+                marker=dict(
+                    line=dict(
+                        color="black",
+                        width=1.5,  # tweak thickness here
+                    )
+                ),
             ),
             row=r,
             col=1,
         )
+
         fig.add_trace(
             go.Box(
                 x=p["sample_name"],
@@ -236,7 +243,7 @@ def plot_growth_stats(long_df: pd.DataFrame, sample_order: list[str]):
                 pointpos=0,
                 fillcolor="rgba(0,0,0,0)",
                 line=dict(width=0),
-                marker=dict(size=6, opacity=0.8),
+                marker=dict(size=6, opacity=1),
                 text=(p["plate"].astype(str) + " " + p["well"].astype(str)).tolist(),
                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
                 showlegend=False,

@@ -253,8 +253,8 @@ with acol:
                 ss.plates.pop(plate_id, None)
                 st.rerun()
 
-        else:
-            st.info("Upload files for this plate to preview/analyse.")
+    else:
+        st.warning("Upload files for to see plate preview.")
 
 st.divider()
 
