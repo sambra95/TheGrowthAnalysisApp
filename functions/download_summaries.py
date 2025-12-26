@@ -540,41 +540,28 @@ def ui_export(plates: dict):
 
         st.subheader("Export Processed Data")
 
-        value_col = st.selectbox(
-            "Processed data value column",
-            ["baseline_corrected", "raw", "od600", "value"],
-        )
-
-        gs_mode = st.radio(
-            "Growth stats format",
-            ["per_well", "mean_for_sample"],
-            horizontal=True,
-        )
-
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for pid, p in plates.items():
-                wide = _processed_wide_for_plate(p, value_col=value_col)
+                wide = _processed_wide_for_plate(p, value_col="baseline_corrected")
                 if not wide.empty:
                     z.writestr(
-                        f"{pid}/{pid}_processed_{value_col}_wide.csv",
+                        f"{pid}/{pid}_processed_baseline_corrected.csv",
                         wide.to_csv(index=False),
                     )
 
-                if gs_mode == "per_well":
-                    gs = _growth_stats_per_well_df(p)
-                    if not gs.empty:
-                        z.writestr(
-                            f"{pid}/{pid}_growth_stats_per_well.csv",
-                            gs.to_csv(index=False),
-                        )
-                else:
-                    gs = _growth_stats_mean_for_sample_df(p)
-                    if not gs.empty:
-                        z.writestr(
-                            f"{pid}/{pid}_growth_stats_mean_for_sample.csv",
-                            gs.to_csv(index=False),
-                        )
+                per_well_df = _growth_stats_per_well_df(p)
+                if not per_well_df.empty:
+                    z.writestr(
+                        f"{pid}/{pid}_growth_stats_per_well.csv",
+                        per_well_df.to_csv(index=False),
+                    )
+                mean_df = _growth_stats_mean_for_sample_df(p)
+                if not mean_df.empty:
+                    z.writestr(
+                        f"{pid}/{pid}_growth_stats_mean_for_sample.csv",
+                        mean_df.to_csv(index=False),
+                    )
 
         buf.seek(0)
 
