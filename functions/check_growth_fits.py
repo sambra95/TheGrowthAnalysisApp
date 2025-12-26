@@ -35,6 +35,32 @@ def require_plates() -> dict:
 
 
 # ---------------- Selection + stats helpers ----------------
+def well_order_A1_to_H12():
+    rows = "ABCDEFGH"
+    cols = range(1, 13)
+    return [f"{r}{c}" for r in rows for c in cols]  # A1..A12, B1..B12, ...
+
+
+def _cycle(items, current, step):
+    """Return next/prev item from items list, wrapping around."""
+    if not items:
+        return current
+    try:
+        i = items.index(current)
+    except ValueError:
+        i = 0
+    return items[(i + step) % len(items)]
+
+
+def _delete_well_from_plate(plate: dict, well: str) -> None:
+    """Remove a well from all per-well containers on a plate (in-place)."""
+    # Per-well dictionaries that may contain the well key
+    per_well_keys = ["name", "raw_data", "processed_data", "growth_stats"]
+    for k in per_well_keys:
+        d = plate.get(k)
+        d.pop(well, None)
+
+
 def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
     """Streamlit Plotly selection event -> arrays of selected x/y."""
     if event is None:
@@ -93,7 +119,7 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
 
 
 def _phase_controls(plate: dict, well: str, *, key: str):
-    """Range slider (lag_end, exp_end) + 'No Growth' button. Writes into plate['growth_stats'][well]."""
+    """Range slider (lag_end, exp_end) + action buttons. Writes into plate['growth_stats'][well]."""
     processed = (plate.get("processed_data") or {}).get(well)
     if processed is None or processed.empty:
         st.warning(f"No data for {well}")
@@ -115,7 +141,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[ss_key] = (lag0, exp0)
 
-    c1, c2 = st.columns([6, 1], vertical_alignment="bottom")
+    c1, c2, c3 = st.columns([6, 1, 1], vertical_alignment="bottom")
     with c1:
         lag_end, exp_end = st.slider(
             "Phase boundaries (hours): Lag end → Exponential end",
@@ -125,6 +151,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             step=step,
             key=ss_key,
         )
+
     with c2:
         no_growth = st.button(
             "No Growth",
@@ -133,8 +160,24 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             key=f"nogrowth__{key}",
         )
 
+    with c3:
+        delete_well = st.button(
+            "Delete well",
+            use_container_width=True,
+            type="tertiary",
+            key=f"deletewell__{key}",
+        )
+
+    # Persist boundaries unless we're deleting
     growth_stats["lag_phase_end"] = float(lag_end)
     growth_stats["exponential_phase_end"] = float(exp_end)
+
+    if delete_well:
+        _delete_well_from_plate(plate, well)
+        # Clean up the slider state for this well so it doesn't stick around
+        st.session_state.pop(ss_key, None)
+        st.rerun()
+        return np.nan, np.nan, True
 
     if no_growth:
         growth_stats.update(BAD_FIT.copy())
@@ -150,12 +193,60 @@ def _cached_window_single(processed_data: dict, well: str):
     return plot_window_single(processed_data, well)
 
 
-# ---------------- Fragments used by pages ----------------
+def well_order_A1_to_H12():
+    rows = "ABCDEFGH"
+    cols = range(1, 13)
+    return [f"{r}{c}" for r in rows for c in cols]
+
+
+def _cycle(items: list[str], current: str, step: int) -> str:
+    if current not in items:
+        return items[0]
+    i = items.index(current)
+    return items[(i + step) % len(items)]
+
+
 @st.fragment
 def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
-    a, b = st.columns(2)
-    plate_id = a.selectbox("Plate", sorted(plates), key="winfit_plate")
-    well = b.selectbox("Well", ALL_WELLS, key="winfit_well")
+    plate_ids = sorted(plates)
+    wells = well_order_A1_to_H12()
+
+    st.session_state.setdefault("winfit_plate", plate_ids[0])
+    st.session_state.setdefault("winfit_well", wells[0])
+
+    def _move_well(step: int):
+        st.session_state["winfit_well"] = _cycle(
+            wells, st.session_state.get("winfit_well", wells[0]), step
+        )
+
+    plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+
+    prev, mid, next_ = st.columns([1, 6, 1], vertical_alignment="bottom")
+    with prev:
+        st.button(
+            "◀",
+            use_container_width=True,
+            on_click=_move_well,
+            args=(-1,),
+            key="well_prev",
+            shortcut="Left",
+        )
+    with mid:
+        well = st.selectbox(
+            "Well",
+            wells,
+            key="winfit_well",
+            index=wells.index(st.session_state["winfit_well"]),
+        )
+    with next_:
+        st.button(
+            "▶",
+            use_container_width=True,
+            on_click=_move_well,
+            args=(+1,),
+            key="well_next",
+            shortcut="Right",
+        )
 
     plate = plates[plate_id]
     key = f"{plate_id}_{well}"
@@ -174,7 +265,7 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p)
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
-    fig_main = go.Figure(_cached_window_single(processed, well))  # IMPORTANT: copy!
+    fig_main = go.Figure(_cached_window_single(processed, well))
     fig_main = _vlines(
         fig_main, processed, well, lag_end, exp_end, gs=gs, line_hours=line_hours
     )
@@ -190,7 +281,3 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     )
     st.plotly_chart(fig_d1, use_container_width=True)
     st.plotly_chart(fig_d2, use_container_width=True)
-
-
-# ---------------- Backwards-compatible alias ----------------
-window_well_view = ui_window_fits_well_editor

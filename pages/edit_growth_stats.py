@@ -1,8 +1,8 @@
 import streamlit as st
-from functions.check_growth_fits import require_plates, window_well_view
+from functions.check_growth_fits import require_plates, ui_window_fits_well_editor
 
 st.title("Check Growth Fits")
 
 plates = require_plates()
 
-window_well_view(plates, line_hours=4.0)
+ui_window_fits_well_editor(plates, line_hours=4.0)

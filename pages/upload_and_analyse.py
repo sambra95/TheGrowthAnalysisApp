@@ -155,7 +155,7 @@ st.title("2) Select the analysis parameters")
 
 ready = sorted(ss.plates)
 
-pcol, acol = st.columns(2)
+pcol, acol = st.columns(2, gap="large")
 
 with pcol:
     st.subheader("Analysis Parameters")
@@ -242,11 +242,12 @@ with acol:
             )
             render_plate_table(grid)
 
-            st.divider()
+            st.write("")
+            st.write("")
 
             if st.button(
                 "Remove selected plate",
-                type="primary",
+                type="tertiary",
                 use_container_width=True,
                 disabled=not plate_id,
             ):
