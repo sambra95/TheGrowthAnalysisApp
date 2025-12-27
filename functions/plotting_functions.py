@@ -221,6 +221,11 @@ def plot_growth_stats(
       - If ANY sample_name contains "_" -> create Strain/Condition by split at FIRST underscore
       - Otherwise, do not add those columns (but function will still work with x_col="Sample Name", legend_col=None)
     """
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
     if long_df is None or long_df.empty:
         fig = go.Figure()
         fig.update_layout(title="Growth statistics", height=400)
@@ -236,7 +241,6 @@ def plot_growth_stats(
         sc = s.str.split("_", n=1, expand=True)
         df["Strain"] = sc[0]
         df["Condition"] = sc[1].fillna("")
-    # If not split, do NOT create these columns (requirement #1)
 
     # ---- map UI names to actual df columns ----
     col_map = {
@@ -244,10 +248,12 @@ def plot_growth_stats(
         "Strain": "Strain",
         "Condition": "Condition",
     }
+
     if x_col not in col_map:
         x_col = "Sample Name"
     x_df_col = col_map[x_col]
 
+    legend_df_col = None
     if legend_col is not None:
         if legend_col not in col_map:
             legend_col = None
@@ -256,8 +262,7 @@ def plot_growth_stats(
             # If user chose Strain/Condition but we didn't create them, drop back safely
             if legend_df_col not in df.columns:
                 legend_col = None
-            else:
-                legend_df_col = legend_df_col
+                legend_df_col = None
 
     # If x axis requested Strain/Condition but absent, fall back to Sample Name
     if x_df_col not in df.columns:
@@ -274,23 +279,33 @@ def plot_growth_stats(
         .astype(pd.CategoricalDtype(categories=list(x_order), ordered=True))
     )
 
-    # ---- legend groups ----
+    # ---- legend groups + stable color mapping ----
     if legend_col is None:
-        groups = [None]
+        groups: list[str] = []
+        color_map: dict[str, str] = {}
     else:
+        assert legend_df_col is not None
         if not legend_order:
             legend_order = list(pd.unique(df[legend_df_col].astype(str)))
+
+        present = set(df[legend_df_col].astype(str))
+
         # enforce requested legend order
-        groups = [g for g in legend_order if g in set(df[legend_df_col].astype(str))]
+        groups = [str(g) for g in legend_order if str(g) in present]
+
         # include any stragglers at end
         for g in pd.unique(df[legend_df_col].astype(str)):
-            if g not in groups:
-                groups.append(g)
+            gs = str(g)
+            if gs not in groups:
+                groups.append(gs)
+
+        base_colors = px.colors.qualitative.Plotly  # change if you like
+        color_map = {g: base_colors[i % len(base_colors)] for i, g in enumerate(groups)}
 
     # ---- aggregate ----
     group_cols = ["_x", "metric"]
     if legend_col is not None:
-        group_cols.insert(1, legend_df_col)
+        group_cols.insert(1, legend_df_col)  # type: ignore[arg-type]
 
     agg = (
         df.groupby(group_cols, as_index=False)["value"]
@@ -314,9 +329,7 @@ def plot_growth_stats(
                     error_y=dict(type="data", array=a["sd"], visible=True),
                     name="",
                     showlegend=False,
-                    hovertemplate=(
-                        f"{x_col}=%{{x}}<br>" "Mean=%{y:.4f}<extra></extra>"
-                    ),
+                    hovertemplate=f"{x_col}=%{{x}}<br>Mean=%{{y:.4f}}<extra></extra>",
                     marker=dict(line=dict(color="black", width=1.5)),
                 ),
                 row=r,
@@ -344,26 +357,31 @@ def plot_growth_stats(
                 col=1,
             )
         else:
-            # One legend entry per group, in user-defined order
+            # One legend entry per group, in user-defined order, with stable colors across all subplots
+            assert legend_df_col is not None
+
             for g in groups:
-                a_g = a[a[legend_df_col].astype(str) == str(g)]
-                p_g = p[p[legend_df_col].astype(str) == str(g)]
+                a_g = a[a[legend_df_col].astype(str) == g]
+                p_g = p[p[legend_df_col].astype(str) == g]
 
                 fig.add_trace(
                     go.Bar(
                         x=a_g["_x"],
                         y=a_g["mean"],
                         error_y=dict(type="data", array=a_g["sd"], visible=True),
-                        name=str(g),
-                        legendgroup=str(g),
-                        offsetgroup=str(g),
+                        name=g,
+                        legendgroup=g,
+                        offsetgroup=g,
                         showlegend=(r == 1),
                         hovertemplate=(
                             f"{legend_col}=%{{fullData.name}}<br>"
                             f"{x_col}=%{{x}}<br>"
                             "Mean=%{y:.4f}<extra></extra>"
                         ),
-                        marker=dict(line=dict(color="black", width=1.5)),
+                        marker=dict(
+                            color=color_map[g],
+                            line=dict(color="black", width=1.5),
+                        ),
                     ),
                     row=r,
                     col=1,
@@ -373,16 +391,20 @@ def plot_growth_stats(
                     go.Box(
                         x=p_g["_x"],
                         y=p_g["value"].to_numpy(float),
-                        name=str(g),
-                        legendgroup=str(g),
-                        offsetgroup=str(g),
+                        name=g,
+                        legendgroup=g,
+                        offsetgroup=g,
                         showlegend=False,
                         boxpoints="all",
                         jitter=0.35,
                         pointpos=0,
                         fillcolor="rgba(0,0,0,0)",
                         line=dict(width=0),
-                        marker=dict(size=6, opacity=0.8),
+                        marker=dict(
+                            color="black",
+                            size=6,
+                            opacity=0.8,
+                        ),
                         text=(
                             p_g["plate"].astype(str) + " " + p_g["well"].astype(str)
                         ).tolist(),
@@ -636,7 +658,9 @@ def _vlines(
         lag_end = float(np.clip(gs.get("lag_phase_end", tmin), tmin, tmax))
         exp_end = float(np.clip(gs.get("exponential_phase_end", tmax), tmin, tmax))
         exp_end = max(exp_end, lag_end)
+        max_od = float(gs.get("Maximum OD600", 0.0) or 0.0)
 
+        # colour code lag phase
         fig.add_vrect(
             x0=tmin,
             x1=lag_end,
@@ -645,8 +669,10 @@ def _vlines(
             layer="below",
         )
 
+        # add line for lag end
         fig.add_vline(x=lag_end, line_dash="dot")
 
+        # colour code exponential phase
         fig.add_vrect(
             x0=lag_end,
             x1=exp_end,
@@ -655,8 +681,10 @@ def _vlines(
             layer="below",
         )
 
+        # add line for exp end
         fig.add_vline(x=exp_end, line_dash="dot")
 
+        # colour code stationary phase
         fig.add_vrect(
             x0=exp_end,
             x1=tmax,
@@ -665,12 +693,23 @@ def _vlines(
             layer="below",
         )
 
+        # add line for max OD600
+        fig.add_hline(y=max_od, line_dash="dot")
+
+        # fitted max gradient line in blue (constant geometric length)
         m = float(gs.get("Maximum U", 0.0) or 0.0)
         t0, b0 = gs.get("t_mu"), gs.get("b")
         if np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
             t0, b0 = float(t0), float(b0)
-            x0 = max(tmin, t0 - line_hours)
-            x1 = min(tmax, t0 + line_hours)
+
+            # line_hours now means "half-length" in Euclidean (data) units for x=hours, y=OD
+            # segment half-length L, choose dx so sqrt(dx^2 + (m*dx)^2) = L  -> dx = L / sqrt(1+m^2)
+            L = float(line_hours)
+            dx = L / np.sqrt(1.0 + m * m)
+
+            x0 = max(tmin, t0 - dx)
+            x1 = min(tmax, t0 + dx)
+
             fig.add_shape(
                 type="line",
                 xref="x",

@@ -218,7 +218,7 @@ def analyse_plate(record: dict):
     p = (record or {}).get("params") or {}
 
     plate_map, name_map = _plate_name_map(u["plate_bytes"])
-    df = _read_table(u["data_bytes"], p["read_interval_min"])  # <- new reader
+    df = _read_table(u["data_bytes"], p["read_interval_min"])
 
     long = df.melt(id_vars="Time", var_name="well", value_name="value")
     long["well"] = long["well"].astype(str).str.upper()
@@ -271,9 +271,6 @@ def analyse_plate(record: dict):
                 lag_frac=float(p.get("lag_frac", 0.20)),
             )
         except Exception:
-            fit = BAD_FIT.copy()
-
-        if not isinstance(fit, dict):
             fit = BAD_FIT.copy()
 
         plate["name"][well] = str(g["name"].iloc[0])

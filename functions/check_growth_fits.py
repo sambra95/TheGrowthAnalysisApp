@@ -211,10 +211,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[ss_key] = (lag0, exp0)
 
-    c1, c2, c3, c4 = st.columns([6, 1, 1, 1], vertical_alignment="bottom")
+    c1, c2 = st.columns(2)
     with c1:
         lag_end, exp_end = st.slider(
-            "Phase boundaries (hours): Lag end → Exponential end",
+            "Set phase boundaries (hours)",
             t_min,
             t_max,
             st.session_state[ss_key],
@@ -223,6 +223,19 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
 
     with c2:
+        max_od = st.slider(
+            "Set maximum OD600",
+            0.0,
+            max(processed["baseline_corrected"]),
+            growth_stats.get("Maximum OD600", 0.0),
+            step=max(processed["baseline_corrected"]) / 120,
+            key=f"maxod__{key}",
+        )
+
+    st.caption("")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
         no_growth = st.button(
             "No Growth",
             use_container_width=True,
@@ -230,20 +243,25 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             key=f"nogrowth__{key}",
         )
 
+    with c2:
+        reanalyse_well = st.button(
+            "Re-analyse",
+            type="primary",
+            use_container_width=True,
+        )
+
     with c3:
         delete_well = st.button(
-            "Delete well",
+            "Delete",
             use_container_width=True,
             type="tertiary",
             key=f"deletewell__{key}",
         )
 
-    with c4:
-        reanalyse_well = st.button("Re-analyse well", type="primary")
-
     # Persist boundaries unless we're deleting
     growth_stats["lag_phase_end"] = float(lag_end)
     growth_stats["exponential_phase_end"] = float(exp_end)
+    growth_stats["Maximum OD600"] = float(max_od)
 
     if delete_well:
         _delete_well_from_plate(plate, well)
@@ -296,41 +314,45 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
             wells, st.session_state.get("winfit_well", wells[0]), step
         )
 
-    plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        with st.container(border=True):
+            plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+            prev, mid, next_ = st.columns([2, 4, 2], vertical_alignment="bottom")
+            with prev:
+                st.button(
+                    "",
+                    use_container_width=True,
+                    on_click=_move_well,
+                    args=(-1,),
+                    key="well_prev",
+                    shortcut="Left",
+                    type="primary",
+                )
+            with mid:
+                well = st.selectbox(
+                    "Well",
+                    wells,
+                    key="winfit_well",
+                    index=wells.index(st.session_state["winfit_well"]),
+                )
+            with next_:
+                st.button(
+                    "",
+                    use_container_width=True,
+                    on_click=_move_well,
+                    args=(+1,),
+                    key="well_next",
+                    shortcut="Right",
+                    type="primary",
+                )
 
-    prev, mid, next_ = st.columns([1, 6, 1], vertical_alignment="bottom")
-    with prev:
-        st.button(
-            "",
-            use_container_width=True,
-            on_click=_move_well,
-            args=(-1,),
-            key="well_prev",
-            shortcut="Left",
-            type="primary",
-        )
-    with mid:
-        well = st.selectbox(
-            "Well",
-            wells,
-            key="winfit_well",
-            index=wells.index(st.session_state["winfit_well"]),
-        )
-    with next_:
-        st.button(
-            "",
-            use_container_width=True,
-            on_click=_move_well,
-            args=(+1,),
-            key="well_next",
-            shortcut="Right",
-            type="primary",
-        )
+    with col2:
+        with st.container(border=True):
+            plate = plates[plate_id]
+            key = f"{plate_id}_{well}"
 
-    plate = plates[plate_id]
-    key = f"{plate_id}_{well}"
-
-    lag_end, exp_end, no_growth = _phase_controls(plate, well, key=key)
+            lag_end, exp_end, no_growth = _phase_controls(plate, well, key=key)
     if no_growth:
         return
 
