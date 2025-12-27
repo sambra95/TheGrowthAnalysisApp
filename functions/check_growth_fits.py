@@ -3,7 +3,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from functions.data_processing import ALL_WELLS
+from functions.data_processing import (
+    ALL_WELLS,
+    window_fit,
+    _plate_name_map,
+    _read_table,
+)
 from functions.plotting_functions import (
     _vlines,
     plot_window_single,
@@ -118,6 +123,71 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     )
 
 
+def analyse_well(record: dict, well: str):
+    u = (record or {}).get("uploads") or {}
+    p = (record or {}).get("params") or {}
+
+    well = str(well).upper()
+
+    plate_map, name_map = _plate_name_map(u["plate_bytes"])
+    df = _read_table(u["data_bytes"], p["read_interval_min"])
+
+    long = df.melt(id_vars="Time", var_name="well", value_name="value")
+    long["well"] = long["well"].astype(str).str.upper()
+    long["name"] = long["well"].map(name_map).fillna("False")
+    long = long[long["name"] != "False"].copy()
+
+    long["value"] = pd.to_numeric(long["value"], errors="coerce")
+
+    clip = p.get("clip_time_series", False)
+    if clip:
+        a, b = clip
+        long = long.query("@a <= Time <= @b").copy()
+
+    rm = p.get("remove_wells", False)
+    if rm:
+        long = long[~long["well"].isin([w.upper() for w in rm])].copy()
+
+    # If the requested well was removed or doesn't exist after filtering:
+    if well not in set(long["well"].unique()):
+        return BAD_FIT.copy()
+
+    long["od_1cm"] = long["value"] / float(p["pathlength_cm_"])
+
+    baseline = pd.DataFrame()
+    if p.get("blank", True):
+        baseline = (
+            long.query("name == 'BLANK'")
+            .groupby("Time", as_index=True)["od_1cm"]
+            .mean()
+            .to_frame()
+        )
+        long = long.query("name != 'BLANK'").copy()
+
+    if not baseline.empty:
+        base = baseline["od_1cm"].to_dict()
+        long["baseline_corrected"] = long["od_1cm"] - long["Time"].map(base).fillna(0.0)
+    else:
+        long["baseline_corrected"] = long["od_1cm"]
+
+    g = long[long["well"] == well].copy()
+    processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
+
+    try:
+        fit = window_fit(
+            processed["Time"].to_numpy(float),
+            processed["baseline_corrected"].to_numpy(float),
+            int(p["window_points"]),
+            sg_window=int(p.get("sg_window", 11)),
+            sg_poly=int(p.get("sg_poly", 2)),
+            lag_frac=float(p.get("lag_frac", 0.20)),
+        )
+    except Exception:
+        fit = BAD_FIT.copy()
+
+    return fit
+
+
 def _phase_controls(plate: dict, well: str, *, key: str):
     """Range slider (lag_end, exp_end) + action buttons. Writes into plate['growth_stats'][well]."""
     processed = (plate.get("processed_data") or {}).get(well)
@@ -141,7 +211,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[ss_key] = (lag0, exp0)
 
-    c1, c2, c3 = st.columns([6, 1, 1], vertical_alignment="bottom")
+    c1, c2, c3, c4 = st.columns([6, 1, 1, 1], vertical_alignment="bottom")
     with c1:
         lag_end, exp_end = st.slider(
             "Phase boundaries (hours): Lag end → Exponential end",
@@ -168,6 +238,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             key=f"deletewell__{key}",
         )
 
+    with c4:
+        reanalyse_well = st.button("Re-analyse well", type="primary")
+
     # Persist boundaries unless we're deleting
     growth_stats["lag_phase_end"] = float(lag_end)
     growth_stats["exponential_phase_end"] = float(exp_end)
@@ -183,6 +256,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         growth_stats.update(BAD_FIT.copy())
         st.rerun()
         return np.nan, np.nan, True
+
+    if reanalyse_well:
+
+        plate["growth_stats"][well] = analyse_well(plate, well)
 
     return float(lag_end), float(exp_end), False
 
@@ -224,12 +301,13 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     prev, mid, next_ = st.columns([1, 6, 1], vertical_alignment="bottom")
     with prev:
         st.button(
-            "◀",
+            "",
             use_container_width=True,
             on_click=_move_well,
             args=(-1,),
             key="well_prev",
             shortcut="Left",
+            type="primary",
         )
     with mid:
         well = st.selectbox(
@@ -240,12 +318,13 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
         )
     with next_:
         st.button(
-            "▶",
+            "",
             use_container_width=True,
             on_click=_move_well,
             args=(+1,),
             key="well_next",
             shortcut="Right",
+            type="primary",
         )
 
     plate = plates[plate_id]

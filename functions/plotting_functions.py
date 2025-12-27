@@ -644,6 +644,9 @@ def _vlines(
             line_width=0,
             layer="below",
         )
+
+        fig.add_vline(x=lag_end, line_dash="dot")
+
         fig.add_vrect(
             x0=lag_end,
             x1=exp_end,
@@ -651,6 +654,9 @@ def _vlines(
             line_width=0,
             layer="below",
         )
+
+        fig.add_vline(x=exp_end, line_dash="dot")
+
         fig.add_vrect(
             x0=exp_end,
             x1=tmax,
@@ -675,14 +681,6 @@ def _vlines(
                 y1=m * x1 + b0,
                 line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
             )
-
-    # --- phase boundary vertical lines ---
-    for x in xs:
-        if np.isfinite(x):
-            try:
-                fig.add_vline(x=float(x), line_dash="dot")
-            except Exception:
-                pass
 
     return fig
 
