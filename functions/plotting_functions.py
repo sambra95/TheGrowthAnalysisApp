@@ -231,7 +231,18 @@ def plot_growth_stats(
         fig.update_layout(title="Growth statistics", height=400)
         return fig
 
-    metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
+    metrics = [
+        "Maximum U",
+        "Maximum OD600",
+        "Lag Time (hours)",
+        "lag_phase_end",
+        "exponential_phase_end",
+        "t_mu",
+        "y_mu",
+        "b",
+        "t_peak",
+    ]
+
     df = long_df.copy()
 
     # ---- optionally derive Strain/Condition from sample_name (split on FIRST underscore) ----
@@ -314,7 +325,11 @@ def plot_growth_stats(
         .sort_values(group_cols, kind="stable")
     )
 
-    fig = make_subplots(rows=3, cols=1, subplot_titles=metrics, vertical_spacing=0.08)
+    fig = make_subplots(
+        rows=len(metrics),
+        cols=1,
+        subplot_titles=metrics,
+    )
 
     for r, m in enumerate(metrics, 1):
         a = agg[agg["metric"] == m].copy()
@@ -427,7 +442,7 @@ def plot_growth_stats(
 
     fig.update_layout(
         title="Growth statistics",
-        height=1400,
+        height=1000 * len(metrics),
         margin=dict(t=60),
         barmode="group",
         boxmode="group",

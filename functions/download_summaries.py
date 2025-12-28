@@ -5,7 +5,6 @@ import zipfile
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 from streamlit_sortables import sort_items
 
@@ -55,7 +54,18 @@ def _build_growth_stats_long_df(
         if nm and nm not in sample_order:
             sample_order.append(nm)
 
-    metrics = ["Maximum OD600", "Maximum U", "Lag Time (hours)"]
+    metrics = [
+        "Maximum U",
+        "Maximum OD600",
+        "Lag Time (hours)",
+        "lag_phase_end",
+        "exponential_phase_end",
+        "t_mu",
+        "y_mu",
+        "b",
+        "t_peak",
+    ]
+
     rows: list[dict] = []
 
     for sid in sel_ids:
@@ -466,7 +476,6 @@ def ui_growth_summaries(plates: dict):
                 legend_col=legend_col,
                 x_order=x_ordered,
                 legend_order=legend_ordered,
-                # if your plot_growth_stats uses time window, pass stats_t0/stats_t1 too
             ),
             use_container_width=True,
         )

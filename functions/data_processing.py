@@ -12,6 +12,19 @@ COLS = range(1, 13)
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 
 
+BAD_FIT = {
+    "Maximum OD600": 0.0,
+    "Maximum U": 0.0,
+    "Lag Time (hours)": 0.0,
+    "lag_phase_end": np.nan,
+    "exponential_phase_end": np.nan,
+    "t_mu": np.nan,
+    "y_mu": np.nan,
+    "b": np.nan,
+    "t_peak": np.nan,
+}
+
+
 # ---------- small utilities ----------
 def _as_float(x):
     return np.asarray(x, dtype=float)
@@ -77,20 +90,6 @@ def phase_ends(t, y_s, frac_peak=0.10):
     return lag_end, max(exp_end, lag_end)
 
 
-# ---------- growth stats ----------
-BAD_FIT = {
-    "Maximum OD600": 0.0,
-    "Maximum U": 0.0,
-    "Lag Time (hours)": 0.0,
-    "lag_phase_end": np.nan,
-    "exponential_phase_end": np.nan,
-    "t_mu": np.nan,
-    "y_mu": np.nan,
-    "b": np.nan,
-    "t_peak": np.nan,
-}
-
-
 def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
     t, y = _as_float(t), _as_float(y)
     w = int(w)
@@ -133,20 +132,18 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
 
     lag_end, exp_end = phase_ends(t, y_s, frac_peak=lag_frac)
 
-    out = BAD_FIT.copy()
-    out.update(
-        {
-            "Maximum OD600": A,
-            "Maximum U": float(best_m),
-            "Lag Time (hours)": float(lag_end - t[0]),
-            "lag_phase_end": float(lag_end),
-            "exponential_phase_end": float(exp_end),
-            "t_mu": float(t_mu),
-            "y_mu": float(y_mu),
-            "b": float(b),
-            "t_peak": float(t_peak),
-        }
-    )
+    out = {
+        "Maximum OD600": A,
+        "Maximum U": float(best_m),
+        "Lag Time (hours)": float(lag_end - t[0]),
+        "lag_phase_end": float(lag_end),
+        "exponential_phase_end": float(exp_end),
+        "t_mu": float(t_mu),
+        "y_mu": float(y_mu),
+        "b": float(b),
+        "t_peak": float(t_peak),
+    }
+
     return out
 
 
@@ -189,19 +186,6 @@ def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
 
 def _empty_plate():
     return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}}
-
-
-BAD_FIT = {
-    "Maximum OD600": 0.0,
-    "Maximum U": 0.0,
-    "Lag Time (hours)": 0.0,
-    "lag_phase_end": np.nan,
-    "exponential_phase_end": np.nan,
-    "t_mu": np.nan,
-    "y_mu": np.nan,
-    "b": np.nan,
-    "t_peak": np.nan,
-}
 
 
 def load_plate(
