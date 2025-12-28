@@ -8,6 +8,7 @@ from functions.data_processing import (
     window_fit,
     _plate_name_map,
     _read_table,
+    BAD_FIT,
 )
 from functions.plotting_functions import (
     _vlines,
@@ -15,18 +16,6 @@ from functions.plotting_functions import (
     plot_window_single_d1,
     plot_window_single_d2,
 )
-
-BAD_FIT = {
-    "Maximum OD600": 0.0,
-    "Maximum U": 0.0,
-    "Lag Time (hours)": 0.0,
-    "lag_phase_end": np.nan,
-    "exponential_phase_end": np.nan,
-    "t_mu": np.nan,
-    "y_mu": np.nan,
-    "b": np.nan,
-    "t_peak": np.nan,
-}
 
 
 # ---------------- Gatekeeper ----------------

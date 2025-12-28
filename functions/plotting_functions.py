@@ -40,26 +40,98 @@ def _iter_wells(plates: dict):
 
 
 # --- replicates ----------------------------------------------------------------
-def plot_replicates_scatter(curves_df: pd.DataFrame, t_start=0.0, t_end=72.0):
+def _order_and_colors(d: pd.DataFrame, sample_order: list[str] | None):
+    ordered = list(dict.fromkeys([n for n in (sample_order or []) if n]))
+    seen = list(pd.unique(d["Sample Name"]))
+    names = ordered + [n for n in seen if n not in ordered]
+    palette = px.colors.qualitative.Plotly
+    color_map = {n: palette[i % len(palette)] for i, n in enumerate(names)}
+    return names, color_map
+
+
+def plot_replicates_scatter(
+    curves_df: pd.DataFrame,
+    sample_order: list[str] | None = None,
+    t_start=0.0,
+    t_end=72.0,
+):
+    fig = go.Figure()
+    fig.update_layout(
+        xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
+    )
     if curves_df is None or curves_df.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            xaxis_title="Time (hours)",
-            yaxis_title="OD600 (baseline-corrected)",
-            height=600,
-        )
         return fig
 
-    d = curves_df.copy()
-    d = d[(d["Time"] >= t_start) & (d["Time"] <= t_end)]
+    d = curves_df[(curves_df["Time"] >= t_start) & (curves_df["Time"] <= t_end)].copy()
+    names, color_map = _order_and_colors(d, sample_order)
 
-    fig = px.scatter(
+    return px.scatter(
         d,
         x="Time",
         y="baseline_corrected",
         color="Sample Name",
         hover_data=["plate", "well", "key"],
+        category_orders={"Sample Name": names},
+        color_discrete_map=color_map,
+    ).update_layout(
+        height=600, xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)"
     )
+
+
+def plot_mean_growth(
+    curves_df: pd.DataFrame, sample_order: list[str] | None, t_start=0.0, t_end=72.0
+):
+    fig = go.Figure()
+    fig.update_layout(
+        xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
+    )
+    if curves_df is None or curves_df.empty:
+        return fig
+
+    d = curves_df[(curves_df["Time"] >= t_start) & (curves_df["Time"] <= t_end)].copy()
+    names, color_map = _order_and_colors(d, sample_order)
+
+    agg = (
+        d.groupby(["Sample Name", "Time"], as_index=False)["baseline_corrected"]
+        .agg(mean="mean", sd="std")
+        .fillna({"sd": 0.0})
+    )
+    agg["upper"] = agg["mean"] + agg["sd"]
+    agg["lower"] = agg["mean"] - agg["sd"]
+
+    for nm in names:
+        sub = agg[agg["Sample Name"] == nm].sort_values("Time")
+        if sub.empty:
+            continue
+        c = color_map[nm]
+
+        fig.add_trace(
+            go.Scatter(
+                x=pd.concat([sub["Time"], sub["Time"][::-1]]),
+                y=pd.concat([sub["upper"], sub["lower"][::-1]]),
+                fill="toself",
+                fillcolor=c,
+                line=dict(width=0),
+                opacity=0.2,
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=sub["Time"],
+                y=sub["mean"],
+                mode="lines",
+                name=nm,
+                line=dict(color=c),
+                text=[nm] * len(sub),
+                hovertemplate="Sample=%{text}<br>Time=%{x:.2f} h<br>Mean=%{y:.4f}<extra></extra>",
+            )
+        )
+
+    fig.update_layout(legend_traceorder="normal")
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False)
     return fig
 
 
@@ -126,80 +198,6 @@ def plot_replicates_by_sample(plates: dict):
     return fig
 
 
-# --- mean growth ----------------------------------------------------------------
-def plot_mean_growth(
-    curves_df: pd.DataFrame, sample_order: list[str], t_start=0.0, t_end=72.0
-):
-    """
-    curves_df columns expected:
-      Sample Name, Time, baseline_corrected
-      (plate/well/key optional, not used here)
-    """
-    d = curves_df.copy()
-    if d.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            xaxis_title="Time (hours)",
-            yaxis_title="OD600 (baseline-corrected)",
-            height=600,
-        )
-        return fig
-
-    # time window
-    d = d[(d["Time"] >= t_start) & (d["Time"] <= t_end)]
-
-    # enforce ordering
-    ordered_names = list(dict.fromkeys([n for n in (sample_order or []) if n]))
-    if not ordered_names:
-        ordered_names = _unique_preserve_order(d["Sample Name"].astype(str).tolist())
-
-    agg = (
-        d.groupby(["Sample Name", "Time"], as_index=False)["baseline_corrected"]
-        .agg(mean="mean", sd="std")
-        .fillna({"sd": 0.0})
-    )
-    agg["upper"] = agg["mean"] + agg["sd"]
-    agg["lower"] = agg["mean"] - agg["sd"]
-
-    fig = go.Figure()
-    for nm in ordered_names:
-        sub = agg[agg["Sample Name"] == nm].sort_values("Time")
-        if sub.empty:
-            continue
-
-        fig.add_trace(
-            go.Scatter(
-                x=pd.concat([sub["Time"], sub["Time"][::-1]]),
-                y=pd.concat([sub["upper"], sub["lower"][::-1]]),
-                fill="toself",
-                line=dict(width=0),
-                opacity=0.2,
-                hoverinfo="skip",
-                showlegend=False,
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=sub["Time"],
-                y=sub["mean"],
-                mode="lines",
-                name=nm,
-                text=[nm] * len(sub),
-                hovertemplate="Sample=%{text}<br>Time=%{x:.2f} h<br>Mean=%{y:.4f}<extra></extra>",
-            )
-        )
-
-    fig.update_layout(
-        xaxis_title="Time (hours)",
-        yaxis_title="OD600 (baseline-corrected)",
-        height=600,
-        legend_traceorder="normal",
-    )
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=False)
-    return fig
-
-
 # --- growth stats ----------------------------------------------------------------
 def plot_growth_stats(
     long_df: pd.DataFrame,
@@ -221,10 +219,6 @@ def plot_growth_stats(
       - If ANY sample_name contains "_" -> create Strain/Condition by split at FIRST underscore
       - Otherwise, do not add those columns (but function will still work with x_col="Sample Name", legend_col=None)
     """
-    import pandas as pd
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
 
     if long_df is None or long_df.empty:
         fig = go.Figure()

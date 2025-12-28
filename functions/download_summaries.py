@@ -497,7 +497,9 @@ def ui_growth_summaries(plates: dict):
             st.info("No replicate data found.")
             return
         st.plotly_chart(
-            plot_replicates_scatter(curves_df, t_start=curves_t0, t_end=curves_t1),
+            plot_replicates_scatter(
+                curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
+            ),
             use_container_width=True,
         )
 
