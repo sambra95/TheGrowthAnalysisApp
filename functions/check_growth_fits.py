@@ -26,7 +26,6 @@ BAD_FIT = {
     "y_mu": np.nan,
     "b": np.nan,
     "t_peak": np.nan,
-    "d1_fit": None,
 }
 
 
@@ -201,16 +200,22 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
     ss_key = f"phase__{key}"
+    maxod_key = f"maxod__{key}"
 
-    if ss_key not in st.session_state:
+    # --- NEW: helper to push growth_stats -> widget state (safe if called in callbacks)
+    def _sync_widgets_from_growth_stats():
         lag0 = growth_stats.get("lag_phase_end")
         exp0 = growth_stats.get("exponential_phase_end")
         lag0 = float(lag0) if pd.notna(lag0) else t_min
-        exp0 = (
-            float(exp0) if pd.notna(exp0) else min(t_min + 0.5 * (t_max - t_min), t_max)
-        )
+        exp0 = float(exp0) if pd.notna(exp0) else t_min
         st.session_state[ss_key] = (lag0, exp0)
 
+        st.session_state[maxod_key] = float(growth_stats.get("Maximum OD600", 0.0))
+
+    if ss_key not in st.session_state:
+        _sync_widgets_from_growth_stats()
+
+    st.write(growth_stats)
     c1, c2 = st.columns(2)
     with c1:
         lag_end, exp_end = st.slider(
@@ -229,11 +234,31 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             max(processed["baseline_corrected"]),
             growth_stats.get("Maximum OD600", 0.0),
             step=max(processed["baseline_corrected"]) / 120,
-            key=f"maxod__{key}",
+            key=maxod_key,
         )
 
-    st.caption("")
+    # Persist boundaries unless we're deleting
+    growth_stats["lag_phase_end"] = float(lag_end)
+    growth_stats["exponential_phase_end"] = float(exp_end)
+    growth_stats["Maximum OD600"] = float(max_od)
+
     c1, c2, c3 = st.columns(3)
+
+    # --- NEW: callbacks (these run before the rerun, so it's legal to set widget state)
+    def _on_no_growth():
+        growth_stats.update(BAD_FIT.copy())
+        _sync_widgets_from_growth_stats()
+
+    def _on_reanalyse():
+        plate["growth_stats"][well] = analyse_well(plate, well)
+        # refresh local ref + sync widget state
+        growth_stats.update(plate["growth_stats"][well])
+        _sync_widgets_from_growth_stats()
+
+    def _on_delete():
+        _delete_well_from_plate(plate, well)
+        st.session_state.pop(ss_key, None)
+        st.session_state.pop(maxod_key, None)
 
     with c1:
         no_growth = st.button(
@@ -241,6 +266,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             use_container_width=True,
             type="primary",
             key=f"nogrowth__{key}",
+            on_click=_on_no_growth,  # <-- changed
         )
 
     with c2:
@@ -248,6 +274,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             "Re-analyse",
             type="primary",
             use_container_width=True,
+            on_click=_on_reanalyse,  # <-- changed
         )
 
     with c3:
@@ -256,28 +283,16 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             use_container_width=True,
             type="tertiary",
             key=f"deletewell__{key}",
+            on_click=_on_delete,  # <-- changed
         )
 
-    # Persist boundaries unless we're deleting
-    growth_stats["lag_phase_end"] = float(lag_end)
-    growth_stats["exponential_phase_end"] = float(exp_end)
-    growth_stats["Maximum OD600"] = float(max_od)
-
+    # You can keep these; callbacks already trigger reruns.
     if delete_well:
-        _delete_well_from_plate(plate, well)
-        # Clean up the slider state for this well so it doesn't stick around
-        st.session_state.pop(ss_key, None)
         st.rerun()
-        return np.nan, np.nan, True
-
     if no_growth:
-        growth_stats.update(BAD_FIT.copy())
         st.rerun()
-        return np.nan, np.nan, True
-
     if reanalyse_well:
-
-        plate["growth_stats"][well] = analyse_well(plate, well)
+        st.rerun()
 
     return float(lag_end), float(exp_end), False
 

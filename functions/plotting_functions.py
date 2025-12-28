@@ -438,6 +438,169 @@ def plot_growth_stats(
 
 
 # --- window fits ----------------------------------------------------------------
+def add_window_well(
+    fig,
+    *,
+    d,  # dataframe for this well (or None/empty)
+    well: str,
+    gs: dict | None = None,
+    row: int | None = None,
+    col: int | None = None,
+    line_hours: float = 2.0,
+    marker_size: int = 5,
+    marker_color: str = "red",
+    line_color: str = "blue",
+    shade_lag="rgba(180,180,180,0.18)",
+    shade_exp="rgba(100,149,237,0.16)",
+    shade_stat="rgba(144,238,144,0.16)",
+    add_phase_shading: bool = True,
+    add_window_line: bool = True,
+):
+    """
+    Draw a single well (points + optional phase shading + optional window line)
+    onto an existing Plotly figure.
+
+    Works for both:
+      - go.Figure() (row/col None)
+      - make_subplots() figure (row/col provided)
+    """
+    gs = gs or {}
+
+    # Helper: where to add traces
+    trace_kwargs = {}
+    if row is not None and col is not None:
+        trace_kwargs = dict(row=row, col=col)
+
+    # Empty: nothing to draw
+    if d is None or d.empty:
+        return
+
+    t, y = _finite_sorted_xy(
+        d["Time"].to_numpy(),
+        d["baseline_corrected"].to_numpy(),
+    )
+    if t.size == 0:
+        return
+
+    tmin, tmax = float(t[0]), float(t[-1])
+
+    # ---- Phase shading (needs correct xref/yref for each subplot) ----
+    bad = is_bad_fit(gs)
+    if add_phase_shading and (not bad):
+        lag_end = float(
+            np.clip(gs.get("lag_phase_end", gs.get("lag_end", tmin)), tmin, tmax)
+        )
+        exp_end = float(
+            np.clip(
+                gs.get("exponential_phase_end", gs.get("exp_end", tmax)), tmin, tmax
+            )
+        )
+        if exp_end < lag_end:
+            exp_end = lag_end
+
+        # IMPORTANT: xref/yref differ between single-figure and subplots
+        if row is None:
+            xref = "x"
+            yref = "y domain"
+        else:
+            # Plotly subplot axis naming: first subplot is "x", then "x2", "x3", ...
+            # We can read the axis name from the trace's target axis by using the subplot's axis id.
+            # Easiest robust method: derive axis index from (row, col) using fig._grid_ref
+            # But _grid_ref is private; safer: compute index the same way you created titles/wells.
+            # If your wells are in ALL_WELLS order and you already have i, pass axis_index in instead.
+            #
+            # If you don't want private attrs, pass axis_index explicitly. Here's a simple approach:
+            axis_index = (row - 1) * 12 + col  # for 8x12 plate only
+            xref = "x" if axis_index == 1 else f"x{axis_index}"
+            yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
+
+        for x0, x1, colr in (
+            (tmin, lag_end, shade_lag),
+            (lag_end, exp_end, shade_exp),
+            (exp_end, tmax, shade_stat),
+        ):
+            fig.add_shape(
+                type="rect",
+                x0=x0,
+                x1=x1,
+                y0=0,
+                y1=1,
+                xref=xref,
+                yref=yref,
+                fillcolor=colr,
+                line_width=0,
+                layer="below",
+            )
+
+    # ---- Scatter points ----
+    fig.add_trace(
+        go.Scatter(
+            x=t,
+            y=y,
+            mode="markers",
+            marker=dict(size=marker_size, color=marker_color),
+            hovertemplate=(
+                f"Well={well}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>"
+            ),
+            showlegend=False,
+        ),
+        **trace_kwargs,
+    )
+
+    # ---- Window/gradient line ----
+    if add_window_line:
+        m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
+        t0 = gs.get("t_mu")
+        b0 = gs.get("b")
+        if np.isfinite(m) and m > 0 and np.isfinite(t0) and np.isfinite(b0):
+            t0 = float(t0)
+            b0 = float(b0)
+            x0, x1 = t0 - line_hours, t0 + line_hours
+            fig.add_trace(
+                go.Scatter(
+                    x=[x0, x1],
+                    y=[m * x0 + b0, m * x1 + b0],
+                    mode="lines",
+                    line=dict(width=2, color=line_color),
+                    hoverinfo="skip",
+                    showlegend=False,
+                ),
+                **trace_kwargs,
+            )
+
+
+@st.cache_data(show_spinner=False)
+def plot_window_single(
+    processed_data: dict, well: str, plot_bgcolor="white", paper_bgcolor="white"
+):
+    d = (processed_data or {}).get(well)
+    fig = go.Figure()
+
+    add_window_well(
+        fig,
+        d=d,
+        well=well,
+        gs=None,  # or pass stats if you want shading/line here too
+        row=None,
+        col=None,
+        marker_size=5,
+    )
+
+    # layout only here
+    fig.update_layout(
+        height=600,
+        showlegend=False,
+        plot_bgcolor=plot_bgcolor,
+        paper_bgcolor=paper_bgcolor,
+        uirevision="keep",
+        dragmode="lasso",
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
+    fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
+    return fig
+
+
 def plot_window_plate(plate: dict, line_hours=2.0):
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
@@ -452,9 +615,9 @@ def plot_window_plate(plate: dict, line_hours=2.0):
         shared_yaxes=True,
     )
 
-    # global ranges
+    # global ranges (same as you already do)
     ts, ys = [], []
-    for w, d in proc.items():
+    for d in proc.values():
         if d is None or d.empty:
             continue
         ts.append(d["Time"])
@@ -469,169 +632,28 @@ def plot_window_plate(plate: dict, line_hours=2.0):
     x_range = [x_min - 0.02 * xr, x_max + 0.02 * xr]
     y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
-    shade_lag, shade_exp, shade_stat = (
-        "rgba(180,180,180,0.18)",
-        "rgba(100,149,237,0.16)",
-        "rgba(144,238,144,0.16)",
-    )
-
-    for i, w in enumerate(ALL_WELLS, 1):
-        d = proc.get(w)
+    for i, well in enumerate(ALL_WELLS, 1):
+        d = proc.get(well)
         if d is None or d.empty:
             continue
 
         r, c = divmod(i - 1, 12)
         r, c = r + 1, c + 1
 
-        t = d["Time"].to_numpy(float)
-        y = d["baseline_corrected"].to_numpy(float)
-        tmin, tmax = float(np.nanmin(t)), float(np.nanmax(t))
-
-        gs = gs_all.get(w) or {}
-        bad = is_bad_fit(gs)
-
-        if not bad:
-            lag_end = float(
-                np.clip(gs.get("lag_phase_end", gs.get("lag_end", tmin)), tmin, tmax)
-            )
-            exp_end = float(
-                np.clip(
-                    gs.get("exponential_phase_end", gs.get("exp_end", tmax)), tmin, tmax
-                )
-            )
-            if exp_end < lag_end:
-                exp_end = lag_end
-
-            xref = "x" if i == 1 else f"x{i}"
-            yref = "y domain" if i == 1 else f"y{i} domain"
-            for x0, x1, col in (
-                (tmin, lag_end, shade_lag),
-                (lag_end, exp_end, shade_exp),
-                (exp_end, tmax, shade_stat),
-            ):
-                fig.add_shape(
-                    type="rect",
-                    x0=x0,
-                    x1=x1,
-                    y0=0,
-                    y1=1,
-                    xref=xref,
-                    yref=yref,
-                    fillcolor=col,
-                    line_width=0,
-                    layer="below",
-                )
-
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=y,
-                mode="markers",
-                marker=dict(size=2, color="red"),  # <-- add color
-                hovertemplate=f"Well={w}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>",
-                showlegend=False,
-            ),
-            r,
-            c,
+        add_window_well(
+            fig,
+            d=d,
+            well=well,
+            gs=gs_all.get(well) or {},
+            row=r,
+            col=c,
+            line_hours=line_hours,
+            marker_size=2,  # plate: smaller dots
         )
-
-        # red window line from stats (t_mu, b, Maximum U)
-        m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
-        t0 = gs.get("t_mu")
-        b0 = gs.get("b")
-        if np.isfinite(m) and m > 0 and np.isfinite(t0) and np.isfinite(b0):
-            t0 = float(t0)
-            b0 = float(b0)
-            x0, x1 = t0 - line_hours, t0 + line_hours
-            # fitted max gradient line: force blue
-            fig.add_trace(
-                go.Scatter(
-                    x=[x0, x1],
-                    y=[m * x0 + b0, m * x1 + b0],
-                    mode="lines",
-                    line=dict(width=2, color="blue"),  # <-- add color
-                    hoverinfo="skip",
-                    showlegend=False,
-                ),
-                r,
-                c,
-            )
 
     fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
-    return fig
-
-
-@st.cache_data(show_spinner=False)
-def plot_window_single(
-    processed_data: dict,
-    well: str,
-    plot_bgcolor: str = "white",
-    paper_bgcolor: str = "white",
-):
-    d = (processed_data or {}).get(well)
-
-    fig = go.Figure()
-
-    if d is None or d.empty:
-        fig.update_layout(
-            height=600,
-            showlegend=False,
-            plot_bgcolor=plot_bgcolor,
-            paper_bgcolor=paper_bgcolor,
-            uirevision="keep",
-            dragmode="lasso",
-            margin=dict(l=20, r=20, t=20, b=20),
-        )
-        fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
-        fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
-        return fig
-
-    t, y = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
-    if t.size == 0:
-        fig.update_layout(
-            height=600,
-            showlegend=False,
-            plot_bgcolor=plot_bgcolor,
-            paper_bgcolor=paper_bgcolor,
-            uirevision="keep",
-            dragmode="lasso",
-            margin=dict(l=20, r=20, t=20, b=20),
-        )
-        fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
-        fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
-        return fig
-
-    fig.add_trace(
-        go.Scatter(
-            x=t,
-            y=y,
-            mode="markers",
-            marker=dict(size=5, color="red"),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>",
-            showlegend=False,
-        )
-    )
-
-    tmin, tmax = float(t[0]), float(t[-1])
-    xr = (tmax - tmin) if np.isfinite(tmax - tmin) and (tmax - tmin) > 0 else 1.0
-    fig.update_layout(
-        height=600,
-        showlegend=False,
-        plot_bgcolor=plot_bgcolor,
-        paper_bgcolor=paper_bgcolor,
-        uirevision="keep",
-        dragmode="lasso",
-        margin=dict(l=20, r=20, t=20, b=20),
-    )
-    fig.update_xaxes(
-        type="linear",
-        range=[tmin - 0.02 * xr, tmax + 0.02 * xr],
-        showgrid=False,
-        title="Time (hours)",
-    )
-    fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
     return fig
 
 
