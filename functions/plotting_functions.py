@@ -39,6 +39,22 @@ def _iter_wells(plates: dict):
             )
 
 
+# --- blanks ----------------------------------------------------------------
+def plot_baseline(baseline):
+    fig = go.Figure()
+
+    for col in baseline.columns:
+        fig.add_scatter(
+            x=baseline.index,
+            y=baseline[col],
+            mode="markers" if col != "od_1cm" else "lines+markers",
+            name=col,
+        )
+    fig.update_yaxes(showgrid=False)
+
+    return fig
+
+
 # --- replicates ----------------------------------------------------------------
 def _order_and_colors(d: pd.DataFrame, sample_order: list[str] | None):
     ordered = list(dict.fromkeys([n for n in (sample_order or []) if n]))

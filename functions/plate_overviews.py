@@ -4,6 +4,7 @@ import streamlit as st
 from functions.plotting_functions import (
     plot_replicates_by_sample,
     plot_window_plate,
+    plot_baseline,
 )
 
 
@@ -19,6 +20,7 @@ def require_plates() -> dict:
 # ---------------- Fragments used by pages ----------------
 @st.fragment
 def ui_replicates(plates: dict):
+    st.plotly_chart(plot_baseline(plates["test_data"]["baseline"]))
     st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
 
 

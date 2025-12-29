@@ -224,12 +224,25 @@ def analyse_plate(record: dict):
 
     baseline = pd.DataFrame()
     if p.get("blank", True):
-        baseline = (
-            long.query("name == 'BLANK'")
-            .groupby("Time", as_index=True)["od_1cm"]
-            .mean()
-            .to_frame()
-        )
+        blanks_long = long.query("name == 'BLANK'").copy()
+
+        # one column per blank well (values are od_1cm), indexed by Time
+        blanks_wide = blanks_long.pivot_table(
+            index="Time",
+            columns="well",
+            values="od_1cm",
+            aggfunc="mean",  # in case there are duplicates
+        ).sort_index()
+
+        if not blanks_wide.empty:
+            # keep the existing mean column name for compatibility
+            baseline = blanks_wide.copy()
+            baseline["od_1cm"] = blanks_wide.mean(axis=1)
+
+            # optional: put mean first (purely cosmetic)
+            cols = ["od_1cm"] + [c for c in baseline.columns if c != "od_1cm"]
+            baseline = baseline[cols]
+
         long = long.query("name != 'BLANK'").copy()
 
     if not baseline.empty:
