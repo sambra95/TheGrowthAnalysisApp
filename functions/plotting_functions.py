@@ -806,7 +806,7 @@ def _fit_idealised_derivatives(t, dy):
 
 @st.fragment
 def plot_window_single_d1(
-    plate: dict, well: str, sg_window=11, sg_poly=2, frac_peak=0.15
+    plate: dict, well: str, sg_window=11, sg_poly=2, frac_peak=0.15, add_fit=True
 ):
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
@@ -817,24 +817,6 @@ def plot_window_single_d1(
 
     y_s = smooth(y, sg_window, sg_poly)
     dy = np.gradient(y_s, t)
-
-    popt = _fit_idealised_derivatives(t, dy)
-    dy_fit = t_lag = t_exp = thr = None
-
-    if popt is not None:
-        A, r, t0 = popt
-        dy_fit = d1_model(t, A, r, t0)
-        if np.isfinite(dy_fit).any():
-            peak_i = int(np.nanargmax(dy_fit))
-            thr = frac_peak * float(dy_fit[peak_i])
-
-            idx_up = np.where(dy_fit >= thr)[0]
-            if idx_up.size:
-                t_lag = float(t[idx_up[0]])
-
-            idx_dn = np.where((dy_fit <= thr) & (np.arange(len(t)) > peak_i))[0]
-            if idx_dn.size:
-                t_exp = float(t[idx_dn[0]])
 
     fig = go.Figure()
     fig.add_trace(
@@ -848,16 +830,35 @@ def plot_window_single_d1(
             hoverinfo="skip",
         )
     )
-    if dy_fit is not None and np.isfinite(dy_fit).any():
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=dy_fit,
-                mode="lines",
-                line=dict(width=2, dash="dash"),
-                hoverinfo="skip",
+    if not add_fit:
+        popt = _fit_idealised_derivatives(t, dy)
+        dy_fit = t_lag = t_exp = thr = None
+
+        if popt is not None:
+            A, r, t0 = popt
+            dy_fit = d1_model(t, A, r, t0)
+            if np.isfinite(dy_fit).any():
+                peak_i = int(np.nanargmax(dy_fit))
+                thr = frac_peak * float(dy_fit[peak_i])
+
+                idx_up = np.where(dy_fit >= thr)[0]
+                if idx_up.size:
+                    t_lag = float(t[idx_up[0]])
+
+                idx_dn = np.where((dy_fit <= thr) & (np.arange(len(t)) > peak_i))[0]
+                if idx_dn.size:
+                    t_exp = float(t[idx_dn[0]])
+
+        if dy_fit is not None and np.isfinite(dy_fit).any():
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=dy_fit,
+                    mode="lines",
+                    line=dict(width=2, dash="dash"),
+                    hoverinfo="skip",
+                )
             )
-        )
 
     fig.update_layout(
         title=f"First derivative (smoothed) – {well}",
@@ -870,7 +871,9 @@ def plot_window_single_d1(
     return fig
 
 
-def plot_window_single_d2(plate: dict, well: str, sg_window=11, sg_poly=2):
+def plot_window_single_d2(
+    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True
+):
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
@@ -881,12 +884,6 @@ def plot_window_single_d2(plate: dict, well: str, sg_window=11, sg_poly=2):
     y_s = smooth(y, sg_window, sg_poly)
     dy = np.gradient(y_s, t)
     d2y = np.gradient(dy, t)
-
-    popt = _fit_idealised_derivatives(t, dy)
-    d2_fit = None
-    if popt is not None:
-        A, r, t0 = popt
-        d2_fit = d2_model(t, A, r, t0)
 
     fig = go.Figure()
     fig.add_trace(
@@ -900,16 +897,24 @@ def plot_window_single_d2(plate: dict, well: str, sg_window=11, sg_poly=2):
             hoverinfo="skip",
         )
     )
-    if d2_fit is not None and np.isfinite(d2_fit).any():
-        fig.add_trace(
-            go.Scatter(
-                x=t,
-                y=d2_fit,
-                mode="lines",
-                line=dict(width=2, dash="dash"),
-                hoverinfo="skip",
+
+    if not add_fit:
+        popt = _fit_idealised_derivatives(t, dy)
+        d2_fit = None
+        if popt is not None:
+            A, r, t0 = popt
+            d2_fit = d2_model(t, A, r, t0)
+
+        if d2_fit is not None and np.isfinite(d2_fit).any():
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=d2_fit,
+                    mode="lines",
+                    line=dict(width=2, dash="dash"),
+                    hoverinfo="skip",
+                )
             )
-        )
 
     fig.update_layout(
         title=f"Second derivative (smoothed) – {well}",
