@@ -94,23 +94,19 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
     t, y = _as_float(t), _as_float(y)
     w = int(w)
 
-    if t.size < max(5, w) or np.ptp(t) <= 0:
-        return BAD_FIT.copy()
-
+    # return no fit if insufficient data
     y_s = smooth(y, sg_window, sg_poly)
     m = np.isfinite(t) & np.isfinite(y_s)
     t, y_s = t[m], y_s[m]
     if t.size < max(5, w) or np.ptp(t) <= 0:
         return BAD_FIT.copy()
 
-    dy = np.diff(y_s)
-    mad = np.median(np.abs(dy - np.median(dy)))
-    noise = 1.4826 * mad
-    if noise == 0 or (y_s.max() - y_s.min()) <= 2 * noise:
+    if (y_s.max() / y_s.min()) <= 5:
         return BAD_FIT.copy()
 
-    peak_i = int(np.nanargmax(y_s))
-    t_peak, A = float(t[peak_i]), float(y_s[peak_i])
+    # take max OD measurement from non-smoothed line
+    peak_i = int(np.nanargmax(y))
+    t_peak, A = float(t[peak_i]), float(y[peak_i])
 
     w = min(w, t.size)
     best_m, best = -np.inf, (np.nan, np.nan, np.nan)  # (t_mu, y_mu, b)
