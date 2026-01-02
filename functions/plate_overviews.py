@@ -20,13 +20,18 @@ def require_plates() -> dict:
 # ---------------- Fragments used by pages ----------------
 @st.fragment
 def ui_replicates(plates: dict):
-    st.plotly_chart(plot_baseline(plates["test_data"]["baseline"]))
+    st.subheader("Replicates group by Sample")
     st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
 
 
 @st.fragment
 def ui_window_fits_plate_overview(plates: dict, *, line_hours: float = 4.0):
+
     plate_id = st.selectbox("Plate", sorted(plates), key="winfit_plate_overview")
+    st.subheader("Plate Blanks")
+    st.plotly_chart(plot_baseline(plates[plate_id]["baseline"]))
+
+    st.subheader("Plate Fits Overview")
     st.plotly_chart(
         plot_window_plate(plates[plate_id], line_hours=line_hours),
         use_container_width=True,

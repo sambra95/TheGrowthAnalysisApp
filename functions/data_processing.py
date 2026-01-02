@@ -226,7 +226,7 @@ def analyse_plate(record: dict):
     if p.get("blank", True):
         blanks_long = long.query("name == 'BLANK'").copy()
 
-        # one column per blank well (values are od_1cm), indexed by Time
+        # one column per blank well (values are Mean), indexed by Time
         blanks_wide = blanks_long.pivot_table(
             index="Time",
             columns="well",
@@ -237,16 +237,16 @@ def analyse_plate(record: dict):
         if not blanks_wide.empty:
             # keep the existing mean column name for compatibility
             baseline = blanks_wide.copy()
-            baseline["od_1cm"] = blanks_wide.mean(axis=1)
+            baseline["Mean"] = blanks_wide.mean(axis=1)
 
             # optional: put mean first (purely cosmetic)
-            cols = ["od_1cm"] + [c for c in baseline.columns if c != "od_1cm"]
+            cols = ["Mean"] + [c for c in baseline.columns if c != "Mean"]
             baseline = baseline[cols]
 
         long = long.query("name != 'BLANK'").copy()
 
     if not baseline.empty:
-        base = baseline["od_1cm"].to_dict()
+        base = baseline["Mean"].to_dict()
         long["baseline_corrected"] = long["od_1cm"] - long["Time"].map(base).fillna(0.0)
     else:
         long["baseline_corrected"] = long["od_1cm"]

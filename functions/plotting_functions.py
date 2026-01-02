@@ -47,7 +47,7 @@ def plot_baseline(baseline):
         fig.add_scatter(
             x=baseline.index,
             y=baseline[col],
-            mode="markers" if col != "od_1cm" else "lines+markers",
+            mode="markers" if col != "Mean" else "lines+markers",
             name=col,
         )
     fig.update_yaxes(showgrid=False)
