@@ -20,7 +20,7 @@ def require_plates() -> dict:
 # ---------------- Fragments used by pages ----------------
 @st.fragment
 def ui_replicates(plates: dict):
-    st.subheader("Replicates group by Sample")
+    st.subheader("Sample Replicates")
     st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
 
 

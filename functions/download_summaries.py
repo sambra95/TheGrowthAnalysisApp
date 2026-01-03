@@ -554,11 +554,11 @@ from functions.plotting_functions import (
     plot_baseline,
     plot_replicates_by_sample,
     plot_window_plate,
+    plot_window_single,
     plot_window_single_d1,
     plot_window_single_d2,
     _vlines,
 )
-from functions.check_growth_fits import _cached_window_single
 
 
 # ---------------- Export helpers ----------------
@@ -689,7 +689,7 @@ def build_export_zip(
                         lag_end = growth_stats.get("lag_phase_end")
                         exp_end = growth_stats.get("exponential_phase_end")
 
-                        fig = go.Figure(_cached_window_single(processed, well))
+                        fig = go.Figure(plot_window_single(processed, well))
 
                         if add_annotations:
                             _vlines(

@@ -21,7 +21,6 @@ BAD_FIT = {
     "t_mu": np.nan,
     "y_mu": np.nan,
     "b": np.nan,
-    "t_peak": np.nan,
 }
 
 
@@ -106,7 +105,7 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
 
     # take max OD measurement from non-smoothed line
     peak_i = int(np.nanargmax(y))
-    t_peak, A = float(t[peak_i]), float(y[peak_i])
+    A = float(y[peak_i])
 
     w = min(w, t.size)
     best_m, best = -np.inf, (np.nan, np.nan, np.nan)  # (t_mu, y_mu, b)
@@ -116,14 +115,14 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
             continue
         m_i, b_i = np.polyfit(tw, yw, 1)
         t_mu = float(tw.mean())
-        if t_mu <= t_peak and m_i > best_m:
+        if m_i > best_m:
             best_m = float(m_i)
             best = (t_mu, float(best_m * t_mu + b_i), float(b_i))
 
     t_mu, y_mu, b = best
     if not np.isfinite(best_m) or best_m <= 0:
         out = BAD_FIT.copy()
-        out.update({"Maximum OD600": A, "t_peak": t_peak})
+        out.update({"Maximum OD600": A})
         return out
 
     lag_end, exp_end = phase_ends(t, y_s, frac_peak=lag_frac)
@@ -137,7 +136,6 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
         "t_mu": float(t_mu),
         "y_mu": float(y_mu),
         "b": float(b),
-        "t_peak": float(t_peak),
     }
 
     return out
@@ -306,9 +304,6 @@ def compute_window_fits(
                     "t_mu": float(fit["t_mu"]) if np.isfinite(fit["t_mu"]) else np.nan,
                     "y_mu": float(fit["y_mu"]) if np.isfinite(fit["y_mu"]) else np.nan,
                     "b": float(fit["b"]) if np.isfinite(fit["b"]) else np.nan,
-                    "t_peak": (
-                        float(fit["t_peak"]) if np.isfinite(fit["t_peak"]) else np.nan
-                    ),
                 }
             )
 
