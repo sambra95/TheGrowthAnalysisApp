@@ -243,103 +243,52 @@ def ui_growth_summaries(plates: dict):
         border=False,
     ):
         with st.container(border=True):
-            # ---- your existing selection header + table (unchanged) ----
             st.header("Step 1. Select Samples for Visualization")
 
-            if has_split:
-                h1, h2, h3, h4, h5, h6 = st.columns([1, 1, 1, 1, 1.2, 0.8])
-                h1.markdown(
-                    "<h4 style='text-align: center;'>Plate</h4>", unsafe_allow_html=True
-                )
-                h2.markdown(
-                    "<h4 style='text-align: center;'>Sample Name</h4>",
-                    unsafe_allow_html=True,
-                )
-                h3.markdown(
-                    "<h4 style='text-align: center;'>Strain</h4>",
-                    unsafe_allow_html=True,
-                )
-                h4.markdown(
-                    "<h4 style='text-align: center;'>Condition</h4>",
-                    unsafe_allow_html=True,
-                )
-                h5.markdown(
-                    "<h4 style='text-align: center;'>Wells</h4>", unsafe_allow_html=True
-                )
-                h6.markdown(
-                    "<h4 style='text-align: center;'>Select</h4>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                h1, h2, h3, h4 = st.columns([1, 1, 1.2, 0.8])
-                h1.markdown(
-                    "<h4 style='text-align: center;'>Plate</h4>", unsafe_allow_html=True
-                )
-                h2.markdown(
-                    "<h4 style='text-align: center;'>Sample Name</h4>",
-                    unsafe_allow_html=True,
-                )
-                h3.markdown(
-                    "<h4 style='text-align: center;'>Wells</h4>", unsafe_allow_html=True
-                )
-                h4.markdown(
-                    "<h4 style='text-align: center;'>Select</h4>",
-                    unsafe_allow_html=True,
-                )
+            # Add custom CSS to increase font size in data editor
+            st.markdown("""
+                <style>
+                    div[data-testid="stDataFrame"] table {
+                        font-size: 16px !important;
+                    }
+                    div[data-testid="stDataFrame"] thead th {
+                        font-size: 17px !important;
+                        font-weight: bold !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
 
-            with st.container(height=380, border=False):
-                if has_split:
-                    for _, r in opt.iterrows():
-                        c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 1, 1, 1.2, 0.8])
-                        c1.markdown(
-                            f"<p style='text-align: center;'>{r['Plate']}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c2.markdown(
-                            f"<p style='text-align: center;'>{r['Sample Name']}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c3.markdown(
-                            f"<p style='text-align: center;'>{r['Strain']}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c4.markdown(
-                            f"<p style='text-align: center;'>{r['Condition']}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c5.markdown(
-                            f"<p style='text-align: center;'>{r['Wells']}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        with c6:
-                            _, cb_col, _ = st.columns([0.3, 0.4, 0.3])
-                            sel[r["_id"]] = cb_col.checkbox(
-                                "",
-                                value=sel[r["_id"]],
-                                key=f"{sel_key}:{r['_id']}",
-                            )
-                else:
-                    for sid, plate, name, wells in zip(
-                        ids, opt["Plate"], opt["Sample Name"], opt["Wells"]
-                    ):
-                        c1, c2, c3, c4 = st.columns([1, 1, 1.2, 0.8])
-                        c1.markdown(
-                            f"<p style='text-align: center;'>{plate}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c2.markdown(
-                            f"<p style='text-align: center;'>{name}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        c3.markdown(
-                            f"<p style='text-align: center;'>{wells}</p>",
-                            unsafe_allow_html=True,
-                        )
-                        with c4:
-                            _, cb_col, _ = st.columns([0.3, 0.4, 0.3])
-                            sel[sid] = cb_col.checkbox(
-                                "", value=sel[sid], key=f"{sel_key}:{sid}"
-                            )
+            # Prepare dataframe for display with selection column
+            if has_split:
+                display_cols = ["Plate", "Sample Name", "Strain", "Condition", "Wells"]
+            else:
+                display_cols = ["Plate", "Sample Name", "Wells"]
+
+            # Add Select column with current selection state
+            display_df = opt[display_cols].copy()
+            display_df["Select"] = display_df.index.map(lambda i: sel.get(opt.iloc[i]["_id"], False))
+
+            # Use data_editor for interactive table with visible cells
+            edited_df = st.data_editor(
+                display_df,
+                column_config={
+                    "Select": st.column_config.CheckboxColumn(
+                        "Select",
+                        help="Select samples for visualization",
+                        default=False,
+                    )
+                },
+                disabled=display_cols,  # Make all columns except Select read-only
+                hide_index=True,
+                use_container_width=True,
+                height=400,
+                key="sample_selection_table"
+            )
+
+            # Update selection state from edited dataframe
+            for idx, row in edited_df.iterrows():
+                sid = opt.iloc[idx]["_id"]
+                sel[sid] = row["Select"]
 
             sel_ids = _selected_ids()
             sel_opt = _selected_opt_rows(sel_ids)
