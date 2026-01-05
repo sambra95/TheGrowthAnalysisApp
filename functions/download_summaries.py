@@ -1,22 +1,30 @@
-# functions/download_summaries.py
-
+"""Downloadable tables and plots for growth summaries and exports."""
 import io
 import zipfile
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from streamlit_sortables import sort_items
 
 from functions.plotting_functions import (
+    _vlines,
+    plot_baseline,
     plot_growth_stats,
     plot_mean_growth,
+    plot_replicates_by_sample,
     plot_replicates_scatter,
+    plot_window_plate,
+    plot_window_single,
+    plot_window_single_d1,
+    plot_window_single_d2,
 )
 
 
 # ---------------- Gatekeeper ----------------
 def require_plates() -> dict:
+    """Return plates from session state, or stop with a warning."""
     plates = st.session_state.get("plates") or {}
     if not plates:
         st.warning("No results yet. Run **Upload + Analyse** first.")
@@ -25,29 +33,10 @@ def require_plates() -> dict:
 
 
 # ---------------- Helpers ----------------
-def _processed_df_for_sample(plates: dict, sample_name: str) -> pd.DataFrame:
-    rows = []
-    for pid, p in plates.items():
-        nm_by_well = p.get("name") or {}
-        for well, d in (p.get("processed_data") or {}).items():
-            if (nm_by_well.get(well) or "").strip() == sample_name:
-                rows.append(
-                    d.assign(
-                        plate=pid, well=well, key=f"{pid}_{well}", name=sample_name
-                    )
-                )
-
-    if rows:
-        return pd.concat(rows, ignore_index=True)
-
-    return pd.DataFrame(
-        columns=["Time", "baseline_corrected", "plate", "well", "key", "name"]
-    )
-
-
 def _build_growth_stats_long_df(
     plates: dict, sel_ids: list[str]
 ) -> tuple[pd.DataFrame, list[str]]:
+    """Build a long DataFrame for growth stats plots and the sample order."""
     sample_order: list[str] = []
     for sid in sel_ids:
         _, nm = sid.split("||", 1)
@@ -96,6 +85,7 @@ def _build_growth_stats_long_df(
 
 
 def _max_time_hours(plates: dict, default: float = 72.0) -> float:
+    """Return the maximum time (hours) across all processed data."""
     max_t = float(default)
     for p in plates.values():
         for d in (p.get("processed_data") or {}).values():
@@ -105,6 +95,7 @@ def _max_time_hours(plates: dict, default: float = 72.0) -> float:
 
 
 def _unique_preserve_order(seq):
+    """Return unique items in the original order."""
     seen, out = set(), []
     for x in seq:
         if x not in seen:
@@ -127,15 +118,7 @@ def _iter_wells(plates: dict):
 
 
 def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.DataFrame:
-    """
-    Returns a long DF for curve-based plots (mean + replicates).
-
-    Columns:
-      - Sample Name
-      - Time
-      - baseline_corrected
-      - plate, well, key (for hover)
-    """
+    """Return a long DataFrame for mean/replicate curve plots."""
     if not sample_names:
         return pd.DataFrame(
             columns=[
@@ -190,9 +173,8 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
 
 @st.fragment
 def ui_growth_summaries(plates: dict):
-    # -----------------------------
-    # Build options DF on page load
-    # -----------------------------
+    """Render interactive growth summary plots with selection controls."""
+    # Build options once per rerun.
     rows = []
     for pid, p in plates.items():
         by_name = {}
@@ -506,6 +488,7 @@ def ui_growth_summaries(plates: dict):
 
 # ---------------- Export helpers ----------------
 def _processed_wide_for_plate(p: dict, *, value_col: str) -> pd.DataFrame:
+    """Return a wide, time-indexed DataFrame with one column per well."""
     frames = []
     for well, d in (p.get("processed_data") or {}).items():
         if d is None or d.empty:
@@ -525,6 +508,7 @@ def _processed_wide_for_plate(p: dict, *, value_col: str) -> pd.DataFrame:
 
 
 def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
+    """Return growth stats per well as a tidy DataFrame."""
     return (
         pd.DataFrame.from_dict(p.get("growth_stats") or {}, orient="index")
         .rename_axis("well")
@@ -533,64 +517,12 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
 
 
 def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
+    """Return growth stats averaged per sample name."""
     nm_by_well = p.get("name") or {}
     gs = _growth_stats_per_well_df(p)
     if gs.empty:
         return gs
 
-    gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
-    num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
-    return gs.groupby("Sample Name")[num].mean().reset_index()
-
-
-# ---------------- UI: Export ----------------
-import io
-import zipfile
-import pandas as pd
-import streamlit as st
-import plotly.graph_objects as go
-
-from functions.plotting_functions import (
-    plot_baseline,
-    plot_replicates_by_sample,
-    plot_window_plate,
-    plot_window_single,
-    plot_window_single_d1,
-    plot_window_single_d2,
-    _vlines,
-)
-
-
-# ---------------- Export helpers ----------------
-def _processed_wide_for_plate(p: dict, *, value_col: str) -> pd.DataFrame:
-    frames = []
-    for well, d in (p.get("processed_data") or {}).items():
-        if d is None or d.empty:
-            continue
-        if "Time" not in d.columns or value_col not in d.columns:
-            continue
-        frames.append(d[["Time", value_col]].rename(columns={value_col: well}))
-    if not frames:
-        return pd.DataFrame()
-    out = frames[0]
-    for f in frames[1:]:
-        out = out.merge(f, on="Time", how="outer")
-    return out.sort_values("Time").reset_index(drop=True)
-
-
-def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
-    return (
-        pd.DataFrame.from_dict(p.get("growth_stats") or {}, orient="index")
-        .rename_axis("well")
-        .reset_index()
-    )
-
-
-def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
-    nm_by_well = p.get("name") or {}
-    gs = _growth_stats_per_well_df(p)
-    if gs.empty:
-        return gs
     gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
     return gs.groupby("Sample Name")[num].mean().reset_index()
@@ -611,6 +543,7 @@ def build_export_zip(
     line_hours: float = 4.0,
     scale: int = 2,
 ) -> bytes:
+    """Build a ZIP of CSVs and static PNG plots based on selected options."""
     well_graphs = well_graphs or []
     selected_plate_ids = selected_plate_ids or []
     wells_by_plate = wells_by_plate or {}
@@ -730,6 +663,7 @@ def build_export_zip(
 # ---------------- UI ----------------
 @st.fragment
 def ui_export(plates: dict):
+    """Render export controls and a ZIP download button."""
     plate_ids = list(plates.keys())
 
     with st.container(border=True):

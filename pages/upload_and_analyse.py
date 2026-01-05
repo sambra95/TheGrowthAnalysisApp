@@ -1,8 +1,8 @@
-# upload_analyse_page.py
-import streamlit as st
+"""Upload inputs, configure analysis parameters, and run plate analysis."""
 import pandas as pd
+import streamlit as st
 
-from functions.data_processing import load_plate, analyse_plate  # updated import
+from functions.data_processing import analyse_plate, load_plate
 
 ROWS = list("ABCDEFGH")
 COLS = list(range(1, 13))
@@ -26,22 +26,20 @@ DEFAULT_PARAMS = dict(
 
 
 def init_state():
+    """Ensure required session state keys exist."""
     st.session_state.setdefault("plates", {})
     return st.session_state
 
 
 def plate_params(ss, plate_id: str) -> dict:
+    """Return stored params for a plate or the defaults."""
     return (ss.plates.get(plate_id, {}) or {}).get("params", DEFAULT_PARAMS)
-
-
-def parse_remove_wells(text: str):
-    wells = [w.strip().upper() for w in (text or "").split(",") if w.strip()]
-    return wells if wells else False  # keep your "False" sentinel behaviour
 
 
 def build_symbol_grid(
     *, plate_map: pd.DataFrame, present: set[str], remove_wells=False, blank=True
 ):
+    """Build a grid of well status symbols for the plate preview."""
     removed = {w.upper() for w in remove_wells} if remove_wells else set()
     name_by_well = {f"{r}{c}": str(plate_map.loc[r, c]) for r in ROWS for c in COLS}
     ignored = {w for w, nm in name_by_well.items() if nm == "False"}
@@ -69,6 +67,7 @@ def build_symbol_grid(
 
 
 def render_plate_table(grid: pd.DataFrame):
+    """Render an HTML table showing the plate status grid."""
     css = """
     <style>
       .plate-wrap { width: 100%; overflow: hidden; }
@@ -112,14 +111,12 @@ def render_plate_table(grid: pd.DataFrame):
     st.markdown(html, unsafe_allow_html=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# App
-# ──────────────────────────────────────────────────────────────────────────────
+# ---------------- App ----------------
 st.title("1) Upload a datafile and a plate map")
 
 ss = init_state()
 
-# Upload (store bytes directly into ss.plates[plate_id])
+# Upload (store bytes directly into ss.plates[plate_id]).
 u1, u2 = st.columns(2)
 with u1:
     data_file = st.file_uploader(
@@ -196,7 +193,7 @@ with pcol:
         default=[],
     )
 
-    # preserve your False sentinel behavior
+    # Preserve the False sentinel behavior used elsewhere.
     remove_wells = remove_wells if remove_wells else False
 
     window_points = st.number_input(
@@ -223,7 +220,7 @@ with acol:
 
     st.divider()
 
-    # Preview grid
+    # Preview grid.
     if plate_id:
         rec = ss.plates.get(plate_id, {})
         if rec.get("uploads"):

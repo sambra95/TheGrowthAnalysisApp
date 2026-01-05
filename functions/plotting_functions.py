@@ -1,22 +1,24 @@
-# plotting_functions.py — refactored for NEW plates structure
+"""Plotting utilities for growth curves, stats, and window fits."""
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
-import streamlit as st
 
 from functions.data_processing import ALL_WELLS, smooth
 
 
 # --- helpers ------------------------------------------------------------------
 def is_bad_fit(gs: dict) -> bool:
+    """Return True when growth stats indicate a failed or missing fit."""
     return not gs or float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0) <= 0.0
 
 
 def _finite_sorted_xy(time_s, y_s):
+    """Return finite x/y arrays sorted by x."""
     t = np.asarray(time_s, float)
     y = np.asarray(y_s, float)
     m = np.isfinite(t) & np.isfinite(y)
@@ -41,6 +43,7 @@ def _iter_wells(plates: dict):
 
 # --- blanks ----------------------------------------------------------------
 def plot_baseline(baseline):
+    """Plot blank wells and mean baseline over time."""
     fig = go.Figure()
 
     for col in baseline.columns:
@@ -57,6 +60,7 @@ def plot_baseline(baseline):
 
 # --- replicates ----------------------------------------------------------------
 def _order_and_colors(d: pd.DataFrame, sample_order: list[str] | None):
+    """Return ordered sample names and a deterministic color map."""
     ordered = list(dict.fromkeys([n for n in (sample_order or []) if n]))
     seen = list(pd.unique(d["Sample Name"]))
     names = ordered + [n for n in seen if n not in ordered]
@@ -71,6 +75,7 @@ def plot_replicates_scatter(
     t_start=0.0,
     t_end=72.0,
 ):
+    """Scatter plot of replicate curves for selected samples and time window."""
     fig = go.Figure()
     fig.update_layout(
         xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
@@ -97,6 +102,7 @@ def plot_replicates_scatter(
 def plot_mean_growth(
     curves_df: pd.DataFrame, sample_order: list[str] | None, t_start=0.0, t_end=72.0
 ):
+    """Plot mean curve with +/-1 SD shading for each sample."""
     fig = go.Figure()
     fig.update_layout(
         xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
@@ -152,6 +158,7 @@ def plot_mean_growth(
 
 
 def plot_replicates_by_sample(plates: dict):
+    """Create a grid of replicate scatter plots grouped by sample."""
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
         {(nm or "").strip() for *_, nm, __ in items} - {"", "False", "BLANK"}
@@ -223,18 +230,7 @@ def plot_growth_stats(
     x_order: list[str] | None = None,
     legend_order: list[str] | None = None,
 ):
-    """
-    long_df expected columns: plate, well, sample_name, metric, value
-
-    x_col: "Sample Name" | "Strain" | "Condition"
-    legend_col: None | "Strain" | "Condition"
-    x_order: desired order for x values (strings)
-    legend_order: desired order for legend groups (strings), only used if legend_col != None
-
-    Splitting rule:
-      - If ANY sample_name contains "_" -> create Strain/Condition by split at FIRST underscore
-      - Otherwise, do not add those columns (but function will still work with x_col="Sample Name", legend_col=None)
-    """
+    """Plot growth stats across samples with optional strain/condition splits."""
 
     if long_df is None or long_df.empty:
         fig = go.Figure()
@@ -528,13 +524,6 @@ def add_window_well(
             xref = "x"
             yref = "y domain"
         else:
-            # Plotly subplot axis naming: first subplot is "x", then "x2", "x3", ...
-            # We can read the axis name from the trace's target axis by using the subplot's axis id.
-            # Easiest robust method: derive axis index from (row, col) using fig._grid_ref
-            # But _grid_ref is private; safer: compute index the same way you created titles/wells.
-            # If your wells are in ALL_WELLS order and you already have i, pass axis_index in instead.
-            #
-            # If you don't want private attrs, pass axis_index explicitly. Here's a simple approach:
             axis_index = (row - 1) * 12 + col  # for 8x12 plate only
             xref = "x" if axis_index == 1 else f"x{axis_index}"
             yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
@@ -598,6 +587,7 @@ def add_window_well(
 def plot_window_single(
     processed_data: dict, well: str, plot_bgcolor="white", paper_bgcolor="white"
 ):
+    """Plot a single well with lasso selection enabled."""
     d = (processed_data or {}).get(well)
     fig = go.Figure()
 
@@ -627,6 +617,7 @@ def plot_window_single(
 
 
 def plot_window_plate(plate: dict, line_hours=2.0):
+    """Plot a full 96-well plate overview with window-fit overlays."""
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
 
@@ -685,6 +676,7 @@ def plot_window_plate(plate: dict, line_hours=2.0):
 def _vlines(
     fig, processed_data: dict, well: str, *xs, gs=None, line_hours: float = 4.0
 ):
+    """Add phase shading, phase lines, and fit line annotations to a figure."""
     # always start clean (important when reusing/copying figures)
     fig.update_layout(shapes=[])
 
@@ -773,17 +765,20 @@ def _vlines(
 
 # --- derivative models ---------------------------------------------------------
 def d1_model(t, A, r, t0):
+    """Idealized first-derivative model for growth curves."""
     u = np.exp(-r * (t - t0))
     return A * (u / (1 + u) ** 2)
 
 
 def d2_model(t, A, r, t0):
+    """Idealized second-derivative model for growth curves."""
     u = np.exp(-r * (t - t0))
     return A * r * (u * (u - 1) / (1 + u) ** 3)
 
 
 @st.cache_data
 def _fit_idealised_derivatives(t, dy):
+    """Fit the idealized derivative model to a gradient series."""
     mask = np.isfinite(t) & np.isfinite(dy)
     t_fit, dy_fit = t[mask], dy[mask]
     if t_fit.size < 10:
@@ -808,6 +803,7 @@ def _fit_idealised_derivatives(t, dy):
 def plot_window_single_d1(
     plate: dict, well: str, sg_window=11, sg_poly=2, frac_peak=0.15, add_fit=True
 ):
+    """Plot the first derivative of a well's smoothed curve."""
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
@@ -874,6 +870,7 @@ def plot_window_single_d1(
 def plot_window_single_d2(
     plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True
 ):
+    """Plot the second derivative of a well's smoothed curve."""
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()

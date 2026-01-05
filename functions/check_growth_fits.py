@@ -1,14 +1,15 @@
+"""Interactive well-by-well growth fit inspection and editing UI."""
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from functions.data_processing import (
-    ALL_WELLS,
-    window_fit,
+    BAD_FIT,
     _plate_name_map,
     _read_table,
-    BAD_FIT,
+    window_fit,
 )
 from functions.plotting_functions import (
     _vlines,
@@ -20,6 +21,7 @@ from functions.plotting_functions import (
 
 # ---------------- Gatekeeper ----------------
 def require_plates() -> dict:
+    """Return plates from session state, or stop with a warning."""
     plates = st.session_state.get("plates") or {}
     if not plates:
         st.warning("No results yet. Run **Upload + Analyse** first.")
@@ -28,14 +30,15 @@ def require_plates() -> dict:
 
 
 # ---------------- Selection + stats helpers ----------------
-def well_order_A1_to_H12():
+def well_order_A1_to_H12() -> list[str]:
+    """Return standard well ordering A1..H12."""
     rows = "ABCDEFGH"
     cols = range(1, 13)
     return [f"{r}{c}" for r in rows for c in cols]  # A1..A12, B1..B12, ...
 
 
-def _cycle(items, current, step):
-    """Return next/prev item from items list, wrapping around."""
+def _cycle(items: list[str], current: str, step: int) -> str:
+    """Return the next/previous item from a list, with wraparound."""
     if not items:
         return current
     try:
@@ -47,7 +50,7 @@ def _cycle(items, current, step):
 
 def _delete_well_from_plate(plate: dict, well: str) -> None:
     """Remove a well from all per-well containers on a plate (in-place)."""
-    # Per-well dictionaries that may contain the well key
+
     per_well_keys = ["name", "raw_data", "processed_data", "growth_stats"]
     for k in per_well_keys:
         d = plate.get(k)
@@ -55,7 +58,7 @@ def _delete_well_from_plate(plate: dict, well: str) -> None:
 
 
 def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
-    """Streamlit Plotly selection event -> arrays of selected x/y."""
+    """Extract selected x/y arrays from a Plotly selection event."""
     if event is None:
         return np.array([]), np.array([])
 
@@ -81,11 +84,7 @@ def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
 def update_growth_stats_from_lasso(
     plates: dict, pid: str, well: str, chart_key: str
 ) -> None:
-    """
-    Read the plotly selection payload from st.session_state[chart_key],
-    fit y = m x + b on selected points,
-    and write results into plates[pid]["growth_stats"][well].
-    """
+    """Fit y = m x + b to lasso points and write into growth_stats."""
     xs, ys = _get_selected_points(st.session_state.get(chart_key))
     if xs.size < 2:
         return
@@ -103,6 +102,7 @@ def update_growth_stats_from_lasso(
 
 # ---------------- Data helpers ----------------
 def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
+    """Return Savitzky-Golay and window parameters for a plate."""
     params = (plates.get(plate_id, {}) or {}).get("params") or {}
     return (
         int(params.get("sg_window", 11)),
@@ -111,13 +111,14 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     )
 
 
-def analyse_well(record: dict, well: str):
+def analyse_well(record: dict, well: str) -> dict:
+    """Recompute a single well fit from uploads and params."""
     u = (record or {}).get("uploads") or {}
     p = (record or {}).get("params") or {}
 
     well = str(well).upper()
 
-    plate_map, name_map = _plate_name_map(u["plate_bytes"])
+    _, name_map = _plate_name_map(u["plate_bytes"])
     df = _read_table(u["data_bytes"], p["read_interval_min"])
 
     long = df.melt(id_vars="Time", var_name="well", value_name="value")
@@ -177,7 +178,8 @@ def analyse_well(record: dict, well: str):
 
 
 def _phase_controls(plate: dict, well: str, *, key: str):
-    """Range slider (lag_end, exp_end) + action buttons. Writes into plate['growth_stats'][well]."""
+    """Render phase/OD sliders and actions; writes into growth_stats."""
+
     processed = (plate.get("processed_data") or {}).get(well)
     if processed is None or processed.empty:
         st.warning(f"No data for {well}")
@@ -191,8 +193,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
 
-    # --- NEW: helper to push growth_stats -> widget state (safe if called in callbacks)
     def _sync_widgets_from_growth_stats():
+        """Sync widget state from the current growth_stats dict."""
         lag0 = growth_stats.get("lag_phase_end")
         exp0 = growth_stats.get("exponential_phase_end")
         lag0 = float(lag0) if pd.notna(lag0) else t_min
@@ -233,18 +235,20 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     c1, c2, c3 = st.columns(3)
 
-    # --- NEW: callbacks (these run before the rerun, so it's legal to set widget state)
     def _on_no_growth():
+        """Mark the well as no-growth and reset widgets."""
         growth_stats.update(BAD_FIT.copy())
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
+        """Re-run analysis for the well and refresh widgets."""
         plate["growth_stats"][well] = analyse_well(plate, well)
         # refresh local ref + sync widget state
         growth_stats.update(plate["growth_stats"][well])
         _sync_widgets_from_growth_stats()
 
     def _on_delete():
+        """Remove the well from the plate and clear widget state."""
         _delete_well_from_plate(plate, well)
         st.session_state.pop(ss_key, None)
         st.session_state.pop(maxod_key, None)
@@ -275,38 +279,19 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             on_click=_on_delete,  # <-- changed
         )
 
-    # You can keep these; callbacks already trigger reruns.
-    if delete_well:
-        st.rerun()
-    if no_growth:
-        st.rerun()
-    if reanalyse_well:
-        st.rerun()
-
     return float(lag_end), float(exp_end), False
 
 
 # ---------------- Window plot cache ----------------
 @st.cache_data(show_spinner=False)
 def _cached_window_single(processed_data: dict, well: str):
+    """Cache the main well plot to avoid recomputation on reruns."""
     return plot_window_single(processed_data, well)
-
-
-def well_order_A1_to_H12():
-    rows = "ABCDEFGH"
-    cols = range(1, 13)
-    return [f"{r}{c}" for r in rows for c in cols]
-
-
-def _cycle(items: list[str], current: str, step: int) -> str:
-    if current not in items:
-        return items[0]
-    i = items.index(current)
-    return items[(i + step) % len(items)]
 
 
 @st.fragment
 def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
+    """Render the well editor UI for interactive window fit adjustments."""
     plate_ids = sorted(plates)
     wells = well_order_A1_to_H12()
 
@@ -314,6 +299,7 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     st.session_state.setdefault("winfit_well", wells[0])
 
     def _move_well(step: int):
+        """Move the active well forward/backward."""
         st.session_state["winfit_well"] = _cycle(
             wells, st.session_state.get("winfit_well", wells[0]), step
         )

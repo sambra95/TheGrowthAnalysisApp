@@ -1,11 +1,11 @@
-# data_processing.py
+"""Data loading, preprocessing, and growth-curve fitting utilities."""
 import io
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
-import streamlit as st
 
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
@@ -26,11 +26,13 @@ BAD_FIT = {
 
 # ---------- small utilities ----------
 def _as_float(x):
+    """Convert array-like input to a float NumPy array."""
     return np.asarray(x, dtype=float)
 
 
 @st.cache_data
 def smooth(y, window=21, poly=1, passes=2):
+    """Smooth a series with Savitzky-Golay filtering (odd window, multi-pass)."""
     y = _as_float(y)
     n = y.size
     if n < 7:
@@ -44,12 +46,14 @@ def smooth(y, window=21, poly=1, passes=2):
 
 
 def d1_model(t, A, r, t0):
+    """Derivative of a logistic curve used for fitting growth rate peaks."""
     u = np.exp(-r * (t - t0))
     return A * (u / (1 + u) ** 2)
 
 
 @st.cache_data
 def fit_d1(t, dy):
+    """Fit the derivative model to a gradient series; return (A, r, t0) or None."""
     t, dy = _as_float(t), np.maximum(_as_float(dy), 0.0)
     m = np.isfinite(t) & np.isfinite(dy)
     t, dy = t[m], dy[m]
@@ -67,6 +71,7 @@ def fit_d1(t, dy):
 
 
 def phase_ends(t, y_s, frac_peak=0.10):
+    """Estimate lag and exponential phase end times from a smoothed curve."""
     t, y_s = _as_float(t), _as_float(y_s)
     if t.size < 5 or np.ptp(t) <= 0:
         a = float(t[0]) if t.size else np.nan
@@ -90,20 +95,21 @@ def phase_ends(t, y_s, frac_peak=0.10):
 
 
 def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
+    """Fit a sliding-window line to find max growth slope and phase boundaries."""
     t, y = _as_float(t), _as_float(y)
     w = int(w)
 
-    # return no fit if insufficient data
+    # Return no fit if insufficient data.
     y_s = smooth(y, sg_window, sg_poly)
     m = np.isfinite(t) & np.isfinite(y_s)
     t, y_s = t[m], y_s[m]
     if t.size < max(5, w) or np.ptp(t) <= 0:
         return BAD_FIT.copy()
 
-    if (y_s.max() / y_s.min()) <= 5:
+    if abs(y_s.max() / max(abs(y_s.min()), 1e-12)) <= 5:
         return BAD_FIT.copy()
 
-    # take max OD measurement from non-smoothed line
+    # Take max OD measurement from non-smoothed line.
     peak_i = int(np.nanargmax(y))
     A = float(y[peak_i])
 
@@ -143,19 +149,18 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
 
 # ---------- I/O + shaping ----------
 def _read_excel_bytes(b, **kw):
+    """Read Excel bytes into a DataFrame."""
     return pd.read_excel(io.BytesIO(b), **kw)
 
 
 def _plate_name_map(plate_bytes):
+    """Return (plate_df, well_name_map) from a plate map Excel file."""
     plate = _read_excel_bytes(plate_bytes).fillna("False").set_index("rows")
     return plate, {f"{r}{c}": plate.loc[r, c] for r in ROWS for c in COLS}
 
 
 def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
-    """
-    New format: rows=timepoints, cols=wells. Optional 'Time' column.
-    Produces Time in hours.
-    """
+    """Read plate time series data (rows=timepoints, cols=wells) with Time in hours."""
     df = _read_excel_bytes(data_bytes, header=0)
     df = df.replace(",", ".", regex=True)
 
@@ -179,12 +184,14 @@ def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
 
 
 def _empty_plate():
+    """Create an empty plate record structure."""
     return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}}
 
 
 def load_plate(
     plates: dict, plate_id: str, *, data_bytes: bytes, plate_bytes: bytes, params: dict
 ):
+    """Store uploads and params for a plate and return the record."""
     rec = plates.setdefault(plate_id, {})
     rec["uploads"] = {"data_bytes": data_bytes, "plate_bytes": plate_bytes}
     rec["params"] = params
@@ -192,6 +199,7 @@ def load_plate(
 
 
 def analyse_plate(record: dict):
+    """Process a plate record into cleaned, baseline-corrected per-well data."""
     u = (record or {}).get("uploads") or {}
     p = (record or {}).get("params") or {}
 

@@ -1,5 +1,7 @@
+"""Growth fit review page with well-level editor."""
 import streamlit as st
 from functions.check_growth_fits import require_plates, ui_window_fits_well_editor
+
 
 st.title("Check Growth Fits")
 

@@ -1,4 +1,4 @@
-# pages/download_summaries.py
+"""Download processed data tables and plot exports."""
 import streamlit as st
 from functions.download_summaries import (
     require_plates,
