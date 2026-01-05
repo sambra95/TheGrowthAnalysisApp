@@ -7,7 +7,8 @@ nav = st.navigation(
         st.Page("pages/upload_and_analyse.py", title="Upload & Analyse"),
         st.Page("pages/plate_overviews.py", title="Plate Overviews"),
         st.Page("pages/edit_growth_stats.py", title="Check Growth Fits"),
-        st.Page("pages/download_summaries.py", title="Download Data and Plots"),
+        st.Page("pages/create_visualizations.py", title="Create Visualizations"),
+        st.Page("pages/download_analyzed_data.py", title="Download Analyzed Data"),
     ],
     position="top",
 )

@@ -1,4 +1,5 @@
 """Upload inputs, configure analysis parameters, and run plate analysis."""
+
 import pandas as pd
 import streamlit as st
 
@@ -112,20 +113,90 @@ def render_plate_table(grid: pd.DataFrame):
 
 
 # ---------------- App ----------------
-st.title("1) Upload a datafile and a plate map")
-
 ss = init_state()
 
 # Upload (store bytes directly into ss.plates[plate_id]).
 u1, u2 = st.columns(2)
 with u1:
-    data_file = st.file_uploader(
-        "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
-    )
+    with st.container(border=True):
+        header_col, popover_col = st.columns([0.85, 0.15])
+        with header_col:
+            st.header("Step 1. Upload data file")
+        with popover_col:
+            with st.popover("Help", use_container_width=True):
+                st.markdown("**Required Data File Format:**")
+                st.markdown("Excel file (.xlsx or .xls) with time series data")
+                st.warning(
+                    "Do not include a time column. The app will generate time points using 'Read interval' below."
+                )
+
+                # Create example data table
+                example_data = pd.DataFrame(
+                    {
+                        "A1": [0.05, 0.08, 0.15, 0.28],
+                        "A2": [0.06, 0.09, 0.18, 0.32],
+                        "B1": [0.05, 0.07, 0.14, 0.26],
+                        "...": ["...", "...", "...", "..."],
+                    }
+                )
+                st.dataframe(example_data, hide_index=True, use_container_width=True)
+
+                # Download example file
+                with open("example_data.xlsx", "rb") as f:
+                    st.download_button(
+                        "Download example data",
+                        data=f.read(),
+                        file_name="example_data.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="primary",
+                    )
+        data_file = st.file_uploader(
+            "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
+        )
 with u2:
-    map_file = st.file_uploader(
-        "Plate map (.xls/.xlsx) with 'rows' column", ["xlsx", "xls"], key="map_up"
-    )
+    with st.container(border=True):
+        header_col, popover_col = st.columns([0.85, 0.15])
+        with header_col:
+            st.header("Step 2. Upload plate map")
+        with popover_col:
+            with st.popover("Help", use_container_width=True):
+                st.markdown("**Required Plate Map Format:**")
+                st.markdown("Excel file (.xlsx or .xls) with sample layout")
+                st.markdown(
+                    """
+                    - 96-well plate format (rows A-H, columns 1-12)
+                    - Samples with the same name will be assigned as replicates
+                    - Use 'BLANK' for blank wells
+                    - Leave cells empty for wells to ignore
+                    """
+                )
+
+                # Create example plate map table
+                example_map = pd.DataFrame(
+                    {
+                        "rows": ["A", "B", "C", "D"],
+                        "1": ["Sample1", "Sample3", "", "Sample6"],
+                        "2": ["Sample1", "BLANK", "Sample5", "Sample7"],
+                        "3": ["Sample2", "Sample4", "Sample5", "BLANK"],
+                        "...": ["...", "...", "...", "..."],
+                    }
+                )
+                st.dataframe(example_map, hide_index=True, use_container_width=True)
+
+                # Download example file
+                with open("example_plate_map.xls", "rb") as f:
+                    st.download_button(
+                        "Download example plate map",
+                        data=f.read(),
+                        file_name="example_plate_map.xls",
+                        mime="application/vnd.ms-excel",
+                        use_container_width=True,
+                        type="primary",
+                    )
+        map_file = st.file_uploader(
+            "Plate map (.xls/.xlsx) with 'rows' column", ["xlsx", "xls"], key="map_up"
+        )
 
 if st.button(
     "Load plate",
@@ -147,127 +218,121 @@ if st.button(
     )
     st.toast(f"Saved uploads for {plate_id}")
 
-st.divider()
-st.title("2) Select the analysis parameters")
 
-ready = sorted(ss.plates)
+with st.container(border=True):
+    st.header("Step 3. Select the analysis parameters")
 
-pcol, acol = st.columns(2, gap="large")
+    ready = sorted(ss.plates)
 
-with pcol:
-    st.subheader("Analysis Parameters")
-    st.divider()
-    plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-    params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+    pcol, acol = st.columns(2, gap="large")
 
-    a, b = st.columns(2)
-    read_interval_min = a.number_input(
-        "Read interval (min)", 1, 120, int(params0["read_interval_min"])
-    )
-    pl_cm = b.number_input(
-        "Pathlength (cm)",
-        value=float(params0["pathlength_cm_"]),
-        step=0.01,
-        format="%.3f",
-    )
+    with pcol:
+        plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+        params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
-    a, b = st.columns(2)
-    clip_time_series = (
-        float(
-            a.number_input(
-                "Start (h)", 0.0, 1e6, float(params0["clip_time_series"][0]), 0.5
-            )
-        ),
-        float(
-            b.number_input(
-                "End (h)", 0.0, 1e6, float(params0["clip_time_series"][1]), 0.5
-            )
-        ),
-    )
+        a, b = st.columns(2)
+        read_interval_min = a.number_input(
+            "Read interval (min)", 1, 120, int(params0["read_interval_min"])
+        )
+        pl_cm = b.number_input(
+            "Pathlength (cm)",
+            value=float(params0["pathlength_cm_"]),
+            step=0.01,
+            format="%.3f",
+        )
 
-    blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
+        a, b = st.columns(2)
+        clip_time_series = (
+            float(
+                a.number_input(
+                    "Start (h)", 0.0, 1e6, float(params0["clip_time_series"][0]), 0.5
+                )
+            ),
+            float(
+                b.number_input(
+                    "End (h)", 0.0, 1e6, float(params0["clip_time_series"][1]), 0.5
+                )
+            ),
+        )
 
-    remove_wells = st.multiselect(
-        "Exclude wells",
-        options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
-        default=[],
-    )
+        blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
 
-    # Preserve the False sentinel behavior used elsewhere.
-    remove_wells = remove_wells if remove_wells else False
+        remove_wells = st.multiselect(
+            "Exclude wells",
+            options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
+            default=[],
+        )
 
-    window_points = st.number_input(
-        "Window size for maximum growth rate (points)",
-        5,
-        200,
-        int(params0["window_points"]),
-        1,
-    )
+        # Preserve the False sentinel behavior used elsewhere.
+        remove_wells = remove_wells if remove_wells else False
 
-with acol:
-    st.subheader("Plate Overview")
+        window_points = st.number_input(
+            "Window size for maximum growth rate (points)",
+            5,
+            200,
+            int(params0["window_points"]),
+            1,
+        )
 
-    params = dict(
-        read_interval_min=int(read_interval_min),
-        pathlength_cm_=float(pl_cm),
-        clip_time_series=clip_time_series,
-        remove_wells=remove_wells,
-        blank=bool(blank),
-        window_points=int(window_points),
-        sg_window=int(params0.get("sg_window", 15)),
-        sg_poly=int(params0.get("sg_poly", 2)),
-    )
+    with acol:
 
-    st.divider()
+        params = dict(
+            read_interval_min=int(read_interval_min),
+            pathlength_cm_=float(pl_cm),
+            clip_time_series=clip_time_series,
+            remove_wells=remove_wells,
+            blank=bool(blank),
+            window_points=int(window_points),
+            sg_window=int(params0.get("sg_window", 15)),
+            sg_poly=int(params0.get("sg_poly", 2)),
+        )
 
-    # Preview grid.
-    if plate_id:
+        # Preview grid.
+        if plate_id:
+            rec = ss.plates.get(plate_id, {})
+            if rec.get("uploads"):
+                tmp = {"uploads": rec["uploads"], "params": params}  # params from UI
+                plate_preview = analyse_plate(tmp)
+                present = set(plate_preview.get("growth_stats", {}).keys())
+
+                grid = build_symbol_grid(
+                    plate_map=plate_preview["plate_map"],
+                    present=present,
+                    remove_wells=params["remove_wells"],
+                    blank=params["blank"],
+                )
+
+                st.write("")
+                st.caption("Plate preview:")
+
+                st.caption(
+                    "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
+                )
+                render_plate_table(grid)
+
+        else:
+            st.warning("Upload files for to see plate preview.")
+
+    col1, col2 = st.columns(2)
+    if col1.button(
+        "Analyse selected plate",
+        type="primary",
+        use_container_width=True,
+        disabled=not plate_id,
+    ):
         rec = ss.plates.get(plate_id, {})
-        if rec.get("uploads"):
-            tmp = {"uploads": rec["uploads"], "params": params}  # params from UI
-            plate_preview = analyse_plate(tmp)
-            present = set(plate_preview.get("growth_stats", {}).keys())
+        if not rec.get("uploads"):
+            st.error("No uploads found for this plate.")
+        else:
+            rec["params"] = params
+            ss.plates[plate_id] = analyse_plate(rec)
+            st.toast(f"Analysed {plate_id}", duration="infinite")
 
-            grid = build_symbol_grid(
-                plate_map=plate_preview["plate_map"],
-                present=present,
-                remove_wells=params["remove_wells"],
-                blank=params["blank"],
-            )
-            st.caption(
-                "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
-            )
-            render_plate_table(grid)
-
-            st.write("")
-            st.write("")
-
-            if st.button(
-                "Remove selected plate",
-                type="tertiary",
-                use_container_width=True,
-                disabled=not plate_id,
-            ):
-                ss.plates.pop(plate_id, None)
-                st.rerun()
-
-    else:
-        st.warning("Upload files for to see plate preview.")
-
-st.divider()
-
-st.title("3) Click analyse")
-
-if st.button(
-    "Analyse selected plate",
-    type="primary",
-    use_container_width=True,
-    disabled=not plate_id,
-):
-    rec = ss.plates.get(plate_id, {})
-    if not rec.get("uploads"):
-        st.error("No uploads found for this plate.")
-    else:
-        rec["params"] = params
-        ss.plates[plate_id] = analyse_plate(rec)
-        st.toast(f"Analysed {plate_id}", duration="infinite")
+    if col2.button(
+        "Remove selected plate",
+        type="tertiary",
+        use_container_width=True,
+        disabled=not plate_id,
+    ):
+        ss.plates.pop(plate_id, None)
+        st.rerun()
