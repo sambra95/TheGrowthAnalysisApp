@@ -11,7 +11,7 @@ dependencies:
   - streamlit
   - openpyxl # .xlsx support
   - xlrd # .xls support (legacy)
-  - streamlit-plotly-events
-  - streamlit_sortables
   - pip:
       - kaleido
+      - streamlit-plotly-events
+      - streamlit-sortables
