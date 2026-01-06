@@ -70,11 +70,56 @@ def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
     return gs.groupby("Sample Name")[num].mean().reset_index()
 
 
+def _analysis_params_df(p: dict) -> pd.DataFrame:
+    """Return analysis parameters as a DataFrame."""
+    params = p.get("params") or {}
+    if not params:
+        return pd.DataFrame()
+
+    # Format parameters for display
+    data = {
+        "Parameter": [],
+        "Value": [],
+    }
+
+    # Extract parameters with readable names
+    param_mapping = {
+        "read_interval_min": "Read interval (minutes)",
+        "pathlength_cm_": "Pathlength (cm)",
+        "clip_time_series": "Time series clip (hours)",
+        "remove_wells": "Excluded wells",
+        "blank": "Blank subtraction",
+        "window_points": "Window size (points)",
+        "sg_window": "Savitzky-Golay window",
+        "sg_poly": "Savitzky-Golay polynomial order",
+    }
+
+    for key, label in param_mapping.items():
+        if key in params:
+            value = params[key]
+            # Format special cases
+            if key == "clip_time_series" and isinstance(value, (tuple, list)):
+                value = f"{value[0]} - {value[1]}"
+            elif key == "remove_wells":
+                if value is False or not value:
+                    value = "None"
+                else:
+                    value = ", ".join(value)
+            elif key == "blank":
+                value = "Yes" if value else "No"
+
+            data["Parameter"].append(label)
+            data["Value"].append(str(value))
+
+    return pd.DataFrame(data)
+
+
 # ---------------- ZIP builder ----------------
 def build_export_zip(
     plates: dict,
     *,
     include_tables: bool,
+    include_params: bool,
     include_plate_view: bool,
     include_baseline_plots: bool,
     include_well_plots: bool,
@@ -84,18 +129,20 @@ def build_export_zip(
     add_annotations: bool = True,
     line_hours: float = 4.0,
     scale: int = 2,
-    plot_width: int = 1200,
-    plot_height: int = 800,
+    baseline_width: int = 1200,
+    baseline_height: int = 800,
+    plate_width: int = 1200,
+    plate_height: int = 800,
+    well_width: int = 1200,
+    well_height: int = 800,
 ) -> bytes:
     """Build a ZIP of CSVs and static PNG plots based on selected options."""
     well_graphs = well_graphs or []
     selected_plate_ids = selected_plate_ids or []
     wells_by_plate = wells_by_plate or {}
 
-    def _png(fig) -> bytes:
-        return fig.to_image(
-            format="png", width=plot_width, height=plot_height, scale=scale
-        )
+    def _png(fig, width: int, height: int) -> bytes:
+        return fig.to_image(format="png", width=width, height=height, scale=scale)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -124,21 +171,44 @@ def build_export_zip(
                         mean_df.to_csv(index=False),
                     )
 
+        # ---- Analysis Parameters ----
+        if include_params:
+            for pid, p in plates.items():
+                params_df = _analysis_params_df(p)
+                if not params_df.empty:
+                    zf.writestr(
+                        f"tables/{pid}_analysis_parameters.csv",
+                        params_df.to_csv(index=False),
+                    )
+
         # ---- Baseline plots (GLOBAL) ----
         if include_baseline_plots:
             # baseline source here matches your earlier code; adjust if your structure differs
-            baseline_fig = plot_baseline(plates["test_data"]["baseline"])
-            zf.writestr("plots/baseline.png", _png(baseline_fig))
+            test_data = plates.get("test_data", {})
+            baseline = test_data.get("baseline")
+            name_by_well = test_data.get("name", {})
+            if baseline is not None:
+                baseline_fig = plot_baseline(baseline, name_by_well=name_by_well)
+                zf.writestr(
+                    "plots/baseline.png",
+                    _png(baseline_fig, baseline_width, baseline_height),
+                )
 
         # ---- Plate-view plots ----
         if include_plate_view:
             # replicates is global, so keep it outside plate folders
             rep_fig = plot_replicates_by_sample(plates)
-            zf.writestr("plots/replicates_by_sample.png", _png(rep_fig))
+            zf.writestr(
+                "plots/replicates_by_sample.png",
+                _png(rep_fig, plate_width, plate_height),
+            )
 
             for pid, p in plates.items():
                 fig = plot_window_plate(p, line_hours=line_hours)
-                zf.writestr(f"plots/plates/{pid}/window_plate.png", _png(fig))
+                zf.writestr(
+                    f"plots/plates/{pid}/window_plate.png",
+                    _png(fig, plate_width, plate_height),
+                )
 
         # ---- Well-level plots ----
         if include_well_plots and selected_plate_ids and well_graphs:
@@ -180,7 +250,10 @@ def build_export_zip(
                                 gs=growth_stats,
                                 line_hours=line_hours,
                             )
-                        zf.writestr(f"{plate_dir}/growth_curves/{well}.png", _png(fig))
+                        zf.writestr(
+                            f"{plate_dir}/growth_curves/{well}.png",
+                            _png(fig, well_width, well_height),
+                        )
 
                     if "d1" in well_graphs:
                         fig = plot_window_single_d1(
@@ -191,7 +264,10 @@ def build_export_zip(
                             frac_peak=0.20,
                             add_fit=False,
                         )
-                        zf.writestr(f"{plate_dir}/curves_d1/{well}.png", _png(fig))
+                        zf.writestr(
+                            f"{plate_dir}/curves_d1/{well}.png",
+                            _png(fig, well_width, well_height),
+                        )
 
                     if "d2" in well_graphs:
                         fig = plot_window_single_d2(
@@ -199,7 +275,7 @@ def build_export_zip(
                         )
                         zf.writestr(
                             f"{plate_dir}/curves_d2/{well}.png",
-                            _png(fig),
+                            _png(fig, well_width, well_height),
                         )
 
     buf.seek(0)
@@ -216,126 +292,203 @@ def ui_export(plates: dict):
     if "export_zip_bytes" not in st.session_state:
         st.session_state.export_zip_bytes = None
 
-    with st.container(border=True):
-        st.subheader("Export")
+    st.subheader("Export")
 
-        with st.form("export_form"):
-            # ---- Plot Options Section ----
+    with st.form("export_form"):
+        # ---- Plot Options in 2x2 Grid ----
+        row1_col1, row1_col2 = st.columns(2)
+
+        # Tables Info
+        with row1_col1:
             with st.container(border=True):
-                st.markdown("**Plot Options**")
-
-                c_plate = st.checkbox("Include plate-view plots", value=True)
-                c_base = st.checkbox("Include baseline plots", value=True)
-                c_well = st.checkbox("Include well level plots", value=False)
-                c_add_annotations = st.checkbox(
-                    "Add annotations to well plots", value=True
+                st.markdown("**Tables Included in Export**")
+                st.markdown(
+                    """
+                    The following tables are always included:
+                    - **Processed baseline-corrected data**: Time series OD600 values for each well
+                    - **Growth stats per well**: Maximum growth rate, lag time, max OD, and phase boundaries
+                    - **Growth stats mean per sample**: Averaged statistics across replicates
+                    - **Analysis parameters**: All analysis settings (read interval, pathlength, time clip, etc.)
+                    """
                 )
 
-                # Plot dimensions
-                st.markdown("**Plot Dimensions**")
-                col1, col2 = st.columns(2)
-                plot_width = col1.number_input(
+        # Well Level Plots
+        with row1_col2:
+            with st.container(border=True):
+                st.markdown("**Well Level Plots**")
+                st.caption(
+                    "Individual well growth curves with annotations and derivative plots"
+                )
+                c_well = st.checkbox(
+                    "Include well level plots", value=False, key="well_checkbox"
+                )
+                c_add_annotations = st.checkbox(
+                    "Add annotations to well plots",
+                    value=True,
+                    key="annotations_checkbox",
+                )
+
+                col_w, col_h = st.columns(2)
+                well_width = col_w.number_input(
                     "Width (px)",
                     min_value=400,
                     max_value=3000,
                     value=1200,
                     step=100,
-                    help="Width of exported plots in pixels",
+                    key="well_width",
                 )
-                plot_height = col2.number_input(
+                well_height = col_h.number_input(
                     "Height (px)",
                     min_value=300,
                     max_value=2500,
                     value=800,
                     step=100,
-                    help="Height of exported plots in pixels",
+                    key="well_height",
                 )
 
-                well_graphs = []
-                selected_plate_ids = []
+                well_graphs = st.multiselect(
+                    "Well graph types",
+                    options=["raw", "d1", "d2"],
+                    default=["raw", "d1", "d2"],
+                    help="raw = annotated window plot; d1/d2 = derivative plots",
+                    key="well_graphs",
+                )
+
+                selected_plate_ids = st.multiselect(
+                    "Plates to include",
+                    options=plate_ids,
+                    default=plate_ids,
+                    key="selected_plates",
+                )
+
+                # Well selection within the same container
                 wells_by_plate: dict[str, list[str]] = {}
 
-                with st.expander("Well plot options", expanded=True):
-                    well_graphs = st.multiselect(
-                        "Which well graphs to include",
-                        options=["raw", "d1", "d2"],
-                        default=["raw", "d1", "d2"],
-                        help="raw = annotated window plot; d1/d2 = derivative plots",
+                if selected_plate_ids:
+                    st.markdown("---")
+                    st.markdown("**Well Selection**")
+
+                    include_all_wells = st.checkbox(
+                        "Include all wells for all plates",
+                        value=True,
+                        key="include_all_wells_global",
                     )
 
-                    selected_plate_ids = st.multiselect(
-                        "Which plates to include",
-                        options=plate_ids,
-                        default=plate_ids,
-                    )
+                    if not include_all_wells:
+                        for pid in selected_plate_ids:
+                            processed = (plates.get(pid) or {}).get(
+                                "processed_data"
+                            ) or {}
+                            available_wells = sorted(processed.keys())
 
-                    for pid in selected_plate_ids:
-                        processed = (plates.get(pid) or {}).get("processed_data") or {}
-                        available_wells = sorted(processed.keys())
-
-                        st.markdown(f"**{pid}**")
-                        all_wells = st.checkbox(
-                            "Include all wells",
-                            value=True,
-                            key=f"all_wells__{pid}",
-                        )
-                        if all_wells:
-                            wells_by_plate[pid] = []  # empty means "all"
-                        else:
                             wells_by_plate[pid] = st.multiselect(
-                                "Select wells",
+                                f"Wells for {pid}",
                                 options=available_wells,
                                 default=available_wells[: min(8, len(available_wells))],
                                 key=f"wells__{pid}",
                             )
+                    else:
+                        for pid in selected_plate_ids:
+                            wells_by_plate[pid] = []  # empty means "all"
 
-            # ---- Table Options Section ----
+        # Plate View Plots
+        with row1_col1:
             with st.container(border=True):
-                st.markdown("**Table Options**")
-                c_tables = st.checkbox("Include tabulated data", value=True)
-
-            # Buttons in columns
-            col_build, col_download = st.columns(2)
-
-            with col_build:
-                submitted = st.form_submit_button(
-                    "Build ZIP", type="primary", use_container_width=True
+                st.markdown("**Plate View Plots**")
+                st.caption(
+                    "96-well plate overview showing all wells with fitted growth curves"
+                )
+                c_plate = st.checkbox(
+                    "Include plate-view plots", value=True, key="plate_checkbox"
                 )
 
-        if submitted:
-            with st.spinner("Building ZIP file..."):
-                st.session_state.export_zip_bytes = build_export_zip(
-                    plates,
-                    include_tables=c_tables,
-                    include_plate_view=c_plate,
-                    include_baseline_plots=c_base,
-                    include_well_plots=c_well,
-                    well_graphs=well_graphs,
-                    selected_plate_ids=selected_plate_ids,
-                    wells_by_plate=wells_by_plate,
-                    add_annotations=c_add_annotations,
-                    plot_width=plot_width,
-                    plot_height=plot_height,
+                col_w, col_h = st.columns(2)
+                plate_width = col_w.number_input(
+                    "Width (px)",
+                    min_value=400,
+                    max_value=3000,
+                    value=1200,
+                    step=100,
+                    key="plate_width",
                 )
-            st.success("ZIP file ready for download!")
+                plate_height = col_h.number_input(
+                    "Height (px)",
+                    min_value=300,
+                    max_value=2500,
+                    value=800,
+                    step=100,
+                    key="plate_height",
+                )
 
-        # Download button - always visible but only enabled when ZIP is ready
-        col1, col2 = st.columns(2)
-        with col2:
-            if st.session_state.export_zip_bytes is not None:
-                st.download_button(
-                    "Download export.zip",
-                    data=st.session_state.export_zip_bytes,
-                    file_name="export.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                    type="primary",
+        # Baseline Plots
+        with row1_col1:
+            with st.container(border=True):
+                st.markdown("**Baseline Plots**")
+                st.caption("Blank well measurements and mean baseline over time")
+                c_base = st.checkbox(
+                    "Include baseline plots", value=True, key="baseline_checkbox"
                 )
-            else:
-                st.button(
-                    "Download export.zip",
-                    disabled=True,
-                    use_container_width=True,
-                    type="secondary",
-                    help="Click 'Build ZIP' first to generate the export file",
+
+                col_w, col_h = st.columns(2)
+                baseline_width = col_w.number_input(
+                    "Width (px)",
+                    min_value=400,
+                    max_value=3000,
+                    value=1200,
+                    step=100,
+                    key="baseline_width",
                 )
+                baseline_height = col_h.number_input(
+                    "Height (px)",
+                    min_value=300,
+                    max_value=2500,
+                    value=800,
+                    step=100,
+                    key="baseline_height",
+                )
+
+        # Build button
+        submitted = st.form_submit_button(
+            "Build ZIP", type="primary", use_container_width=True
+        )
+
+    # Handle form submission outside the form
+    if submitted:
+        with st.spinner("Building ZIP file..."):
+            st.session_state.export_zip_bytes = build_export_zip(
+                plates,
+                include_tables=True,
+                include_params=True,
+                include_plate_view=c_plate,
+                include_baseline_plots=c_base,
+                include_well_plots=c_well,
+                well_graphs=well_graphs,
+                selected_plate_ids=selected_plate_ids,
+                wells_by_plate=wells_by_plate,
+                add_annotations=c_add_annotations,
+                baseline_width=baseline_width,
+                baseline_height=baseline_height,
+                plate_width=plate_width,
+                plate_height=plate_height,
+                well_width=well_width,
+                well_height=well_height,
+            )
+
+    # Download button - outside the form
+    if st.session_state.export_zip_bytes is not None:
+        st.download_button(
+            "Download export.zip",
+            data=st.session_state.export_zip_bytes,
+            file_name="export.zip",
+            mime="application/zip",
+            use_container_width=True,
+            type="primary",
+        )
+    else:
+        st.button(
+            "Download export.zip",
+            disabled=True,
+            use_container_width=True,
+            type="secondary",
+            help="Click 'Build ZIP' first to generate the export file",
+        )

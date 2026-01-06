@@ -31,7 +31,10 @@ def ui_window_fits_plate_overview(plates: dict, *, line_hours: float = 4.0):
     """Render baseline and plate-window fits for a selected plate."""
     plate_id = st.selectbox("Plate", sorted(plates), key="winfit_plate_overview")
     st.subheader("Plate Blanks")
-    st.plotly_chart(plot_baseline(plates[plate_id]["baseline"]))
+    plate = plates[plate_id]
+    st.plotly_chart(
+        plot_baseline(plate["baseline"], name_by_well=plate.get("name", {}))
+    )
 
     st.subheader("Plate Fits Overview")
     st.plotly_chart(

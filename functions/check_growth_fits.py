@@ -206,7 +206,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     if ss_key not in st.session_state:
         _sync_widgets_from_growth_stats()
 
-    st.write(growth_stats)
+    st.write("")  # just adds some space
+
     c1, c2 = st.columns(2)
     with c1:
         lag_end, exp_end = st.slider(
@@ -278,6 +279,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             key=f"deletewell__{key}",
             on_click=_on_delete,  # <-- changed
         )
+
+    st.write("")  # just adds some space
 
     return float(lag_end), float(exp_end), False
 

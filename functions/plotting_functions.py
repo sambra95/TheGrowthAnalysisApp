@@ -14,7 +14,8 @@ from functions.data_processing import ALL_WELLS, smooth
 # --- helpers ------------------------------------------------------------------
 def is_bad_fit(gs: dict) -> bool:
     """Return True when growth stats indicate a failed or missing fit."""
-    return not gs or float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0) <= 0.0
+    mu = gs.get("Maximum U", gs.get("B", 0.0)) if gs else None
+    return not gs or mu is None or (mu == 0.0)
 
 
 def _finite_sorted_xy(time_s, y_s):
@@ -42,16 +43,35 @@ def _iter_wells(plates: dict):
 
 
 # --- blanks ----------------------------------------------------------------
-def plot_baseline(baseline):
-    """Plot blank wells and mean baseline over time."""
+def plot_baseline(baseline, name_by_well: dict | None = None):
+    """Plot blank wells and mean baseline over time.
+
+    Args:
+        baseline: DataFrame with Time index and wells as columns (plus 'Mean' column)
+        name_by_well: Optional dict mapping well IDs to sample names for color coding
+    """
     fig = go.Figure()
 
+    # Build color map based on sample names if available
+    name_by_well = name_by_well or {}
+    palette = px.colors.qualitative.Plotly
+
+    # Get unique sample names from the wells in baseline (excluding 'Mean')
+    well_cols = [c for c in baseline.columns if c != "Mean"]
+    sample_names = list(dict.fromkeys([name_by_well.get(w, w) for w in well_cols]))
+    color_map = {n: palette[i % len(palette)] for i, n in enumerate(sample_names)}
+
     for col in baseline.columns:
+        sample_name = name_by_well.get(col, col) if col != "Mean" else "Mean"
+        color = color_map.get(sample_name, "black")
+
         fig.add_scatter(
             x=baseline.index,
             y=baseline[col],
             mode="markers" if col != "Mean" else "lines+markers",
-            name=col,
+            name=sample_name if col != "Mean" else "Mean",
+            marker=dict(color=color) if col != "Mean" else None,
+            line=dict(color=color) if col == "Mean" else None,
         )
     fig.update_yaxes(showgrid=False)
 
@@ -566,7 +586,7 @@ def add_window_well(
         m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
         t0 = gs.get("t_mu")
         b0 = gs.get("b")
-        if np.isfinite(m) and m > 0 and np.isfinite(t0) and np.isfinite(b0):
+        if t0 is not None and b0 is not None and np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
             t0 = float(t0)
             b0 = float(b0)
             x0, x1 = t0 - line_hours, t0 + line_hours
@@ -738,7 +758,7 @@ def _vlines(
         # fitted max gradient line in blue (constant geometric length)
         m = float(gs.get("Maximum U", 0.0) or 0.0)
         t0, b0 = gs.get("t_mu"), gs.get("b")
-        if np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
+        if t0 is not None and b0 is not None and np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
             t0, b0 = float(t0), float(b0)
 
             # line_hours now means "half-length" in Euclidean (data) units for x=hours, y=OD

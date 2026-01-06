@@ -273,10 +273,15 @@ with st.container(border=True):
 
         blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
 
+        # Get default excluded wells from params0
+        default_excluded = params0.get("remove_wells", [])
+        if default_excluded is False or not default_excluded:
+            default_excluded = []
+
         remove_wells = st.multiselect(
             "Exclude wells",
             options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
-            default=[],
+            default=default_excluded,
         )
 
         # Preserve the False sentinel behavior used elsewhere.
