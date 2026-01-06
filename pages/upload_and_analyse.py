@@ -169,6 +169,7 @@ with u2:
                     - Samples with the same name will be assigned as replicates
                     - Use 'BLANK' for blank wells
                     - Leave cells empty for wells to ignore
+                    - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visulations' page.
                     """
                 )
 
@@ -176,9 +177,24 @@ with u2:
                 example_map = pd.DataFrame(
                     {
                         "rows": ["A", "B", "C", "D"],
-                        "1": ["Sample1", "Sample3", "", "Sample6"],
-                        "2": ["Sample1", "BLANK", "Sample5", "Sample7"],
-                        "3": ["Sample2", "Sample4", "Sample5", "BLANK"],
+                        "1": [
+                            "Sample1_Condition1",
+                            "Sample3_Condition2",
+                            "",
+                            "Sample6_Condition3",
+                        ],
+                        "2": [
+                            "Sample1_Condition2",
+                            "BLANK",
+                            "Sample5_Condition2",
+                            "Sample7_Condition2",
+                        ],
+                        "3": [
+                            "Sample2_Condition1",
+                            "Sample4_Condition3",
+                            "Sample5_Condition2",
+                            "BLANK",
+                        ],
                         "...": ["...", "...", "...", "..."],
                     }
                 )
