@@ -115,6 +115,26 @@ def render_plate_table(grid: pd.DataFrame):
 # ---------------- App ----------------
 ss = init_state()
 
+title_col, popover_col = st.columns([9, 2])
+with title_col:
+    st.title("Upload and Analyze")
+with popover_col:
+    st.write("")
+    with st.popover("Explain this page to me", use_container_width=True):
+        st.markdown(
+            """
+**Actions you can perform on this page:**
+- Upload data files. This excel table contains the time-series data for your growth curves, arranged with each column corresponding to a well
+- Upload plate maps. This excel table dictates how each sample will be named in the app.
+- Configure analysis parameters (read interval, pathlength, time range, etc.)
+- Preview your plate layout before analysis
+- Run growth curve analysis on the uploaded plates
+
+"""
+        )
+
+st.divider()
+
 # Upload (store bytes directly into ss.plates[plate_id]).
 u1, u2 = st.columns(2)
 with u1:
@@ -327,7 +347,7 @@ with st.container(border=True):
                 st.caption("Plate preview:")
 
                 st.caption(
-                    "· 🟩 analyzable · 🟧 missing data · 🟥 excluded · 🟦 blank · ⬜ not in plate map"
+                    "· 🟩 sample · 🟦 blank · 🟥 excluded by user · 🟧 not in data file · ⬜ not in plate map"
                 )
                 render_plate_table(grid)
 
@@ -336,7 +356,7 @@ with st.container(border=True):
 
     col1, col2 = st.columns(2)
     if col1.button(
-        "Analyse selected plate",
+        "Update parameters and analyse selected plate",
         type="primary",
         use_container_width=True,
         disabled=not plate_id,

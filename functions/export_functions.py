@@ -209,7 +209,7 @@ def build_export_zip(
                 fig = plot_window_plate(p, line_hours=line_hours)
                 if fig is not None:
                     zf.writestr(
-                        f"plots/plates/{pid}/window_plate.png",
+                        f"plots/{pid}/window_plate.png",
                         _png(fig, plate_width, plate_height),
                     )
 
@@ -234,7 +234,7 @@ def build_export_zip(
                     if well not in processed:
                         continue
 
-                    plate_dir = f"plots/plates/{pid}/wells"
+                    plate_dir = f"plots/{pid}/wells"
 
                     if "raw" in well_graphs:
                         growth_stats = (p.get("growth_stats") or {}).get(well) or {}
