@@ -24,8 +24,6 @@ Crucially, the app is designed for human-in-the-loop analysis. Automated fits pr
    cd TheGrowthAnalysisApp
    ```
 
-   Alternatively, download and extract the ZIP file from the repository.
-
 2. **Create the conda environment**
 
    Use the provided `environment.yaml` file to create a conda environment with all required dependencies:
@@ -35,6 +33,7 @@ Crucially, the app is designed for human-in-the-loop analysis. Automated fits pr
    ```
 
    This will create an environment named `growth_curves_app_env` with Python 3.11 and all necessary packages including:
+
    - Streamlit (web app framework)
    - NumPy, Pandas, SciPy (data processing and analysis)
    - Plotly (interactive visualizations)
