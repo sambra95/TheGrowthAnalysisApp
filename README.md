@@ -1,0 +1,7 @@
+## Abstract
+TheGrowthAnalysisApp is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics such as maximum OD, growth rate, and lag time across wells. The workflow includes interactive quality control: users can review fitted phases, adjust boundaries, exclude wells, or re-fit data to ensure results reflect experimental context. The app then supports visualization and export of curated results for downstream reporting.
+
+## Introduction
+High-throughput plate reader experiments generate dense time-series data that require consistent preprocessing, fitting, and curation before biological conclusions can be drawn. TheGrowthAnalysisApp streamlines this process by combining structured data ingestion (plate maps and reader outputs), parameterized analysis (time clipping, pathlength correction, smoothing, and windowed growth fitting), and standardized outputs for downstream analysis.
+
+Crucially, the app is designed for human-in-the-loop analysis. Automated fits provide a first-pass set of growth descriptors, but users can inspect each well, adjust phase boundaries, re-calculate growth rates from selected points, or mark wells as no-growth or excluded. This iterative review ensures the final dataset reflects both computational rigor and experimental expertise, reducing false positives and enabling confident comparisons across strains, conditions, and replicates.

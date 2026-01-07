@@ -254,6 +254,14 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         st.session_state.pop(ss_key, None)
         st.session_state.pop(maxod_key, None)
 
+        # Update params to include this well in remove_wells list
+        params = plate.setdefault("params", {})
+        remove_wells = params.get("remove_wells", False)
+        if remove_wells is False or not remove_wells:
+            params["remove_wells"] = [well]
+        elif well not in remove_wells:
+            params["remove_wells"] = list(remove_wells) + [well]
+
     with c1:
         no_growth = st.button(
             "No Growth",
@@ -273,7 +281,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     with c3:
         delete_well = st.button(
-            "Delete",
+            "Exclude from analysis",
             use_container_width=True,
             type="tertiary",
             key=f"deletewell__{key}",
@@ -296,9 +304,28 @@ def _cached_window_single(processed_data: dict, well: str):
 def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     """Render the well editor UI for interactive window fit adjustments."""
     plate_ids = sorted(plates)
-    wells = well_order_A1_to_H12()
 
     st.session_state.setdefault("winfit_plate", plate_ids[0])
+
+    # Get wells with data from the current plate
+    current_plate_id = st.session_state.get("winfit_plate", plate_ids[0])
+    current_plate = plates.get(current_plate_id, {})
+    processed_data = current_plate.get("processed_data") or {}
+
+    # Get available wells and sort them in A1-H12 order
+    all_standard_wells = well_order_A1_to_H12()
+    wells = [w for w in all_standard_wells if w in processed_data]
+
+    # If no wells with data, fall back to standard ordering
+    if not wells:
+        wells = all_standard_wells
+
+    # Ensure the selected well exists in the current plate's wells
+    current_well = st.session_state.get("winfit_well", wells[0])
+    if current_well not in wells:
+        current_well = wells[0]
+        st.session_state["winfit_well"] = current_well
+
     st.session_state.setdefault("winfit_well", wells[0])
 
     def _move_well(step: int):

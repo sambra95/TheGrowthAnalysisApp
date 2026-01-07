@@ -224,8 +224,9 @@ def build_export_zip(
                 if not processed:
                     continue
 
-                sg_w = p.get("sg_window", 7)
-                sg_p = p.get("sg_poly", 3)
+                params = p.get("params") or {}
+                sg_w = int(params.get("sg_window", 11))
+                sg_p = int(params.get("sg_poly", 2))
 
                 # use requested wells; default to all available if empty
                 wells = wells_by_plate.get(pid) or list(processed.keys())
