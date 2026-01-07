@@ -298,15 +298,13 @@ def ui_export(plates: dict):
     if "export_zip_bytes" not in st.session_state:
         st.session_state.export_zip_bytes = None
 
-    st.subheader("Export")
-
     # ---- Plot Options in 2x2 Grid ----
     row1_col1, row1_col2 = st.columns(2)
 
     # Tables Info
     with row1_col1:
         with st.container(border=True):
-            st.markdown("**Tables Included in Export**")
+            st.header("Tables Included in Export")
             st.markdown(
                 """
                 The following tables are always included:
@@ -320,7 +318,7 @@ def ui_export(plates: dict):
     # Well Level Plots
     with row1_col2:
         with st.container(border=True):
-            st.markdown("**Well Level Plots**")
+            st.header("Well Level Plots")
             st.caption(
                 "Individual well growth curves with annotations and derivative plots"
             )
@@ -371,7 +369,7 @@ def ui_export(plates: dict):
 
             if selected_plate_ids:
                 st.markdown("---")
-                st.markdown("**Well Selection**")
+                st.header("Well Selection")
 
                 include_all_wells = st.checkbox(
                     "Include all wells for all plates",
@@ -397,7 +395,7 @@ def ui_export(plates: dict):
     # Plate View Plots
     with row1_col1:
         with st.container(border=True):
-            st.markdown("**Plate View Plots**")
+            st.header("Plate View Plots")
             st.caption(
                 "96-well plate overview showing all wells with fitted growth curves"
             )
@@ -426,7 +424,7 @@ def ui_export(plates: dict):
     # Baseline Plots
     with row1_col1:
         with st.container(border=True):
-            st.markdown("**Baseline Plots**")
+            st.header("Baseline Plots")
             st.caption("Blank well measurements and mean baseline over time")
             c_base = st.checkbox(
                 "Include baseline plots", value=True, key="baseline_checkbox"
@@ -481,7 +479,9 @@ def ui_export(plates: dict):
             include_baseline_plots=include_baseline_plots,
             include_well_plots=include_well_plots,
             well_graphs=list(well_graphs_tuple) if well_graphs_tuple else [],
-            selected_plate_ids=list(selected_plates_tuple) if selected_plates_tuple else [],
+            selected_plate_ids=(
+                list(selected_plates_tuple) if selected_plates_tuple else []
+            ),
             wells_by_plate=wells_dict,
             add_annotations=add_annotations,
             baseline_width=baseline_w,
