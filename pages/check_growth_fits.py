@@ -28,4 +28,4 @@ with popover_col:
 
 plates = require_plates()
 
-ui_window_fits_well_editor(plates, line_hours=4.0)
+ui_window_fits_well_editor(plates)

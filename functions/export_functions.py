@@ -127,7 +127,6 @@ def build_export_zip(
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
-    line_hours: float = 4.0,
     scale: int = 2,
     baseline_width: int = 1200,
     baseline_height: int = 800,
@@ -206,7 +205,7 @@ def build_export_zip(
                 )
 
             for pid, p in plates.items():
-                fig = plot_window_plate(p, line_hours=line_hours)
+                fig = plot_window_plate(p)
                 if fig is not None:
                     zf.writestr(
                         f"plots/{pid}/window_plate.png",
@@ -253,7 +252,6 @@ def build_export_zip(
                                     lag_end,
                                     exp_end,
                                     gs=growth_stats,
-                                    line_hours=line_hours,
                                 )
                             zf.writestr(
                                 f"{plate_dir}/growth_curves/{well}.png",

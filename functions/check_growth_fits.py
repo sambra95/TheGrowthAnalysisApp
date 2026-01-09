@@ -9,7 +9,7 @@ from functions.data_processing import (
     BAD_FIT,
     _plate_name_map,
     _read_table,
-    window_fit,
+    calculate_growth_descriptors,
 )
 from functions.plotting_functions import (
     _vlines,
@@ -97,7 +97,8 @@ def update_growth_stats_from_lasso(
     gs["Maximum U"] = float(m)
     gs["t_mu"] = t_mu
     gs["y_mu"] = y_mu
-    gs["b"] = float(b)
+    gs["t_window_start"] = float(xs.min())
+    gs["t_window_end"] = float(xs.max())
 
 
 # ---------------- Data helpers ----------------
@@ -163,7 +164,7 @@ def analyse_well(record: dict, well: str) -> dict:
     processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
     try:
-        fit = window_fit(
+        fit = calculate_growth_descriptors(
             processed["Time"].to_numpy(float),
             processed["baseline_corrected"].to_numpy(float),
             int(p["window_points"]),
@@ -301,7 +302,7 @@ def _cached_window_single(processed_data: dict, well: str):
 
 
 @st.fragment
-def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
+def ui_window_fits_well_editor(plates: dict):
     """Render the well editor UI for interactive window fit adjustments."""
     plate_ids = sorted(plates)
 
@@ -388,7 +389,7 @@ def ui_window_fits_well_editor(plates: dict, *, line_hours: float = 4.0):
     chart_key = f"lasso_fit_{plate_id}_{well}"
     fig_main = go.Figure(_cached_window_single(processed, well))
     fig_main = _vlines(
-        fig_main, processed, well, lag_end, exp_end, gs=gs, line_hours=line_hours
+        fig_main, processed, well, lag_end, exp_end, gs=gs
     )
 
     st.plotly_chart(

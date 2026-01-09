@@ -36,12 +36,10 @@ def _build_growth_stats_long_df(
     metrics = [
         "Maximum U",
         "Maximum OD600",
-        "Lag Time (hours)",
         "lag_phase_end",
         "exponential_phase_end",
         "t_mu",
         "y_mu",
-        "b",
         "t_peak",
     ]
 

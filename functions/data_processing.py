@@ -16,12 +16,12 @@ ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 BAD_FIT = {
     "Maximum OD600": 0.0,
     "Maximum U": 0.0,
-    "Lag Time (hours)": 0.0,
     "lag_phase_end": np.nan,
     "exponential_phase_end": np.nan,
     "t_mu": np.nan,
     "y_mu": np.nan,
-    "b": np.nan,
+    "t_window_start": np.nan,
+    "t_window_end": np.nan,
 }
 
 
@@ -106,7 +106,7 @@ def compute_second_derivative(t, y):
     return t, d2y
 
 
-def phase_ends(t, y_s, frac_peak=0.10):
+def calculate_phase_ends(t, y_s, frac_peak=0.10):
     """Estimate lag and exponential phase end times from a smoothed curve."""
     t, y_s = _as_float(t), _as_float(y_s)
     if t.size < 5 or np.ptp(t) <= 0:
@@ -130,7 +130,7 @@ def phase_ends(t, y_s, frac_peak=0.10):
     return lag_end, max(exp_end, lag_end)
 
 
-def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
+def calculate_growth_descriptors(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
     """Fit a sliding-window line to find max growth slope and phase boundaries."""
     t, y = _as_float(t), _as_float(y)
     w = int(w)
@@ -149,8 +149,9 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
     peak_i = int(np.nanargmax(y))
     A = float(y[peak_i])
 
+    # calculate the growth rate
     w = min(w, t.size)
-    best_m, best = -np.inf, (np.nan, np.nan, np.nan)  # (t_mu, y_mu, b)
+    best_m, best = -np.inf, (np.nan, np.nan, np.nan, np.nan)  # (t_mu, y_mu, t_start, t_end)
     for i in range(t.size - w + 1):
         tw, yw = t[i : i + w], y_s[i : i + w]
         if np.ptp(tw) <= 0:
@@ -159,25 +160,26 @@ def window_fit(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
         t_mu = float(tw.mean())
         if m_i > best_m:
             best_m = float(m_i)
-            best = (t_mu, float(best_m * t_mu + b_i), float(b_i))
+            best = (t_mu, float(best_m * t_mu + b_i), float(tw[0]), float(tw[-1]))
 
-    t_mu, y_mu, b = best
+    t_mu, y_mu, t_window_start, t_window_end = best
     if not np.isfinite(best_m) or best_m <= 0:
         out = BAD_FIT.copy()
         out.update({"Maximum OD600": A})
         return out
 
-    lag_end, exp_end = phase_ends(t, y_s, frac_peak=lag_frac)
+    # calculate exponential phase start and end
+    lag_end, exp_end = calculate_phase_ends(t, y_s, frac_peak=lag_frac)
 
     out = {
         "Maximum OD600": A,
         "Maximum U": float(best_m),
-        "Lag Time (hours)": float(lag_end - t[0]),
         "lag_phase_end": float(lag_end),
         "exponential_phase_end": float(exp_end),
         "t_mu": float(t_mu),
         "y_mu": float(y_mu),
-        "b": float(b),
+        "t_window_start": float(t_window_start),
+        "t_window_end": float(t_window_end),
     }
 
     return out
@@ -297,7 +299,7 @@ def analyse_plate(record: dict):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
         try:
-            fit = window_fit(
+            fit = calculate_growth_descriptors(
                 processed["Time"].to_numpy(float),
                 processed["baseline_corrected"].to_numpy(float),
                 int(p["window_points"]),
@@ -329,7 +331,7 @@ def compute_window_fits(
         plate_stats = {}
         for well, wdict in plate["processed_data"].items():
             d = wdict["processed_values"]
-            fit = window_fit(
+            fit = calculate_growth_descriptors(
                 d["Time"].to_numpy(float),
                 d["baseline_corrected"].to_numpy(float),
                 int(window_points),
@@ -340,14 +342,30 @@ def compute_window_fits(
 
             wdict.update(
                 {
-                    "Maximum OD600": float(fit["A"]),
-                    "Maximum U": float(fit["B"]),
-                    "Lag Time (hours)": float(fit["C"]),
-                    "lag_phase_end": float(fit["lag_end"]),
-                    "exponential_phase_end": float(fit["exp_end"]),
+                    "Maximum OD600": float(fit["Maximum OD600"]),
+                    "Maximum U": float(fit["Maximum U"]),
+                    "lag_phase_end": (
+                        float(fit["lag_phase_end"])
+                        if np.isfinite(fit["lag_phase_end"])
+                        else np.nan
+                    ),
+                    "exponential_phase_end": (
+                        float(fit["exponential_phase_end"])
+                        if np.isfinite(fit["exponential_phase_end"])
+                        else np.nan
+                    ),
                     "t_mu": float(fit["t_mu"]) if np.isfinite(fit["t_mu"]) else np.nan,
                     "y_mu": float(fit["y_mu"]) if np.isfinite(fit["y_mu"]) else np.nan,
-                    "b": float(fit["b"]) if np.isfinite(fit["b"]) else np.nan,
+                    "t_window_start": (
+                        float(fit["t_window_start"])
+                        if np.isfinite(fit["t_window_start"])
+                        else np.nan
+                    ),
+                    "t_window_end": (
+                        float(fit["t_window_end"])
+                        if np.isfinite(fit["t_window_end"])
+                        else np.nan
+                    ),
                 }
             )
 
@@ -355,7 +373,6 @@ def compute_window_fits(
                 "Sample Name": plate["name"].get(well, ""),
                 "Maximum OD600": wdict["Maximum OD600"],
                 "Maximum U": wdict["Maximum U"],
-                "Lag Time (hours)": wdict["Lag Time (hours)"],
             }
         stats[plate_id] = plate_stats
     return stats

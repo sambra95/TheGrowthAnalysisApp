@@ -265,12 +265,10 @@ def plot_growth_stats(
     metrics = [
         "Maximum U",
         "Maximum OD600",
-        "Lag Time (hours)",
         "lag_phase_end",
         "exponential_phase_end",
         "t_mu",
         "y_mu",
-        "b",
         "t_peak",
     ]
 
@@ -492,7 +490,6 @@ def add_window_well(
     gs: dict | None = None,
     row: int | None = None,
     col: int | None = None,
-    line_hours: float = 2.0,
     marker_size: int = 5,
     marker_color: str = "red",
     line_color: str = "blue",
@@ -590,17 +587,27 @@ def add_window_well(
     if add_window_line:
         m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
         t0 = gs.get("t_mu")
-        b0 = gs.get("b")
+        y0 = gs.get("y_mu")
+        t_win_start = gs.get("t_window_start")
+        t_win_end = gs.get("t_window_end")
+
         if (
             t0 is not None
-            and b0 is not None
+            and y0 is not None
+            and t_win_start is not None
+            and t_win_end is not None
             and np.isfinite(m)
             and np.isfinite(t0)
-            and np.isfinite(b0)
+            and np.isfinite(y0)
+            and np.isfinite(t_win_start)
+            and np.isfinite(t_win_end)
         ):
             t0 = float(t0)
-            b0 = float(b0)
-            x0, x1 = t0 - line_hours, t0 + line_hours
+            y0 = float(y0)
+            # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
+            b0 = y0 - m * t0
+            # Use the actual window boundaries
+            x0, x1 = float(t_win_start), float(t_win_end)
             fig.add_trace(
                 go.Scatter(
                     x=[x0, x1],
@@ -647,7 +654,7 @@ def plot_window_single(
     return fig
 
 
-def plot_window_plate(plate: dict, line_hours=2.0):
+def plot_window_plate(plate: dict):
     """Plot a full 96-well plate overview with window-fit overlays."""
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
@@ -694,7 +701,6 @@ def plot_window_plate(plate: dict, line_hours=2.0):
             gs=gs_all.get(well) or {},
             row=r,
             col=c,
-            line_hours=line_hours,
             marker_size=2,  # plate: smaller dots
         )
 
@@ -704,9 +710,7 @@ def plot_window_plate(plate: dict, line_hours=2.0):
     return fig
 
 
-def _vlines(
-    fig, processed_data: dict, well: str, *xs, gs=None, line_hours: float = 4.0
-):
+def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
     """Add phase shading, phase lines, and fit line annotations to a figure."""
     # always start clean (important when reusing/copying figures)
     fig.update_layout(shapes=[])
@@ -766,25 +770,32 @@ def _vlines(
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
 
-        # fitted max gradient line in blue (constant geometric length)
+        # fitted max gradient line in blue (spans the window used for calculation)
         m = float(gs.get("Maximum U", 0.0) or 0.0)
-        t0, b0 = gs.get("t_mu"), gs.get("b")
+        t0 = gs.get("t_mu")
+        y0 = gs.get("y_mu")
+        t_win_start = gs.get("t_window_start")
+        t_win_end = gs.get("t_window_end")
+
         if (
             t0 is not None
-            and b0 is not None
+            and y0 is not None
+            and t_win_start is not None
+            and t_win_end is not None
             and np.isfinite(m)
             and np.isfinite(t0)
-            and np.isfinite(b0)
+            and np.isfinite(y0)
+            and np.isfinite(t_win_start)
+            and np.isfinite(t_win_end)
         ):
-            t0, b0 = float(t0), float(b0)
+            t0 = float(t0)
+            y0 = float(y0)
+            # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
+            b0 = y0 - m * t0
 
-            # line_hours now means "half-length" in Euclidean (data) units for x=hours, y=OD
-            # segment half-length L, choose dx so sqrt(dx^2 + (m*dx)^2) = L  -> dx = L / sqrt(1+m^2)
-            L = float(line_hours)
-            dx = L / np.sqrt(1.0 + m * m)
-
-            x0 = max(tmin, t0 - dx)
-            x1 = min(tmax, t0 + dx)
+            # Use the actual window boundaries
+            x0 = max(tmin, float(t_win_start))
+            x1 = min(tmax, float(t_win_end))
 
             fig.add_shape(
                 type="line",

@@ -27,7 +27,7 @@ def ui_replicates(plates: dict):
 
 
 @st.fragment
-def ui_window_fits_plate_overview(plates: dict, *, line_hours: float = 4.0):
+def ui_window_fits_plate_overview(plates: dict):
     """Render baseline and plate-window fits for a selected plate."""
     plate_id = st.selectbox("Plate", sorted(plates), key="winfit_plate_overview")
     st.subheader("Plate Blanks")
@@ -38,7 +38,7 @@ def ui_window_fits_plate_overview(plates: dict, *, line_hours: float = 4.0):
 
     st.subheader("Plate Fits Overview")
     st.plotly_chart(
-        plot_window_plate(plates[plate_id], line_hours=line_hours),
+        plot_window_plate(plates[plate_id]),
         use_container_width=True,
     )
 
