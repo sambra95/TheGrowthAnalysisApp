@@ -8,7 +8,12 @@ import streamlit as st
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-from functions.data_processing import ALL_WELLS, smooth
+from functions.data_processing import (
+    ALL_WELLS,
+    compute_first_derivative,
+    compute_second_derivative,
+    smooth,
+)
 
 
 # --- helpers ------------------------------------------------------------------
@@ -586,7 +591,13 @@ def add_window_well(
         m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
         t0 = gs.get("t_mu")
         b0 = gs.get("b")
-        if t0 is not None and b0 is not None and np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
+        if (
+            t0 is not None
+            and b0 is not None
+            and np.isfinite(m)
+            and np.isfinite(t0)
+            and np.isfinite(b0)
+        ):
             t0 = float(t0)
             b0 = float(b0)
             x0, x1 = t0 - line_hours, t0 + line_hours
@@ -758,7 +769,13 @@ def _vlines(
         # fitted max gradient line in blue (constant geometric length)
         m = float(gs.get("Maximum U", 0.0) or 0.0)
         t0, b0 = gs.get("t_mu"), gs.get("b")
-        if t0 is not None and b0 is not None and np.isfinite(m) and np.isfinite(t0) and np.isfinite(b0):
+        if (
+            t0 is not None
+            and b0 is not None
+            and np.isfinite(m)
+            and np.isfinite(t0)
+            and np.isfinite(b0)
+        ):
             t0, b0 = float(t0), float(b0)
 
             # line_hours now means "half-length" in Euclidean (data) units for x=hours, y=OD
@@ -831,8 +848,11 @@ def plot_window_single_d1(
     t = d["Time"].to_numpy(float)
     y = d["baseline_corrected"].to_numpy(float)
 
+    # Apply smoothing before computing derivative
     y_s = smooth(y, sg_window, sg_poly)
-    dy = np.gradient(y_s, t)
+
+    # Compute first derivative using the data processing function
+    t, dy = compute_first_derivative(t, y_s)
 
     fig = go.Figure()
     fig.add_trace(
@@ -898,9 +918,11 @@ def plot_window_single_d2(
     t = d["Time"].to_numpy(float)
     y = d["baseline_corrected"].to_numpy(float)
 
+    # Apply smoothing before computing derivative
     y_s = smooth(y, sg_window, sg_poly)
-    dy = np.gradient(y_s, t)
-    d2y = np.gradient(dy, t)
+
+    # Compute second derivative using the data processing function
+    t, d2y = compute_second_derivative(t, y_s)
 
     fig = go.Figure()
     fig.add_trace(
@@ -916,6 +938,8 @@ def plot_window_single_d2(
     )
 
     if not add_fit:
+        # Need to compute first derivative for fitting
+        _, dy = compute_first_derivative(t, y_s)
         popt = _fit_idealised_derivatives(t, dy)
         d2_fit = None
         if popt is not None:

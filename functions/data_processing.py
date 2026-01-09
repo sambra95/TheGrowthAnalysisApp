@@ -1,4 +1,5 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
+
 import io
 
 import numpy as np
@@ -31,7 +32,7 @@ def _as_float(x):
 
 
 @st.cache_data
-def smooth(y, window=21, poly=1, passes=2):
+def smooth(y, window=21, poly=1, passes=3):
     """Smooth a series with Savitzky-Golay filtering (odd window, multi-pass)."""
     y = _as_float(y)
     n = y.size
@@ -68,6 +69,41 @@ def fit_d1(t, dy):
         return float(A), float(r), float(t0)
     except Exception:
         return None
+
+
+@st.cache_data
+def compute_first_derivative(t, y):
+    """
+    Compute the first derivative of a growth curve.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+
+    Returns:
+        Tuple of (t, dy) where dy is the first derivative dy/dt
+    """
+    t, y = _as_float(t), _as_float(y)
+    dy = np.gradient(y, t)
+    return t, dy
+
+
+@st.cache_data
+def compute_second_derivative(t, y):
+    """
+    Compute the second derivative of a growth curve.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+
+    Returns:
+        Tuple of (t, d2y) where d2y is the second derivative d²y/dt²
+    """
+    t, y = _as_float(t), _as_float(y)
+    dy = np.gradient(y, t)
+    d2y = np.gradient(dy, t)
+    return t, d2y
 
 
 def phase_ends(t, y_s, frac_peak=0.10):
