@@ -23,6 +23,8 @@ DEFAULT_PARAMS = dict(
     window_points=15,
     sg_window=15,
     sg_poly=2,
+    min_data_points=5,
+    min_signal_to_noise=5.0,
 )
 
 
@@ -268,30 +270,49 @@ with st.container(border=True):
 
         a, b = st.columns(2)
         read_interval_min = a.number_input(
-            "Read interval (min)", 1, 120, int(params0["read_interval_min"])
+            "Read interval (min)",
+            1,
+            120,
+            int(params0["read_interval_min"]),
+            help="Time interval between OD600 measurements (used to calculate time points if no Time column is provided)",
         )
         pl_cm = b.number_input(
             "Pathlength (cm)",
             value=float(params0["pathlength_cm_"]),
             step=0.01,
             format="%.3f",
+            help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
         )
 
         a, b = st.columns(2)
         clip_time_series = (
             float(
                 a.number_input(
-                    "Start (h)", 0.0, 1e6, float(params0["clip_time_series"][0]), 0.5
+                    "Start (h)",
+                    0.0,
+                    1e6,
+                    float(params0["clip_time_series"][0]),
+                    0.5,
+                    help="Starting time for analysis (earlier time points will be excluded)",
                 )
             ),
             float(
                 b.number_input(
-                    "End (h)", 0.0, 1e6, float(params0["clip_time_series"][1]), 0.5
+                    "End (h)",
+                    0.0,
+                    1e6,
+                    float(params0["clip_time_series"][1]),
+                    0.5,
+                    help="Ending time for analysis (later time points will be excluded)",
                 )
             ),
         )
 
-        blank = a.checkbox("Blank subtraction (label 'BLANK')", bool(params0["blank"]))
+        blank = a.checkbox(
+            "Blank subtraction (label 'BLANK')",
+            bool(params0["blank"]),
+            help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
+        )
 
         # Get default excluded wells from params0
         default_excluded = params0.get("remove_wells", [])
@@ -302,6 +323,7 @@ with st.container(border=True):
             "Exclude wells",
             options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
             default=default_excluded,
+            help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
         )
 
         # Preserve the False sentinel behavior used elsewhere.
@@ -313,6 +335,29 @@ with st.container(border=True):
             200,
             int(params0["window_points"]),
             1,
+            help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+        )
+
+        st.write("")
+        st.markdown("**'No Growth' Thresholds**")
+        st.caption("Wells failing these criteria will be marked as no growth")
+
+        c, d = st.columns(2)
+        min_data_points = c.number_input(
+            "Minimum data points",
+            1,
+            100,
+            int(params0.get("min_data_points", 5)),
+            1,
+            help="Minimum number of valid data points required for growth analysis",
+        )
+        min_signal_to_noise = d.number_input(
+            "Minimum signal-to-noise ratio",
+            0.1,
+            100.0,
+            float(params0.get("min_signal_to_noise", 5.0)),
+            0.1,
+            help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
         )
 
     with acol:
@@ -326,6 +371,8 @@ with st.container(border=True):
             window_points=int(window_points),
             sg_window=int(params0.get("sg_window", 15)),
             sg_poly=int(params0.get("sg_poly", 2)),
+            min_data_points=int(min_data_points),
+            min_signal_to_noise=float(min_signal_to_noise),
         )
 
         # Preview grid.

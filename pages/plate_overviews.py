@@ -30,4 +30,4 @@ replicates_view(plates)
 
 st.divider()
 
-window_plate_view(plates, line_hours=4.0)
+window_plate_view(plates)

@@ -171,6 +171,8 @@ def analyse_well(record: dict, well: str) -> dict:
             sg_window=int(p.get("sg_window", 11)),
             sg_poly=int(p.get("sg_poly", 2)),
             lag_frac=float(p.get("lag_frac", 0.20)),
+            min_data_points=int(p.get("min_data_points", 5)),
+            min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
         )
     except Exception:
         fit = BAD_FIT.copy()

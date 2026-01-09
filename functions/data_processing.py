@@ -130,8 +130,29 @@ def calculate_phase_ends(t, y_s, frac_peak=0.10):
     return lag_end, max(exp_end, lag_end)
 
 
-def calculate_growth_descriptors(t, y, w=15, *, sg_window=11, sg_poly=1, lag_frac=0.10):
-    """Fit a sliding-window line to find max growth slope and phase boundaries."""
+def calculate_growth_descriptors(
+    t,
+    y,
+    w=15,
+    *,
+    sg_window=11,
+    sg_poly=1,
+    lag_frac=0.10,
+    min_data_points=5,
+    min_signal_to_noise=5.0,
+):
+    """Fit a sliding-window line to find max growth slope and phase boundaries.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+        w: Window size for sliding window fit
+        sg_window: Savitzky-Golay filter window size
+        sg_poly: Savitzky-Golay filter polynomial order
+        lag_frac: Fraction of peak for phase boundary detection
+        min_data_points: Minimum number of data points required for valid fit
+        min_signal_to_noise: Minimum ratio of max/min signal for valid fit
+    """
     t, y = _as_float(t), _as_float(y)
     w = int(w)
 
@@ -139,21 +160,21 @@ def calculate_growth_descriptors(t, y, w=15, *, sg_window=11, sg_poly=1, lag_fra
     y_s = smooth(y, sg_window, sg_poly)
     m = np.isfinite(t) & np.isfinite(y_s)
     t, y_s = t[m], y_s[m]
-    if t.size < max(5, w) or np.ptp(t) <= 0:
+    if t.size < max(int(min_data_points), w) or np.ptp(t) <= 0:
         return BAD_FIT.copy()
 
-    if abs(y_s.max() / max(abs(y_s.min()), 1e-12)) <= 5:
+    if abs(y_s.max() / max(abs(y_s.min()), 1e-12)) <= float(min_signal_to_noise):
         return BAD_FIT.copy()
 
     # Take max OD measurement from non-smoothed line.
     peak_i = int(np.nanargmax(y))
     A = float(y[peak_i])
 
-    # calculate the growth rate
+    # calculate the growth rate (use raw data for fit, like manual lasso selection)
     w = min(w, t.size)
     best_m, best = -np.inf, (np.nan, np.nan, np.nan, np.nan)  # (t_mu, y_mu, t_start, t_end)
     for i in range(t.size - w + 1):
-        tw, yw = t[i : i + w], y_s[i : i + w]
+        tw, yw = t[i : i + w], y[i : i + w]  # use raw y, not smoothed y_s
         if np.ptp(tw) <= 0:
             continue
         m_i, b_i = np.polyfit(tw, yw, 1)
@@ -306,6 +327,8 @@ def analyse_plate(record: dict):
                 sg_window=int(p.get("sg_window", 11)),
                 sg_poly=int(p.get("sg_poly", 2)),
                 lag_frac=float(p.get("lag_frac", 0.20)),
+                min_data_points=int(p.get("min_data_points", 5)),
+                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
             )
         except Exception:
             fit = BAD_FIT.copy()
@@ -320,7 +343,13 @@ def analyse_plate(record: dict):
 
 
 def compute_window_fits(
-    plates, window_points=15, sg_window=11, sg_poly=2, lag_frac=0.20
+    plates,
+    window_points=15,
+    sg_window=11,
+    sg_poly=2,
+    lag_frac=0.20,
+    min_data_points=5,
+    min_signal_to_noise=5.0,
 ):
     """
     Recompute stats and write them back into plates[*]["processed_data"][well] in-place.
@@ -338,6 +367,8 @@ def compute_window_fits(
                 sg_window=int(sg_window),
                 sg_poly=int(sg_poly),
                 lag_frac=float(lag_frac),
+                min_data_points=int(min_data_points),
+                min_signal_to_noise=float(min_signal_to_noise),
             )
 
             wdict.update(
