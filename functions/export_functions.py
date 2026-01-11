@@ -341,72 +341,82 @@ def ui_export(plates: dict):
             c_well = st.checkbox(
                 "Include well level plots", value=False, key="well_checkbox"
             )
-            c_add_annotations = st.checkbox(
-                "Add annotations to well plots",
-                value=True,
-                key="annotations_checkbox",
-            )
 
-            col_w, col_h = st.columns(2)
-            well_width = col_w.number_input(
-                "Width (px)",
-                min_value=400,
-                max_value=3000,
-                value=1200,
-                step=100,
-                key="well_width",
-            )
-            well_height = col_h.number_input(
-                "Height (px)",
-                min_value=300,
-                max_value=2500,
-                value=800,
-                step=100,
-                key="well_height",
-            )
-
-            well_graphs = st.multiselect(
-                "Well graph types",
-                options=["raw", "d1", "d2"],
-                default=["raw", "d1", "d2"],
-                help="raw = annotated window plot; d1/d2 = derivative plots",
-                key="well_graphs",
-            )
-
-            selected_plate_ids = st.multiselect(
-                "Plates to include",
-                options=plate_ids,
-                default=plate_ids,
-                key="selected_plates",
-            )
-
-            # Well selection within the same container
-            wells_by_plate: dict[str, list[str]] = {}
-
-            if selected_plate_ids:
-                st.markdown("---")
-                st.header("Well Selection")
-
-                include_all_wells = st.checkbox(
-                    "Include all wells for all plates",
+            if c_well:
+                c_add_annotations = st.checkbox(
+                    "Add annotations to well plots",
                     value=True,
-                    key="include_all_wells_global",
+                    key="annotations_checkbox",
                 )
 
-                if not include_all_wells:
-                    for pid in selected_plate_ids:
-                        processed = (plates.get(pid) or {}).get("processed_data") or {}
-                        available_wells = sorted(processed.keys())
+                col_w, col_h = st.columns(2)
+                well_width = col_w.number_input(
+                    "Width (px)",
+                    min_value=400,
+                    max_value=3000,
+                    value=1200,
+                    step=100,
+                    key="well_width",
+                )
+                well_height = col_h.number_input(
+                    "Height (px)",
+                    min_value=300,
+                    max_value=2500,
+                    value=800,
+                    step=100,
+                    key="well_height",
+                )
 
-                        wells_by_plate[pid] = st.multiselect(
-                            f"Wells for {pid}",
-                            options=available_wells,
-                            default=available_wells[: min(3, len(available_wells))],
-                            key=f"wells__{pid}",
-                        )
-                else:
-                    for pid in selected_plate_ids:
-                        wells_by_plate[pid] = []  # empty means "all"
+                well_graphs = st.multiselect(
+                    "Well graph types",
+                    options=["raw", "d1", "d2"],
+                    default=["raw", "d1", "d2"],
+                    help="raw = annotated window plot; d1/d2 = derivative plots",
+                    key="well_graphs",
+                )
+
+                selected_plate_ids = st.multiselect(
+                    "Plates to include",
+                    options=plate_ids,
+                    default=plate_ids,
+                    key="selected_plates",
+                )
+
+                # Well selection within the same container
+                wells_by_plate: dict[str, list[str]] = {}
+
+                if selected_plate_ids:
+                    st.markdown("---")
+                    st.header("Well Selection")
+
+                    include_all_wells = st.checkbox(
+                        "Include all wells for all plates",
+                        value=True,
+                        key="include_all_wells_global",
+                    )
+
+                    if not include_all_wells:
+                        for pid in selected_plate_ids:
+                            processed = (plates.get(pid) or {}).get("processed_data") or {}
+                            available_wells = sorted(processed.keys())
+
+                            wells_by_plate[pid] = st.multiselect(
+                                f"Wells for {pid}",
+                                options=available_wells,
+                                default=available_wells[: min(3, len(available_wells))],
+                                key=f"wells__{pid}",
+                            )
+                    else:
+                        for pid in selected_plate_ids:
+                            wells_by_plate[pid] = []  # empty means "all"
+            else:
+                # Set defaults when well plots are not included
+                c_add_annotations = True
+                well_width = 1200
+                well_height = 800
+                well_graphs = []
+                selected_plate_ids = []
+                wells_by_plate = {}
 
     # Plate View Plots
     with row1_col1:
@@ -419,23 +429,28 @@ def ui_export(plates: dict):
                 "Include plate-view plots", value=True, key="plate_checkbox"
             )
 
-            col_w, col_h = st.columns(2)
-            plate_width = col_w.number_input(
-                "Width (px)",
-                min_value=400,
-                max_value=3000,
-                value=1200,
-                step=100,
-                key="plate_width",
-            )
-            plate_height = col_h.number_input(
-                "Height (px)",
-                min_value=300,
-                max_value=2500,
-                value=800,
-                step=100,
-                key="plate_height",
-            )
+            if c_plate:
+                col_w, col_h = st.columns(2)
+                plate_width = col_w.number_input(
+                    "Width (px)",
+                    min_value=400,
+                    max_value=3000,
+                    value=1200,
+                    step=100,
+                    key="plate_width",
+                )
+                plate_height = col_h.number_input(
+                    "Height (px)",
+                    min_value=300,
+                    max_value=2500,
+                    value=800,
+                    step=100,
+                    key="plate_height",
+                )
+            else:
+                # Set defaults when plate view plots are not included
+                plate_width = 1200
+                plate_height = 800
 
     # Baseline Plots
     with row1_col1:
@@ -446,23 +461,28 @@ def ui_export(plates: dict):
                 "Include baseline plots", value=True, key="baseline_checkbox"
             )
 
-            col_w, col_h = st.columns(2)
-            baseline_width = col_w.number_input(
-                "Width (px)",
-                min_value=400,
-                max_value=3000,
-                value=1200,
-                step=100,
-                key="baseline_width",
-            )
-            baseline_height = col_h.number_input(
-                "Height (px)",
-                min_value=300,
-                max_value=2500,
-                value=800,
-                step=100,
-                key="baseline_height",
-            )
+            if c_base:
+                col_w, col_h = st.columns(2)
+                baseline_width = col_w.number_input(
+                    "Width (px)",
+                    min_value=400,
+                    max_value=3000,
+                    value=1200,
+                    step=100,
+                    key="baseline_width",
+                )
+                baseline_height = col_h.number_input(
+                    "Height (px)",
+                    min_value=300,
+                    max_value=2500,
+                    value=800,
+                    step=100,
+                    key="baseline_height",
+                )
+            else:
+                # Set defaults when baseline plots are not included
+                baseline_width = 1200
+                baseline_height = 800
 
     # Lazy function that builds ZIP only when called by download button
     @st.cache_data(show_spinner="Building ZIP file...")
