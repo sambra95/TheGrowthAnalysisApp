@@ -847,7 +847,6 @@ def _fit_idealised_derivatives(t, dy):
         return None
 
 
-@st.fragment
 def plot_window_single_d1(
     plate: dict, well: str, sg_window=11, sg_poly=2, frac_peak=0.15, add_fit=True
 ):
@@ -877,7 +876,7 @@ def plot_window_single_d1(
             hoverinfo="skip",
         )
     )
-    if not add_fit:
+    if add_fit:
         popt = _fit_idealised_derivatives(t, dy)
         dy_fit = t_lag = t_exp = thr = None
 
@@ -948,7 +947,7 @@ def plot_window_single_d2(
         )
     )
 
-    if not add_fit:
+    if add_fit:
         # Need to compute first derivative for fitting
         _, dy = compute_first_derivative(t, y_s)
         popt = _fit_idealised_derivatives(t, dy)

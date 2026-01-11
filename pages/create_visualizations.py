@@ -8,7 +8,7 @@ with title_col:
     st.title("Create Visualizations")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", use_container_width=True):
+    with st.popover("Explain this page to me", width='stretch'):
         st.markdown(
             """
 **Actions you can perform on this page:**

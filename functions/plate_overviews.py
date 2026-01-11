@@ -23,7 +23,7 @@ def require_plates() -> dict:
 def ui_replicates(plates: dict):
     """Render a grid of replicate plots by sample."""
     st.subheader("Sample Replicates")
-    st.plotly_chart(plot_replicates_by_sample(plates), use_container_width=True)
+    st.plotly_chart(plot_replicates_by_sample(plates), width='stretch')
 
 
 @st.fragment
@@ -39,7 +39,7 @@ def ui_window_fits_plate_overview(plates: dict):
     st.subheader("Plate Fits Overview")
     st.plotly_chart(
         plot_window_plate(plates[plate_id]),
-        use_container_width=True,
+        width='stretch',
     )
 
 

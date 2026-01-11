@@ -268,7 +268,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     with c1:
         no_growth = st.button(
             "No Growth",
-            use_container_width=True,
+            width='stretch',
             type="primary",
             key=f"nogrowth__{key}",
             on_click=_on_no_growth,  # <-- changed
@@ -278,14 +278,14 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         reanalyse_well = st.button(
             "Re-analyse",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             on_click=_on_reanalyse,  # <-- changed
         )
 
     with c3:
         delete_well = st.button(
             "Exclude from analysis",
-            use_container_width=True,
+            width='stretch',
             type="tertiary",
             key=f"deletewell__{key}",
             on_click=_on_delete,  # <-- changed
@@ -345,7 +345,7 @@ def ui_window_fits_well_editor(plates: dict):
             with prev:
                 st.button(
                     "",
-                    use_container_width=True,
+                    width='stretch',
                     on_click=_move_well,
                     args=(-1,),
                     key="well_prev",
@@ -362,7 +362,7 @@ def ui_window_fits_well_editor(plates: dict):
             with next_:
                 st.button(
                     "",
-                    use_container_width=True,
+                    width='stretch',
                     on_click=_move_well,
                     args=(+1,),
                     key="well_next",
@@ -401,7 +401,7 @@ def ui_window_fits_well_editor(plates: dict):
         on_select=lambda: update_growth_stats_from_lasso(
             plates, plate_id, well, chart_key
         ),
-        use_container_width=True,
+        width='stretch',
     )
-    st.plotly_chart(fig_d1, use_container_width=True)
-    st.plotly_chart(fig_d2, use_container_width=True)
+    st.plotly_chart(fig_d1, width='stretch')
+    st.plotly_chart(fig_d2, width='stretch')

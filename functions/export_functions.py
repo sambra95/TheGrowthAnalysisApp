@@ -50,16 +50,25 @@ def _processed_wide_for_plate(p: dict, *, value_col: str) -> pd.DataFrame:
 
 
 def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
-    """Return growth stats per well as a tidy DataFrame."""
-    return (
+    """Return growth stats per well as a tidy DataFrame with sample names."""
+    nm_by_well = p.get("name") or {}
+    df = (
         pd.DataFrame.from_dict(p.get("growth_stats") or {}, orient="index")
         .rename_axis("well")
         .reset_index()
     )
+    if not df.empty:
+        # Add Sample Name column after well column
+        df.insert(
+            1,
+            "Sample Name",
+            df["well"].map(lambda w: (nm_by_well.get(w) or "").strip()),
+        )
+    return df
 
 
 def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
-    """Return growth stats averaged per sample name."""
+    """Return growth stats averaged per sample name with mean and std columns."""
     nm_by_well = p.get("name") or {}
     gs = _growth_stats_per_well_df(p)
     if gs.empty:
@@ -67,7 +76,15 @@ def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
 
     gs["Sample Name"] = gs["well"].map(lambda w: (nm_by_well.get(w) or "").strip())
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
-    return gs.groupby("Sample Name")[num].mean().reset_index()
+
+    # Calculate both mean and std
+    agg_funcs = {col: ["mean", "std"] for col in num}
+    result = gs.groupby("Sample Name")[num].agg(["mean", "std"])
+
+    # Flatten the multi-level columns: convert (col, 'mean') to 'col_mean'
+    result.columns = ["_".join(col).strip() for col in result.columns.values]
+
+    return result.reset_index()
 
 
 def _analysis_params_df(p: dict) -> pd.DataFrame:
@@ -515,6 +532,6 @@ def ui_export(plates: dict):
         ),
         file_name="export.zip",
         mime="application/zip",
-        use_container_width=True,
+        width="stretch",
         type="primary",
     )

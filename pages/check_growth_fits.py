@@ -9,7 +9,7 @@ with title_col:
     st.title("Check Growth Fits")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", use_container_width=True):
+    with st.popover("Explain this page to me", width='stretch'):
         st.markdown(
             """
 **Use this page to review the analysis of individual wells**

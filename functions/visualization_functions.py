@@ -278,7 +278,7 @@ def ui_growth_summaries(plates: dict):
                 },
                 disabled=display_cols,  # Make all columns except Select read-only
                 hide_index=True,
-                use_container_width=True,
+                width='stretch',
                 height=400,
                 key="sample_selection_table"
             )
@@ -379,7 +379,7 @@ def ui_growth_summaries(plates: dict):
             apply_stats = st.form_submit_button(
                 "Generate growth stats plot",
                 type="primary",
-                use_container_width=True,
+                width='stretch',
             )
 
         # ============================================================
@@ -431,12 +431,12 @@ def ui_growth_summaries(plates: dict):
             apply_mean = b1.form_submit_button(
                 "Generate mean growth plot",
                 type="primary",
-                use_container_width=True,
+                width='stretch',
             )
             apply_reps = b2.form_submit_button(
                 "Generate replicates plot",
                 type="primary",
-                use_container_width=True,
+                width='stretch',
             )
 
     # -----------------------------
@@ -465,7 +465,7 @@ def ui_growth_summaries(plates: dict):
                 x_order=x_ordered,
                 legend_order=legend_ordered,
             ),
-            use_container_width=True,
+            width='stretch',
         )
 
     # Build the shared curves DF only if needed
@@ -477,7 +477,7 @@ def ui_growth_summaries(plates: dict):
             plot_mean_growth(
                 curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
             ),
-            use_container_width=True,
+            width='stretch',
         )
 
     if apply_reps:
@@ -488,5 +488,5 @@ def ui_growth_summaries(plates: dict):
             plot_replicates_scatter(
                 curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
             ),
-            use_container_width=True,
+            width='stretch',
         )

@@ -122,7 +122,7 @@ with title_col:
     st.title("Upload and Analyze")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", use_container_width=True):
+    with st.popover("Explain this page to me", width='stretch'):
         st.markdown(
             """
 **Actions you can perform on this page:**
@@ -145,7 +145,7 @@ with u1:
         with header_col:
             st.header("Step 1. Upload data file")
         with popover_col:
-            with st.popover("Help", use_container_width=True):
+            with st.popover("Help", width='stretch'):
                 st.markdown("**Required Data File Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with time series data")
                 st.warning(
@@ -161,7 +161,7 @@ with u1:
                         "...": ["...", "...", "...", "..."],
                     }
                 )
-                st.dataframe(example_data, hide_index=True, use_container_width=True)
+                st.dataframe(example_data, hide_index=True, width='stretch')
 
                 # Download example file
                 with open("example_data.xlsx", "rb") as f:
@@ -170,7 +170,7 @@ with u1:
                         data=f.read(),
                         file_name="example_data.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                     )
         data_file = st.file_uploader(
@@ -182,7 +182,7 @@ with u2:
         with header_col:
             st.header("Step 2. Upload plate map")
         with popover_col:
-            with st.popover("Help", use_container_width=True):
+            with st.popover("Help", width='stretch'):
                 st.markdown("**Required Plate Map Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with sample layout")
                 st.markdown(
@@ -220,7 +220,7 @@ with u2:
                         "...": ["...", "...", "...", "..."],
                     }
                 )
-                st.dataframe(example_map, hide_index=True, use_container_width=True)
+                st.dataframe(example_map, hide_index=True, width='stretch')
 
                 # Download example file
                 with open("example_plate_map.xls", "rb") as f:
@@ -229,7 +229,7 @@ with u2:
                         data=f.read(),
                         file_name="example_plate_map.xls",
                         mime="application/vnd.ms-excel",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                     )
         map_file = st.file_uploader(
@@ -239,7 +239,7 @@ with u2:
 if st.button(
     "Load plate",
     type="primary",
-    use_container_width=True,
+    width='stretch',
     disabled=not (data_file and map_file),
 ):
     plate_id = (
@@ -405,7 +405,7 @@ with st.container(border=True):
     if col1.button(
         "Update parameters and analyse selected plate",
         type="primary",
-        use_container_width=True,
+        width='stretch',
         disabled=not plate_id,
     ):
         rec = ss.plates.get(plate_id, {})
@@ -419,7 +419,7 @@ with st.container(border=True):
     if col2.button(
         "Remove selected plate",
         type="tertiary",
-        use_container_width=True,
+        width='stretch',
         disabled=not plate_id,
     ):
         ss.plates.pop(plate_id, None)
