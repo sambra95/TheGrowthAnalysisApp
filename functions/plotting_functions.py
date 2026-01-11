@@ -247,6 +247,216 @@ def plot_replicates_by_sample(plates: dict):
 
 
 # --- growth stats ----------------------------------------------------------------
+def plot_single_growth_stat(
+    long_df: pd.DataFrame,
+    *,
+    x_col: str = "Sample Name",
+    legend_col: str | None = None,
+    x_order: list[str] | None = None,
+    legend_order: list[str] | None = None,
+):
+    """Plot a single growth metric across samples with optional strain/condition splits."""
+
+    if long_df is None or long_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="Growth statistics", height=400)
+        return fig
+
+    df = long_df.copy()
+
+    # Get the metric name from the data
+    metric = df["metric"].iloc[0] if "metric" in df.columns and not df.empty else "Metric"
+
+    # ---- optionally derive Strain/Condition from sample_name (split on FIRST underscore) ----
+    s = df["sample_name"].astype(str)
+    has_split = s.str.contains("_", regex=False).any()
+    if has_split:
+        sc = s.str.split("_", n=1, expand=True)
+        df["Strain"] = sc[0]
+        df["Condition"] = sc[1].fillna("")
+
+    # ---- map UI names to actual df columns ----
+    col_map = {
+        "Sample Name": "sample_name",
+        "Strain": "Strain",
+        "Condition": "Condition",
+    }
+
+    if x_col not in col_map:
+        x_col = "Sample Name"
+    x_df_col = col_map[x_col]
+
+    legend_df_col = None
+    if legend_col is not None:
+        if legend_col not in col_map:
+            legend_col = None
+        else:
+            legend_df_col = col_map[legend_col]
+            # If user chose Strain/Condition but we didn't create them, drop back safely
+            if legend_df_col not in df.columns:
+                legend_col = None
+                legend_df_col = None
+
+    # If x axis requested Strain/Condition but absent, fall back to Sample Name
+    if x_df_col not in df.columns:
+        x_col = "Sample Name"
+        x_df_col = "sample_name"
+
+    # ---- x order categorical for stable ordering ----
+    if not x_order:
+        x_order = list(pd.unique(df[x_df_col].astype(str)))
+
+    df["_x"] = (
+        df[x_df_col]
+        .astype(str)
+        .astype(pd.CategoricalDtype(categories=list(x_order), ordered=True))
+    )
+
+    # ---- legend groups + stable color mapping ----
+    if legend_col is None:
+        groups: list[str] = []
+        color_map: dict[str, str] = {}
+    else:
+        assert legend_df_col is not None
+        if not legend_order:
+            legend_order = list(pd.unique(df[legend_df_col].astype(str)))
+
+        present = set(df[legend_df_col].astype(str))
+
+        # enforce requested legend order
+        groups = [str(g) for g in legend_order if str(g) in present]
+
+        # include any stragglers at end
+        for g in pd.unique(df[legend_df_col].astype(str)):
+            gs = str(g)
+            if gs not in groups:
+                groups.append(gs)
+
+        base_colors = px.colors.qualitative.Plotly
+        color_map = {g: base_colors[i % len(base_colors)] for i, g in enumerate(groups)}
+
+    # ---- aggregate ----
+    group_cols = ["_x"]
+    if legend_col is not None:
+        group_cols.insert(0, legend_df_col)  # type: ignore[arg-type]
+
+    agg = (
+        df.groupby(group_cols, as_index=False)["value"]
+        .agg(mean="mean", sd="std")
+        .fillna({"sd": 0.0})
+        .sort_values(group_cols, kind="stable")
+    )
+
+    # Create a single plot (not subplots)
+    fig = go.Figure()
+
+    if legend_col is None:
+        # Single series (no legend grouping)
+        fig.add_trace(
+            go.Bar(
+                x=agg["_x"],
+                y=agg["mean"],
+                error_y=dict(type="data", array=agg["sd"], visible=True),
+                name="",
+                showlegend=False,
+                hovertemplate=f"{x_col}=%{{x}}<br>Mean=%{{y:.4f}}<extra></extra>",
+                marker=dict(line=dict(color="black", width=1.5)),
+            )
+        )
+
+        fig.add_trace(
+            go.Box(
+                x=df["_x"],
+                y=df["value"].to_numpy(float),
+                name="",
+                showlegend=False,
+                boxpoints="all",
+                jitter=0.35,
+                pointpos=0,
+                fillcolor="rgba(0,0,0,0)",
+                line=dict(width=0),
+                marker=dict(size=6, opacity=0.8),
+                text=(
+                    df["plate"].astype(str) + " " + df["well"].astype(str)
+                ).tolist(),
+                hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
+            )
+        )
+    else:
+        # One legend entry per group, in user-defined order, with stable colors
+        assert legend_df_col is not None
+
+        for g in groups:
+            a_g = agg[agg[legend_df_col].astype(str) == g]
+            p_g = df[df[legend_df_col].astype(str) == g]
+
+            fig.add_trace(
+                go.Bar(
+                    x=a_g["_x"],
+                    y=a_g["mean"],
+                    error_y=dict(type="data", array=a_g["sd"], visible=True),
+                    name=g,
+                    legendgroup=g,
+                    offsetgroup=g,
+                    showlegend=True,
+                    hovertemplate=(
+                        f"{legend_col}=%{{fullData.name}}<br>"
+                        f"{x_col}=%{{x}}<br>"
+                        "Mean=%{y:.4f}<extra></extra>"
+                    ),
+                    marker=dict(
+                        color=color_map[g],
+                        line=dict(color="black", width=1.5),
+                    ),
+                )
+            )
+
+            fig.add_trace(
+                go.Box(
+                    x=p_g["_x"],
+                    y=p_g["value"].to_numpy(float),
+                    name=g,
+                    legendgroup=g,
+                    offsetgroup=g,
+                    showlegend=False,
+                    boxpoints="all",
+                    jitter=0.35,
+                    pointpos=0,
+                    fillcolor="rgba(0,0,0,0)",
+                    line=dict(width=0),
+                    marker=dict(
+                        color="black",
+                        size=6,
+                        opacity=0.8,
+                    ),
+                    text=(
+                        p_g["plate"].astype(str) + " " + p_g["well"].astype(str)
+                    ).tolist(),
+                    hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
+                )
+            )
+
+    fig.update_xaxes(
+        showgrid=False,
+        type="category",
+        categoryorder="array",
+        categoryarray=list(x_order),
+        title_text=x_col,
+    )
+    fig.update_yaxes(showgrid=False, range=[0, None], title_text=metric)
+
+    fig.update_layout(
+        title=metric,
+        height=500,
+        margin=dict(t=60, b=60),
+        barmode="group",
+        boxmode="group",
+        legend_title_text=(legend_col if legend_col else ""),
+        showlegend=bool(legend_col),
+    )
+    return fig
+
+
 def plot_growth_stats(
     long_df: pd.DataFrame,
     *,

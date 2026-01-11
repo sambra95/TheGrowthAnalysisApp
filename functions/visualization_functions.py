@@ -7,6 +7,7 @@ from streamlit_sortables import sort_items
 
 from functions.plotting_functions import (
     plot_growth_stats,
+    plot_single_growth_stat,
     plot_mean_growth,
     plot_replicates_scatter,
 )
@@ -457,16 +458,29 @@ def ui_growth_summaries(plates: dict):
     # -----------------------------
     if apply_stats:
         long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
-        st.plotly_chart(
-            plot_growth_stats(
-                long_df,
-                x_col=x_col,
-                legend_col=legend_col,
-                x_order=x_ordered,
-                legend_order=legend_ordered,
-            ),
-            width='stretch',
-        )
+
+        # Display each metric as a separate downloadable plot
+        metrics = [
+            "Maximum U",
+            "Maximum OD600",
+            "lag_phase_end",
+            "exponential_phase_end",
+            "t_mu",
+            "y_mu",
+            "t_peak",
+        ]
+
+        for metric in metrics:
+            metric_df = long_df[long_df["metric"] == metric].copy()
+            if not metric_df.empty:
+                fig = plot_single_growth_stat(
+                    metric_df,
+                    x_col=x_col,
+                    legend_col=legend_col,
+                    x_order=x_ordered,
+                    legend_order=legend_ordered,
+                )
+                st.plotly_chart(fig, width='stretch', use_container_width=True)
 
     # Build the shared curves DF only if needed
     if apply_mean or apply_reps:
