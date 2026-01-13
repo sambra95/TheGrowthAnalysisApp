@@ -714,8 +714,12 @@ def add_window_well(
     add_window_line: bool = True,
 ):
     """
-    Draw a single well (points + optional phase shading + optional window line)
+    Draw a single well (points + optional phase shading + optional fit line/curve)
     onto an existing Plotly figure.
+
+    The fit visualization depends on the fit_method in growth stats:
+      - "Model Fitting (type)": Displays the fitted growth model curve
+      - "Sliding Window": Displays the linear maximum growth rate window
 
     Works for both:
       - go.Figure() (row/col None)
@@ -797,42 +801,111 @@ def add_window_well(
         **trace_kwargs,
     )
 
-    # ---- Window/gradient line ----
+    # ---- Window/gradient line or fitted model curve ----
     if add_window_line:
-        m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
-        t0 = gs.get("t_mu")
-        y0 = gs.get("y_mu")
-        t_win_start = gs.get("t_window_start")
-        t_win_end = gs.get("t_window_end")
+        # Check which fitting method was used
+        fit_method = gs.get("fit_method", "Sliding Window")
+        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
-        if (
-            t0 is not None
-            and y0 is not None
-            and t_win_start is not None
-            and t_win_end is not None
-            and np.isfinite(m)
-            and np.isfinite(t0)
-            and np.isfinite(y0)
-            and np.isfinite(t_win_start)
-            and np.isfinite(t_win_end)
-        ):
-            t0 = float(t0)
-            y0 = float(y0)
-            # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
-            b0 = y0 - m * t0
-            # Use the actual window boundaries
-            x0, x1 = float(t_win_start), float(t_win_end)
-            fig.add_trace(
-                go.Scatter(
-                    x=[x0, x1],
-                    y=[m * x0 + b0, m * x1 + b0],
-                    mode="lines",
-                    line=dict(width=2, color=line_color),
-                    hoverinfo="skip",
-                    showlegend=False,
-                ),
-                **trace_kwargs,
-            )
+        if is_model_fit:
+            # Draw fitted model curve for model-based fits
+            if "(" in fit_method and ")" in fit_method:
+                model_type = fit_method.split("(")[1].split(")")[0]
+
+                # Check if lasso selection was used to subset the data
+                lasso_t_min = gs.get("lasso_t_min")
+                lasso_t_max = gs.get("lasso_t_max")
+
+                # Determine which data to use for fitting
+                if lasso_t_min is not None and lasso_t_max is not None:
+                    # Use only the lasso-selected time range
+                    time_tolerance = 0.1
+                    mask = (t >= lasso_t_min - time_tolerance) & (
+                        t <= lasso_t_max + time_tolerance
+                    )
+                    fit_t = t[mask]
+                    fit_y = y[mask]
+                else:
+                    # Use all data
+                    fit_t = t
+                    fit_y = y
+
+                # Refit the model to get the fitted curve
+                fit_result = fit_growth_model(fit_t, fit_y, model_type=model_type)
+
+                if fit_result is not None:
+                    # Generate dense predictions for smooth curve
+                    t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+
+                    if fit_result["type"] == "spline":
+                        y_fit = fit_result["spline"](t_dense)
+                    else:
+                        model_func = fit_result["model"]
+                        params = fit_result["params"]
+                        if fit_result["type"] == "richards":
+                            y_fit = model_func(
+                                t_dense,
+                                params["A"],
+                                params["mu"],
+                                params["lag"],
+                                params["nu"],
+                            )
+                        else:
+                            y_fit = model_func(
+                                t_dense, params["A"], params["mu"], params["lag"]
+                            )
+
+                    # Add the fitted curve as a trace
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t_dense,
+                            y=y_fit,
+                            mode="lines",
+                            line=dict(width=2, color=line_color),
+                            hovertemplate=(
+                                f"Model: {model_type}<br>Time=%{{x:.2f}} h<br>"
+                                f"Fitted OD=%{{y:.4f}}<extra></extra>"
+                            ),
+                            showlegend=False,
+                        ),
+                        **trace_kwargs,
+                    )
+        else:
+            # Draw straight line for sliding window method
+            m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
+            t0 = gs.get("t_mu")
+            y0 = gs.get("y_mu")
+            t_win_start = gs.get("t_window_start")
+            t_win_end = gs.get("t_window_end")
+
+            if (
+                t0 is not None
+                and y0 is not None
+                and t_win_start is not None
+                and t_win_end is not None
+                and np.isfinite(m)
+                and np.isfinite(t0)
+                and np.isfinite(y0)
+                and np.isfinite(t_win_start)
+                and np.isfinite(t_win_end)
+            ):
+                t0 = float(t0)
+                y0 = float(y0)
+                # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
+                b0 = y0 - m * t0
+                # Use the actual window boundaries
+                x0, x1 = float(t_win_start), float(t_win_end)
+                fig.add_trace(
+                    go.Scatter(
+                        x=[x0, x1],
+                        y=[m * x0 + b0, m * x1 + b0],
+                        mode="lines",
+                        line=dict(width=2, color=line_color),
+                        hoverinfo="skip",
+                        showlegend=False,
+                    ),
+                    **trace_kwargs,
+                )
 
 
 @st.cache_data(show_spinner=False)
@@ -1088,6 +1161,12 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                     y1=m * x1 + b0,
                     line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
                 )
+
+    # Constrain axes to the actual data range (prevents infinite lines from extending axes)
+    # Add small margin for y-axis for better visualization
+    y_range = y.max() - y.min()
+    fig.update_xaxes(range=[tmin, tmax])
+    fig.update_yaxes(range=[y.min() - 0.05 * y_range, y.max() + 0.05 * y_range])
 
     return fig
 

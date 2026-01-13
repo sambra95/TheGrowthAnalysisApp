@@ -580,21 +580,21 @@ def ui_window_fits_well_editor(plates: dict):
     growth_stats = plate.get("growth_stats") or {}
     gs = growth_stats.get(well) or {}
 
-    # Display growth stats table
-    st.subheader(f"Growth Statistics for Well {well}")
-    stats_df = _format_growth_stats_table(gs)
-    # Use a key based on growth stats values to force update when they change
-    # Include all key metrics that change during lasso selection
-    table_key = (
-        f"stats_table_{plate_id}_{well}_"
-        f"{gs.get('Maximum U', 0)}_"
-        f"{gs.get('Maximum OD600', 0)}_"
-        f"{gs.get('lag_phase_end', 0)}_"
-        f"{gs.get('exponential_phase_end', 0)}_"
-        f"{gs.get('rmse', 0)}_"
-        f"{gs.get('_lasso_update_time', '')}"
-    )
-    st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
+    # Display growth stats table in an expander
+    with st.expander(f"Growth Statistics for Well {well}"):
+        stats_df = _format_growth_stats_table(gs)
+        # Use a key based on growth stats values to force update when they change
+        # Include all key metrics that change during lasso selection
+        table_key = (
+            f"stats_table_{plate_id}_{well}_"
+            f"{gs.get('Maximum U', 0)}_"
+            f"{gs.get('Maximum OD600', 0)}_"
+            f"{gs.get('lag_phase_end', 0)}_"
+            f"{gs.get('exponential_phase_end', 0)}_"
+            f"{gs.get('rmse', 0)}_"
+            f"{gs.get('_lasso_update_time', '')}"
+        )
+        st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
 
     st.divider()
 
