@@ -11,6 +11,8 @@ from functions.data_processing import (
     _read_table,
     calculate_growth_descriptors,
     calculate_growth_descriptors_model_based,
+    extract_growth_descriptors_from_model,
+    fit_growth_model,
 )
 from functions.plotting_functions import (
     _vlines,
@@ -132,6 +134,7 @@ def update_growth_stats_from_lasso(
 
         if refit_t.size < 5:
             # Not enough points for model fitting, fall back to linear fit of selected points
+            # But preserve phase boundaries from original fit - don't set them to selection bounds
             m, b = np.polyfit(xs, ys, deg=1)
             t_mu = float(xs.mean())
             y_mu = float(m * t_mu + b)
@@ -141,9 +144,10 @@ def update_growth_stats_from_lasso(
             gs["y_mu"] = y_mu
             gs["t_window_start"] = float(xs.min())
             gs["t_window_end"] = float(xs.max())
-            gs["Maximum OD600"] = float(ys.max())
-            gs["lag_phase_end"] = float(xs.min())
-            gs["exponential_phase_end"] = float(xs.max())
+            # For Maximum OD600, use max from entire curve, not just selected points
+            gs["Maximum OD600"] = float(all_y.max())
+            # Preserve original phase boundaries - don't overwrite with selection bounds
+            # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -154,24 +158,29 @@ def update_growth_stats_from_lasso(
 
         # Refit the model to selected points only
         try:
-            fit_result = calculate_growth_descriptors_model_based(
-                refit_t,
-                refit_y,
-                model_type=model_type,
-                lag_frac=float(params.get("lag_frac", 0.20)),
-                min_data_points=2,  # Allow fitting with fewer points for lasso selection
-                min_signal_to_noise=0.1,  # Relax threshold for lasso selection
+            # Fit model to selected points
+            fit_result = fit_growth_model(refit_t, refit_y, model_type=model_type)
+
+            if fit_result is None:
+                raise ValueError("Model fit failed")
+
+            # Extract growth descriptors using the FULL time range for phase boundary calculation
+            # This ensures phase boundaries can extend beyond the selected region
+            descriptors = extract_growth_descriptors_from_model(
+                fit_result,
+                all_t,  # Use full time range, not just selected range
+                frac_peak=float(params.get("lag_frac", 0.20))
             )
 
             # Update growth stats with refit results
-            gs["Maximum U"] = fit_result["Maximum U"]
-            gs["t_mu"] = fit_result["t_mu"]
-            gs["y_mu"] = fit_result["y_mu"]
-            gs["t_window_start"] = fit_result["t_window_start"]
-            gs["t_window_end"] = fit_result["t_window_end"]
-            gs["lag_phase_end"] = fit_result["lag_phase_end"]
-            gs["exponential_phase_end"] = fit_result["exponential_phase_end"]
-            gs["Maximum OD600"] = fit_result["Maximum OD600"]
+            gs["Maximum U"] = descriptors["Maximum U"]
+            gs["t_mu"] = descriptors["t_mu"]
+            gs["y_mu"] = descriptors["y_mu"]
+            gs["t_window_start"] = descriptors["t_window_start"]
+            gs["t_window_end"] = descriptors["t_window_end"]
+            gs["lag_phase_end"] = descriptors["lag_phase_end"]
+            gs["exponential_phase_end"] = descriptors["exponential_phase_end"]
+            gs["Maximum OD600"] = descriptors["Maximum OD600"]
             # Store the selected time range for plotting the refitted model curve
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -179,6 +188,7 @@ def update_growth_stats_from_lasso(
 
         except Exception:
             # If model fitting fails, fall back to linear fit
+            # But preserve phase boundaries from original fit - don't set them to selection bounds
             m, b = np.polyfit(xs, ys, deg=1)
             t_mu = float(xs.mean())
             y_mu = float(m * t_mu + b)
@@ -188,9 +198,10 @@ def update_growth_stats_from_lasso(
             gs["y_mu"] = y_mu
             gs["t_window_start"] = float(xs.min())
             gs["t_window_end"] = float(xs.max())
-            gs["Maximum OD600"] = float(ys.max())
-            gs["lag_phase_end"] = float(xs.min())
-            gs["exponential_phase_end"] = float(xs.max())
+            # For Maximum OD600, use max from entire curve, not just selected points
+            gs["Maximum OD600"] = float(all_y.max())
+            # Preserve original phase boundaries - don't overwrite with selection bounds
+            # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
