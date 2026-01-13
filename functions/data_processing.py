@@ -420,7 +420,7 @@ def calculate_growth_descriptors(
 
     # calculate the growth rate (use raw data for fit, like manual lasso selection)
     w = min(w, t.size)
-    best_m, best = -np.inf, (np.nan, np.nan, np.nan, np.nan)  # (t_mu, y_mu, t_start, t_end)
+    best_m, best = -np.inf, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)  # (t_mu, y_mu, t_start, t_end, slope, intercept)
     for i in range(t.size - w + 1):
         tw, yw = t[i : i + w], y[i : i + w]  # use raw y, not smoothed y_s
         if np.ptp(tw) <= 0:
@@ -429,13 +429,25 @@ def calculate_growth_descriptors(
         t_mu = float(tw.mean())
         if m_i > best_m:
             best_m = float(m_i)
-            best = (t_mu, float(best_m * t_mu + b_i), float(tw[0]), float(tw[-1]))
+            best = (t_mu, float(best_m * t_mu + b_i), float(tw[0]), float(tw[-1]), float(m_i), float(b_i))
 
-    t_mu, y_mu, t_window_start, t_window_end = best
+    t_mu, y_mu, t_window_start, t_window_end, slope, intercept = best
     if not np.isfinite(best_m) or best_m <= 0:
         out = BAD_FIT.copy()
         out.update({"Maximum OD600": A})
         return out
+
+    # Calculate RMSE for the sliding window fit
+    # Extract the data points that fall within the best window
+    window_mask = (t >= t_window_start) & (t <= t_window_end)
+    t_window = t[window_mask]
+    y_window = y[window_mask]
+
+    # Calculate predicted values using the linear fit
+    y_pred_window = slope * t_window + intercept
+
+    # Calculate RMSE
+    rmse = calculate_rmse(y_window, y_pred_window)
 
     # calculate exponential phase start and end
     lag_end, exp_end = calculate_phase_ends(t, y_s, frac_peak=lag_frac)
@@ -450,7 +462,7 @@ def calculate_growth_descriptors(
         "t_window_start": float(t_window_start),
         "t_window_end": float(t_window_end),
         "fit_method": "Sliding Window",
-        "rmse": np.nan,  # RMSE not applicable for sliding window method
+        "rmse": rmse,
     }
 
     return out

@@ -1548,7 +1548,7 @@ def plot_rmse_heatmap(plate: dict):
     Plot a 96-well plate heatmap of RMSE values.
 
     The heatmap is centered on 0 (green) with red indicating higher RMSE values.
-    Only applicable for model-based fits.
+    Applicable for both sliding window and model-based fits.
 
     Args:
         plate: Plate dictionary containing growth_stats
@@ -1575,11 +1575,6 @@ def plot_rmse_heatmap(plate: dict):
             well = f"{row}{col}"
             gs = growth_stats.get(well, {})
             rmse = gs.get("rmse", np.nan)
-
-            # Only show RMSE for model-based fits (not sliding window)
-            fit_method = gs.get("fit_method", "")
-            if fit_method and "Model Fitting" not in str(fit_method):
-                rmse = np.nan
 
             rmse_row.append(rmse if pd.notna(rmse) else np.nan)
             hover_row.append(
@@ -1630,7 +1625,7 @@ def plot_rmse_heatmap(plate: dict):
     )
 
     fig.update_layout(
-        title="RMSE Heatmap (Model Fitting Only)",
+        title="Model Fit Quality (RMSE)",
         xaxis=dict(
             visible=False,  # Hide x-axis
         ),

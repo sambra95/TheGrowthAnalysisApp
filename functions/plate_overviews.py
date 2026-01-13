@@ -43,14 +43,9 @@ def ui_window_fits_plate_overview(plates: dict):
         width='stretch',
     )
 
-    # Show RMSE heatmap if using model-based fitting
+    # Show RMSE heatmap if growth stats are available
     growth_stats = plate.get("growth_stats", {})
-    has_model_fits = any(
-        gs.get("fit_method") and "Model Fitting" in str(gs.get("fit_method", ""))
-        for gs in growth_stats.values()
-    )
-
-    if has_model_fits:
+    if growth_stats:
         st.subheader("Model Fit Quality (RMSE)")
         st.plotly_chart(
             plot_rmse_heatmap(plate),

@@ -224,11 +224,16 @@ def update_growth_stats_from_lasso(
         t_mu = float(xs.mean())
         y_mu = float(m * t_mu + b)
 
+        # Calculate RMSE for the linear fit on selected points
+        y_pred_linear = m * xs + b
+        rmse = calculate_rmse(ys, y_pred_linear)
+
         gs["Maximum U"] = float(m)
         gs["t_mu"] = t_mu
         gs["y_mu"] = y_mu
         gs["t_window_start"] = float(xs.min())
         gs["t_window_end"] = float(xs.max())
+        gs["rmse"] = rmse
         # Note: Maximum OD600, lag_phase_end, and exponential_phase_end are preserved
         # from the original analysis as they are not recalculated from lasso selection
         # in sliding window mode (only the growth rate window is updated)
