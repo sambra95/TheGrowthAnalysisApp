@@ -10,9 +10,12 @@ from functions.data_processing import (
     _plate_name_map,
     _read_table,
     calculate_growth_descriptors,
+    calculate_growth_descriptors_model_based,
 )
 from functions.plotting_functions import (
     _vlines,
+    is_bad_fit,
+    plot_model_fit_single,
     plot_window_single,
     plot_window_single_d1,
     plot_window_single_d2,
@@ -84,21 +87,127 @@ def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
 def update_growth_stats_from_lasso(
     plates: dict, pid: str, well: str, chart_key: str
 ) -> None:
-    """Fit y = m x + b to lasso points and write into growth_stats."""
+    """
+    Update growth stats based on lasso-selected points.
+
+    For Sliding Window: Fit y = m x + b to selected points
+    For Model Fitting: Refit the selected model to selected points only
+    """
     xs, ys = _get_selected_points(st.session_state.get(chart_key))
     if xs.size < 2:
         return
 
-    m, b = np.polyfit(xs, ys, deg=1)
-    t_mu = float(xs.mean())
-    y_mu = float(m * t_mu + b)
-
+    plate = plates.get(pid, {})
     gs = plates.setdefault(pid, {}).setdefault("growth_stats", {}).setdefault(well, {})
-    gs["Maximum U"] = float(m)
-    gs["t_mu"] = t_mu
-    gs["y_mu"] = y_mu
-    gs["t_window_start"] = float(xs.min())
-    gs["t_window_end"] = float(xs.max())
+
+    # Store a timestamp to force UI update
+    import time
+    gs["_lasso_update_time"] = time.time()
+
+    # Check which method was used
+    fit_method = gs.get("fit_method", "Sliding Window")
+    is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+
+    if is_model_fit:
+        # Extract model type from fit_method string
+        model_type = "logistic"  # default
+        if "(" in fit_method and ")" in fit_method:
+            model_type = fit_method.split("(")[1].split(")")[0]
+
+        # Get all data points for the well
+        processed = plate.get("processed_data", {}).get(well)
+        if processed is None or processed.empty:
+            return
+
+        all_t = processed["Time"].to_numpy(float)
+        all_y = processed["baseline_corrected"].to_numpy(float)
+
+        # Filter to only the selected time range (with some tolerance)
+        selected_t_min, selected_t_max = xs.min(), xs.max()
+        time_tolerance = 0.1  # Allow 0.1 hour tolerance for point matching
+        mask = (all_t >= selected_t_min - time_tolerance) & (all_t <= selected_t_max + time_tolerance)
+
+        refit_t = all_t[mask]
+        refit_y = all_y[mask]
+
+        if refit_t.size < 5:
+            # Not enough points for model fitting, fall back to linear fit of selected points
+            m, b = np.polyfit(xs, ys, deg=1)
+            t_mu = float(xs.mean())
+            y_mu = float(m * t_mu + b)
+
+            gs["Maximum U"] = float(m)
+            gs["t_mu"] = t_mu
+            gs["y_mu"] = y_mu
+            gs["t_window_start"] = float(xs.min())
+            gs["t_window_end"] = float(xs.max())
+            gs["Maximum OD600"] = float(ys.max())
+            gs["lag_phase_end"] = float(xs.min())
+            gs["exponential_phase_end"] = float(xs.max())
+            # Store the selected time range even for linear fallback
+            gs["lasso_t_min"] = float(selected_t_min)
+            gs["lasso_t_max"] = float(selected_t_max)
+            return
+
+        # Get plate params for quality thresholds
+        params = plate.get("params", {})
+
+        # Refit the model to selected points only
+        try:
+            fit_result = calculate_growth_descriptors_model_based(
+                refit_t,
+                refit_y,
+                model_type=model_type,
+                lag_frac=float(params.get("lag_frac", 0.20)),
+                min_data_points=2,  # Allow fitting with fewer points for lasso selection
+                min_signal_to_noise=0.1,  # Relax threshold for lasso selection
+            )
+
+            # Update growth stats with refit results
+            gs["Maximum U"] = fit_result["Maximum U"]
+            gs["t_mu"] = fit_result["t_mu"]
+            gs["y_mu"] = fit_result["y_mu"]
+            gs["t_window_start"] = fit_result["t_window_start"]
+            gs["t_window_end"] = fit_result["t_window_end"]
+            gs["lag_phase_end"] = fit_result["lag_phase_end"]
+            gs["exponential_phase_end"] = fit_result["exponential_phase_end"]
+            gs["Maximum OD600"] = fit_result["Maximum OD600"]
+            # Store the selected time range for plotting the refitted model curve
+            gs["lasso_t_min"] = float(selected_t_min)
+            gs["lasso_t_max"] = float(selected_t_max)
+            # Keep the same fit_method
+
+        except Exception:
+            # If model fitting fails, fall back to linear fit
+            m, b = np.polyfit(xs, ys, deg=1)
+            t_mu = float(xs.mean())
+            y_mu = float(m * t_mu + b)
+
+            gs["Maximum U"] = float(m)
+            gs["t_mu"] = t_mu
+            gs["y_mu"] = y_mu
+            gs["t_window_start"] = float(xs.min())
+            gs["t_window_end"] = float(xs.max())
+            gs["Maximum OD600"] = float(ys.max())
+            gs["lag_phase_end"] = float(xs.min())
+            gs["exponential_phase_end"] = float(xs.max())
+            # Store the selected time range even for linear fallback
+            gs["lasso_t_min"] = float(selected_t_min)
+            gs["lasso_t_max"] = float(selected_t_max)
+    else:
+        # Sliding Window method: use linear fit
+        m, b = np.polyfit(xs, ys, deg=1)
+        t_mu = float(xs.mean())
+        y_mu = float(m * t_mu + b)
+
+        gs["Maximum U"] = float(m)
+        gs["t_mu"] = t_mu
+        gs["y_mu"] = y_mu
+        gs["t_window_start"] = float(xs.min())
+        gs["t_window_end"] = float(xs.max())
+        # Note: Maximum OD600, lag_phase_end, and exponential_phase_end are preserved
+        # from the original analysis as they are not recalculated from lasso selection
+        # in sliding window mode (only the growth rate window is updated)
 
 
 # ---------------- Data helpers ----------------
@@ -164,20 +273,62 @@ def analyse_well(record: dict, well: str) -> dict:
     processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
     try:
-        fit = calculate_growth_descriptors(
-            processed["Time"].to_numpy(float),
-            processed["baseline_corrected"].to_numpy(float),
-            int(p["window_points"]),
-            sg_window=int(p.get("sg_window", 11)),
-            sg_poly=int(p.get("sg_poly", 2)),
-            lag_frac=float(p.get("lag_frac", 0.20)),
-            min_data_points=int(p.get("min_data_points", 5)),
-            min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
-        )
+        # Check which method to use
+        growth_method = p.get("growth_method", "Sliding Window")
+        if growth_method == "Model Fitting":
+            fit = calculate_growth_descriptors_model_based(
+                processed["Time"].to_numpy(float),
+                processed["baseline_corrected"].to_numpy(float),
+                model_type=p.get("model_type", "logistic"),
+                lag_frac=float(p.get("lag_frac", 0.20)),
+                min_data_points=int(p.get("min_data_points", 5)),
+                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+            )
+        else:
+            fit = calculate_growth_descriptors(
+                processed["Time"].to_numpy(float),
+                processed["baseline_corrected"].to_numpy(float),
+                int(p["window_points"]),
+                sg_window=int(p.get("sg_window", 11)),
+                sg_poly=int(p.get("sg_poly", 2)),
+                lag_frac=float(p.get("lag_frac", 0.20)),
+                min_data_points=int(p.get("min_data_points", 5)),
+                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+            )
     except Exception:
         fit = BAD_FIT.copy()
 
     return fit
+
+
+def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
+    """Format growth stats into a displayable table."""
+    if not gs or is_bad_fit(gs):
+        return pd.DataFrame({"Metric": ["No growth detected"], "Value": ["--"]})
+
+    # Define metrics to display with nice labels and formatting
+    metrics = [
+        ("fit_method", "Fit Method", lambda x: str(x) if x else "Sliding Window"),
+        ("Maximum OD600", "Maximum OD600", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("Maximum U", "Maximum Growth Rate (1/h)", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("t_mu", "Time at Max Growth (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("y_mu", "OD600 at Max Growth", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("lag_phase_end", "Lag Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("exponential_phase_end", "Exponential Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("t_window_start", "Analysis Window Start (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("t_window_end", "Analysis Window End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+    ]
+
+    rows = []
+    for key, label, formatter in metrics:
+        value = gs.get(key)
+        try:
+            formatted_value = formatter(value) if value is not None else "--"
+        except (ValueError, TypeError):
+            formatted_value = "--"
+        rows.append({"Metric": label, "Value": formatted_value})
+
+    return pd.DataFrame(rows)
 
 
 def _phase_controls(plate: dict, well: str, *, key: str):
@@ -303,6 +454,12 @@ def _cached_window_single(processed_data: dict, well: str):
     return plot_window_single(processed_data, well)
 
 
+@st.cache_data(show_spinner=False)
+def _cached_model_fit_single(processed_data: dict, growth_stats: dict, well: str, version_key: str = ""):
+    """Cache the model fit plot to avoid recomputation on reruns. version_key busts cache when growth stats change."""
+    return plot_model_fit_single(processed_data, growth_stats, well)
+
+
 @st.fragment
 def ui_window_fits_well_editor(plates: dict):
     """Render the well editor UI for interactive window fit adjustments."""
@@ -381,15 +538,42 @@ def ui_window_fits_well_editor(plates: dict):
 
     sg_w, sg_p, _ = _sg_params_for_plate(plates, plate_id)
     processed = plate.get("processed_data") or {}
-    gs = (plate.get("growth_stats") or {}).get(well) or {}
+    growth_stats = plate.get("growth_stats") or {}
+    gs = growth_stats.get(well) or {}
 
-    fig_d1 = plot_window_single_d1(
-        plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20
+    # Display growth stats table
+    st.subheader(f"Growth Statistics for Well {well}")
+    stats_df = _format_growth_stats_table(gs)
+    # Use a key based on growth stats values to force update when they change
+    # Include all key metrics that change during lasso selection
+    table_key = (
+        f"stats_table_{plate_id}_{well}_"
+        f"{gs.get('Maximum U', 0)}_"
+        f"{gs.get('Maximum OD600', 0)}_"
+        f"{gs.get('lag_phase_end', 0)}_"
+        f"{gs.get('exponential_phase_end', 0)}_"
+        f"{gs.get('_lasso_update_time', '')}"
     )
-    fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p)
+    st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
+
+    st.divider()
+
+    # Check which fitting method was used
+    fit_method = gs.get("fit_method", "Sliding Window")
+    is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
-    fig_main = go.Figure(_cached_window_single(processed, well))
+
+    # Use appropriate plotting function based on fit method
+    # For model fits, we need to regenerate the plot to show updated fits after lasso selection
+    # Use a version key based on critical growth stats to bust cache when they change
+    if is_model_fit:
+        # Create a version string from the growth stats to trigger cache updates
+        version_key = f"{gs.get('Maximum U', 0)}_{gs.get('t_mu', 0)}_{gs.get('y_mu', 0)}_{gs.get('lasso_t_min', '')}_{gs.get('lasso_t_max', '')}"
+        fig_main = go.Figure(_cached_model_fit_single(processed, growth_stats, well, version_key))
+    else:
+        fig_main = go.Figure(_cached_window_single(processed, well))
+
     fig_main = _vlines(
         fig_main, processed, well, lag_end, exp_end, gs=gs
     )
@@ -403,5 +587,14 @@ def ui_window_fits_well_editor(plates: dict):
         ),
         width='stretch',
     )
-    st.plotly_chart(fig_d1, width='stretch')
-    st.plotly_chart(fig_d2, width='stretch')
+
+    # Only show derivative plots for sliding window method
+    if not is_model_fit:
+        fig_d1 = plot_window_single_d1(
+            plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20
+        )
+        fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p)
+        st.plotly_chart(fig_d1, width='stretch')
+        st.plotly_chart(fig_d2, width='stretch')
+    else:
+        st.info(f"Growth descriptors calculated using {fit_method}. Derivative plots are only available for Sliding Window method.")

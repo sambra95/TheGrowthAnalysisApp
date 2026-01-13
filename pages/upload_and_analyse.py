@@ -25,6 +25,8 @@ DEFAULT_PARAMS = dict(
     sg_poly=2,
     min_data_points=5,
     min_signal_to_noise=5.0,
+    growth_method="Sliding Window",
+    model_type="logistic",
 )
 
 
@@ -329,14 +331,133 @@ with st.container(border=True):
         # Preserve the False sentinel behavior used elsewhere.
         remove_wells = remove_wells if remove_wells else False
 
-        window_points = st.number_input(
-            "Window size for maximum growth rate (points)",
-            5,
-            200,
-            int(params0["window_points"]),
-            1,
-            help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+        st.write("")
+        st.markdown("**Growth Descriptor Calculation Method**")
+
+        growth_method = st.selectbox(
+            "Method",
+            options=["Sliding Window", "Model Fitting"],
+            index=0 if params0.get("growth_method", "Sliding Window") == "Sliding Window" else 1,
+            help="Choose how to calculate growth descriptors: Sliding Window uses linear fits over a moving window, Model Fitting fits parametric growth curves",
         )
+
+        if growth_method == "Sliding Window":
+            window_points = st.number_input(
+                "Window size for maximum growth rate (points)",
+                5,
+                200,
+                int(params0["window_points"]),
+                1,
+                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+            )
+            model_type = params0.get("model_type", "logistic")
+        else:
+            # Model Fitting selected
+            model_col, help_col = st.columns([0.85, 0.15])
+            with model_col:
+                model_type = st.selectbox(
+                    "Growth model",
+                    options=["logistic", "gompertz", "richards", "spline"],
+                    index=["logistic", "gompertz", "richards", "spline"].index(
+                        params0.get("model_type", "logistic")
+                    ),
+                    help="Parametric model to fit to the growth curve (logistic, gompertz, richards) or spline for non-parametric smoothing",
+                )
+            with help_col:
+                with st.popover("ℹ️ Models", use_container_width=True):
+                    st.markdown("### Growth Model Explanations")
+
+                    # Generate example curves for visualization
+                    import numpy as np
+                    import plotly.graph_objects as go
+
+                    t = np.linspace(0, 48, 200)
+
+                    # Logistic model
+                    st.markdown("#### Logistic")
+                    st.latex(r"y(t) = \frac{A}{1 + e^{-\mu(t - \lambda)}}")
+                    st.markdown("""
+                    **Parameters:** A (max OD), μ (growth rate), λ (lag time)
+
+                    **Description:** Classic S-shaped curve with symmetric inflection point.
+                    Most commonly used for microbial growth. Assumes constant growth rate
+                    during exponential phase.
+                    """)
+                    y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
+                    fig_log = go.Figure()
+                    fig_log.add_trace(go.Scatter(x=t, y=y_logistic, mode='lines',
+                                                  line=dict(color='blue', width=2)))
+                    fig_log.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
+                                         xaxis_title="Time (h)", yaxis_title="OD600",
+                                         showlegend=False)
+                    st.plotly_chart(fig_log, use_container_width=True)
+
+                    st.divider()
+
+                    # Gompertz model
+                    st.markdown("#### Gompertz")
+                    st.latex(r"y(t) = A \cdot e^{-e^{-\mu(t - \lambda)}}")
+                    st.markdown("""
+                    **Parameters:** A (max OD), μ (growth rate), λ (lag time)
+
+                    **Description:** Asymmetric S-shaped curve with slower approach to
+                    stationary phase. Often fits bacterial growth better than logistic,
+                    especially when deceleration phase is gradual.
+                    """)
+                    y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
+                    fig_gom = go.Figure()
+                    fig_gom.add_trace(go.Scatter(x=t, y=y_gompertz, mode='lines',
+                                                  line=dict(color='green', width=2)))
+                    fig_gom.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
+                                         xaxis_title="Time (h)", yaxis_title="OD600",
+                                         showlegend=False)
+                    st.plotly_chart(fig_gom, use_container_width=True)
+
+                    st.divider()
+
+                    # Richards model
+                    st.markdown("#### Richards")
+                    st.latex(r"y(t) = \frac{A}{(1 + \nu \cdot e^{-\mu(t - \lambda)})^{1/\nu}}")
+                    st.markdown("""
+                    **Parameters:** A (max OD), μ (growth rate), λ (lag time), ν (shape)
+
+                    **Description:** Generalized logistic with additional shape parameter.
+                    Most flexible - can produce symmetric (ν=1, logistic-like) or
+                    asymmetric curves. Use when other models don't fit well.
+                    """)
+                    nu = 2.0
+                    y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
+                    fig_ric = go.Figure()
+                    fig_ric.add_trace(go.Scatter(x=t, y=y_richards, mode='lines',
+                                                  line=dict(color='orange', width=2)))
+                    fig_ric.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
+                                         xaxis_title="Time (h)", yaxis_title="OD600",
+                                         showlegend=False)
+                    st.plotly_chart(fig_ric, use_container_width=True)
+
+                    st.divider()
+
+                    # Spline
+                    st.markdown("#### Spline")
+                    st.markdown("""
+                    **Parameters:** Smoothing parameter (auto-tuned)
+
+                    **Description:** Non-parametric smoothing spline. Does not assume
+                    any specific growth model - fits flexible curve through data points.
+                    Use when data doesn't follow standard growth patterns or has
+                    unusual features (diauxic growth, etc.).
+                    """)
+                    # Simulate spline-like curve with some variation
+                    y_spline = 1.0 / (1 + np.exp(-0.15 * (t - 24))) + 0.05 * np.sin(t / 3)
+                    fig_spl = go.Figure()
+                    fig_spl.add_trace(go.Scatter(x=t, y=y_spline, mode='lines',
+                                                  line=dict(color='purple', width=2)))
+                    fig_spl.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
+                                         xaxis_title="Time (h)", yaxis_title="OD600",
+                                         showlegend=False)
+                    st.plotly_chart(fig_spl, use_container_width=True)
+
+            window_points = int(params0["window_points"])
 
         st.write("")
         st.markdown("**'No Growth' Thresholds**")
@@ -373,6 +494,8 @@ with st.container(border=True):
             sg_poly=int(params0.get("sg_poly", 2)),
             min_data_points=int(min_data_points),
             min_signal_to_noise=float(min_signal_to_noise),
+            growth_method=str(growth_method),
+            model_type=str(model_type),
         )
 
         # Preview grid.

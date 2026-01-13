@@ -5,6 +5,7 @@ import io
 import numpy as np
 import pandas as pd
 import streamlit as st
+from scipy.interpolate import UnivariateSpline
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
@@ -22,6 +23,7 @@ BAD_FIT = {
     "y_mu": np.nan,
     "t_window_start": np.nan,
     "t_window_end": np.nan,
+    "fit_method": None,
 }
 
 
@@ -130,6 +132,205 @@ def calculate_phase_ends(t, y_s, frac_peak=0.10):
     return lag_end, max(exp_end, lag_end)
 
 
+# ---------- Growth curve models ----------
+def logistic_model(t, A, mu, lag):
+    """Logistic growth model: y(t) = A / (1 + exp(-mu * (t - lag)))"""
+    return A / (1 + np.exp(-mu * (t - lag)))
+
+
+def gompertz_model(t, A, mu, lag):
+    """Gompertz growth model: y(t) = A * exp(-exp(-mu * (t - lag)))"""
+    return A * np.exp(-np.exp(-mu * (t - lag)))
+
+
+def richards_model(t, A, mu, lag, nu):
+    """Richards growth model (generalized logistic with shape parameter nu)"""
+    return A / (1 + nu * np.exp(-mu * (t - lag))) ** (1 / nu)
+
+
+@st.cache_data
+def fit_growth_model(t, y, model_type="logistic"):
+    """
+    Fit a parametric growth model to data.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+        model_type: One of "logistic", "gompertz", "richards", "spline"
+
+    Returns:
+        Dictionary with fitted parameters and model info, or None if fit fails
+    """
+    t, y = _as_float(t), _as_float(y)
+    m = np.isfinite(t) & np.isfinite(y)
+    t, y = t[m], y[m]
+
+    if t.size < 10 or np.ptp(t) <= 0:
+        return None
+
+    if model_type == "spline":
+        # Fit a smoothing spline
+        try:
+            # Use adaptive smoothing based on data size
+            s = max(0.01 * t.size, 1.0)
+            spline = UnivariateSpline(t, y, s=s, k=3)
+            return {"type": "spline", "spline": spline, "t": t, "y": y}
+        except Exception:
+            return None
+
+    # Parametric models
+    A_init = float(np.nanmax(y))
+    lag_init = float(t[np.argmax(np.gradient(y, t))])
+    mu_init = 0.5
+
+    if model_type == "logistic":
+        model_func = logistic_model
+        p0 = [A_init, mu_init, lag_init]
+        bounds = ([0, 0, float(t.min())], [np.inf, 10, float(t.max())])
+        param_names = ["A", "mu", "lag"]
+    elif model_type == "gompertz":
+        model_func = gompertz_model
+        p0 = [A_init, mu_init, lag_init]
+        bounds = ([0, 0, float(t.min())], [np.inf, 10, float(t.max())])
+        param_names = ["A", "mu", "lag"]
+    elif model_type == "richards":
+        model_func = richards_model
+        p0 = [A_init, mu_init, lag_init, 1.0]
+        bounds = ([0, 0, float(t.min()), 0.01], [np.inf, 10, float(t.max()), 100])
+        param_names = ["A", "mu", "lag", "nu"]
+    else:
+        return None
+
+    try:
+        params, _ = curve_fit(model_func, t, y, p0=p0, bounds=bounds, maxfev=20000)
+        return {
+            "type": model_type,
+            "model": model_func,
+            "params": {name: float(val) for name, val in zip(param_names, params)},
+            "t": t,
+            "y": y,
+        }
+    except Exception:
+        return None
+
+
+def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10):
+    """
+    Extract growth descriptors from a fitted growth model.
+
+    Args:
+        fit_result: Dictionary returned by fit_growth_model
+        t_data: Original time array for generating dense predictions
+        frac_peak: Fraction of peak growth rate for phase boundary detection
+
+    Returns:
+        Dictionary with growth descriptors (same format as calculate_growth_descriptors)
+    """
+    if fit_result is None:
+        return BAD_FIT.copy()
+
+    t_dense = np.linspace(float(t_data.min()), float(t_data.max()), 500)
+
+    # Generate predictions
+    if fit_result["type"] == "spline":
+        y_pred = fit_result["spline"](t_dense)
+        dy_pred = fit_result["spline"].derivative()(t_dense)
+    else:
+        model_func = fit_result["model"]
+        params = fit_result["params"]
+        if fit_result["type"] == "richards":
+            y_pred = model_func(t_dense, params["A"], params["mu"], params["lag"], params["nu"])
+        else:
+            y_pred = model_func(t_dense, params["A"], params["mu"], params["lag"])
+        dy_pred = np.gradient(y_pred, t_dense)
+
+    # Maximum OD600
+    max_od_idx = np.nanargmax(y_pred)
+    max_od = float(y_pred[max_od_idx])
+
+    # Maximum growth rate (U) and its location
+    max_u_idx = np.nanargmax(dy_pred)
+    max_u = float(dy_pred[max_u_idx])
+    t_mu = float(t_dense[max_u_idx])
+    y_mu = float(y_pred[max_u_idx])
+
+    if max_u <= 0:
+        out = BAD_FIT.copy()
+        out["Maximum OD600"] = max_od
+        return out
+
+    # Calculate phase boundaries using derivative threshold
+    peak_dy = dy_pred[max_u_idx]
+    threshold = frac_peak * peak_dy
+
+    # Lag phase end: first time derivative exceeds threshold
+    lag_idx = np.where(dy_pred >= threshold)[0]
+    lag_end = float(t_dense[lag_idx[0]]) if lag_idx.size else float(t_dense[0])
+
+    # Exponential phase end: first time after peak where derivative drops below threshold
+    exp_idx = np.where((dy_pred <= threshold) & (np.arange(t_dense.size) > max_u_idx))[0]
+    exp_end = float(t_dense[exp_idx[0]]) if exp_idx.size else float(t_dense[-1])
+
+    # For model-based fits, window start/end represent the confidence region around max growth
+    # Use a narrow window around the inflection point
+    window_half = 0.1 * (t_dense[-1] - t_dense[0])  # 10% of time range
+    t_window_start = max(float(t_mu - window_half), float(t_dense[0]))
+    t_window_end = min(float(t_mu + window_half), float(t_dense[-1]))
+
+    return {
+        "Maximum OD600": max_od,
+        "Maximum U": max_u,
+        "lag_phase_end": lag_end,
+        "exponential_phase_end": max(exp_end, lag_end),
+        "t_mu": t_mu,
+        "y_mu": y_mu,
+        "t_window_start": t_window_start,
+        "t_window_end": t_window_end,
+        "fit_method": f"Model Fitting ({fit_result['type']})",
+    }
+
+
+def calculate_growth_descriptors_model_based(
+    t,
+    y,
+    model_type="logistic",
+    *,
+    lag_frac=0.10,
+    min_data_points=5,
+    min_signal_to_noise=5.0,
+):
+    """
+    Calculate growth descriptors by fitting a parametric growth model.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+        model_type: One of "logistic", "gompertz", "richards", "spline"
+        lag_frac: Fraction of peak for phase boundary detection
+        min_data_points: Minimum number of data points required for valid fit
+        min_signal_to_noise: Minimum ratio of max/min signal for valid fit
+
+    Returns:
+        Dictionary with growth descriptors
+    """
+    t, y = _as_float(t), _as_float(y)
+    m = np.isfinite(t) & np.isfinite(y)
+    t, y = t[m], y[m]
+
+    # Check data quality
+    if t.size < max(int(min_data_points), 10) or np.ptp(t) <= 0:
+        return BAD_FIT.copy()
+
+    if abs(y.max() / max(abs(y.min()), 1e-12)) <= float(min_signal_to_noise):
+        return BAD_FIT.copy()
+
+    # Fit the growth model
+    fit_result = fit_growth_model(t, y, model_type=model_type)
+
+    # Extract growth descriptors from the fitted model
+    return extract_growth_descriptors_from_model(fit_result, t, frac_peak=lag_frac)
+
+
 def calculate_growth_descriptors(
     t,
     y,
@@ -201,6 +402,7 @@ def calculate_growth_descriptors(
         "y_mu": float(y_mu),
         "t_window_start": float(t_window_start),
         "t_window_end": float(t_window_end),
+        "fit_method": "Sliding Window",
     }
 
     return out
@@ -320,16 +522,28 @@ def analyse_plate(record: dict):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
         try:
-            fit = calculate_growth_descriptors(
-                processed["Time"].to_numpy(float),
-                processed["baseline_corrected"].to_numpy(float),
-                int(p["window_points"]),
-                sg_window=int(p.get("sg_window", 11)),
-                sg_poly=int(p.get("sg_poly", 2)),
-                lag_frac=float(p.get("lag_frac", 0.20)),
-                min_data_points=int(p.get("min_data_points", 5)),
-                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
-            )
+            # Choose method based on user selection
+            growth_method = p.get("growth_method", "Sliding Window")
+            if growth_method == "Model Fitting":
+                fit = calculate_growth_descriptors_model_based(
+                    processed["Time"].to_numpy(float),
+                    processed["baseline_corrected"].to_numpy(float),
+                    model_type=p.get("model_type", "logistic"),
+                    lag_frac=float(p.get("lag_frac", 0.20)),
+                    min_data_points=int(p.get("min_data_points", 5)),
+                    min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                )
+            else:
+                fit = calculate_growth_descriptors(
+                    processed["Time"].to_numpy(float),
+                    processed["baseline_corrected"].to_numpy(float),
+                    int(p["window_points"]),
+                    sg_window=int(p.get("sg_window", 11)),
+                    sg_poly=int(p.get("sg_poly", 2)),
+                    lag_frac=float(p.get("lag_frac", 0.20)),
+                    min_data_points=int(p.get("min_data_points", 5)),
+                    min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                )
         except Exception:
             fit = BAD_FIT.copy()
 

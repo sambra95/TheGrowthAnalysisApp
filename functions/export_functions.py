@@ -10,6 +10,7 @@ import streamlit as st
 from functions.plotting_functions import (
     _vlines,
     plot_baseline,
+    plot_model_fit_single,
     plot_replicates_by_sample,
     plot_window_plate,
     plot_window_single,
@@ -254,11 +255,19 @@ def build_export_zip(
                     plate_dir = f"plots/{pid}/wells"
 
                     if "raw" in well_graphs:
-                        growth_stats = (p.get("growth_stats") or {}).get(well) or {}
+                        all_growth_stats = p.get("growth_stats") or {}
+                        growth_stats = all_growth_stats.get(well) or {}
                         lag_end = growth_stats.get("lag_phase_end")
                         exp_end = growth_stats.get("exponential_phase_end")
+                        fit_method = growth_stats.get("fit_method", "Sliding Window")
+                        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
-                        fig = plot_window_single(processed, well)
+                        # Use appropriate plot based on fit method
+                        if is_model_fit:
+                            fig = plot_model_fit_single(processed, all_growth_stats, well)
+                        else:
+                            fig = plot_window_single(processed, well)
+
                         if fig is not None:
                             fig = go.Figure(fig)
                             if add_annotations:
@@ -275,30 +284,37 @@ def build_export_zip(
                                 _png(fig, well_width, well_height),
                             )
 
-                    if "d1" in well_graphs:
-                        fig = plot_window_single_d1(
-                            p,
-                            well,
-                            sg_window=sg_w,
-                            sg_poly=sg_p,
-                            frac_peak=0.20,
-                            add_fit=False,
-                        )
-                        if fig is not None:
-                            zf.writestr(
-                                f"{plate_dir}/curves_d1/{well}.png",
-                                _png(fig, well_width, well_height),
-                            )
+                    # Only export derivative plots for sliding window method
+                    if "d1" in well_graphs or "d2" in well_graphs:
+                        gs = (p.get("growth_stats") or {}).get(well) or {}
+                        fit_method = gs.get("fit_method", "Sliding Window")
+                        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
-                    if "d2" in well_graphs:
-                        fig = plot_window_single_d2(
-                            p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
-                        )
-                        if fig is not None:
-                            zf.writestr(
-                                f"{plate_dir}/curves_d2/{well}.png",
-                                _png(fig, well_width, well_height),
-                            )
+                        if not is_model_fit:
+                            if "d1" in well_graphs:
+                                fig = plot_window_single_d1(
+                                    p,
+                                    well,
+                                    sg_window=sg_w,
+                                    sg_poly=sg_p,
+                                    frac_peak=0.20,
+                                    add_fit=False,
+                                )
+                                if fig is not None:
+                                    zf.writestr(
+                                        f"{plate_dir}/curves_d1/{well}.png",
+                                        _png(fig, well_width, well_height),
+                                    )
+
+                            if "d2" in well_graphs:
+                                fig = plot_window_single_d2(
+                                    p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
+                                )
+                                if fig is not None:
+                                    zf.writestr(
+                                        f"{plate_dir}/curves_d2/{well}.png",
+                                        _png(fig, well_width, well_height),
+                                    )
 
     buf.seek(0)
     return buf.getvalue()

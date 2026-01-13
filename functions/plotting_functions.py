@@ -12,6 +12,10 @@ from functions.data_processing import (
     ALL_WELLS,
     compute_first_derivative,
     compute_second_derivative,
+    fit_growth_model,
+    gompertz_model,
+    logistic_model,
+    richards_model,
     smooth,
 )
 
@@ -921,7 +925,7 @@ def plot_window_plate(plate: dict):
 
 
 def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
-    """Add phase shading, phase lines, and fit line annotations to a figure."""
+    """Add phase shading, phase lines, and fit line/curve annotations to a figure."""
     # always start clean (important when reusing/copying figures)
     fig.update_layout(shapes=[])
 
@@ -980,43 +984,384 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
 
-        # fitted max gradient line in blue (spans the window used for calculation)
-        m = float(gs.get("Maximum U", 0.0) or 0.0)
-        t0 = gs.get("t_mu")
-        y0 = gs.get("y_mu")
-        t_win_start = gs.get("t_window_start")
-        t_win_end = gs.get("t_window_end")
+        # Check which fitting method was used
+        fit_method = gs.get("fit_method", "Sliding Window")
+        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
-        if (
-            t0 is not None
-            and y0 is not None
-            and t_win_start is not None
-            and t_win_end is not None
-            and np.isfinite(m)
-            and np.isfinite(t0)
-            and np.isfinite(y0)
-            and np.isfinite(t_win_start)
-            and np.isfinite(t_win_end)
-        ):
-            t0 = float(t0)
-            y0 = float(y0)
-            # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
-            b0 = y0 - m * t0
+        if is_model_fit:
+            # Draw fitted model curve for model-based fits
+            if "(" in fit_method and ")" in fit_method:
+                model_type = fit_method.split("(")[1].split(")")[0]
 
-            # Use the actual window boundaries
-            x0 = max(tmin, float(t_win_start))
-            x1 = min(tmax, float(t_win_end))
+                # Check if lasso selection was used to subset the data
+                lasso_t_min = gs.get("lasso_t_min")
+                lasso_t_max = gs.get("lasso_t_max")
 
-            fig.add_shape(
-                type="line",
-                xref="x",
-                yref="y",
-                x0=x0,
-                y0=m * x0 + b0,
-                x1=x1,
-                y1=m * x1 + b0,
-                line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
+                # Determine which data to use for fitting
+                if lasso_t_min is not None and lasso_t_max is not None:
+                    # Use only the lasso-selected time range
+                    time_tolerance = 0.1
+                    mask = (t >= lasso_t_min - time_tolerance) & (t <= lasso_t_max + time_tolerance)
+                    fit_t = t[mask]
+                    fit_y = y[mask]
+                else:
+                    # Use all data
+                    fit_t = t
+                    fit_y = y
+
+                # Refit the model to get the fitted curve
+                fit_result = fit_growth_model(fit_t, fit_y, model_type=model_type)
+
+                if fit_result is not None:
+                    # Generate dense predictions for smooth curve
+                    t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+
+                    if fit_result["type"] == "spline":
+                        y_fit = fit_result["spline"](t_dense)
+                    else:
+                        model_func = fit_result["model"]
+                        params = fit_result["params"]
+                        if fit_result["type"] == "richards":
+                            y_fit = model_func(
+                                t_dense, params["A"], params["mu"], params["lag"], params["nu"]
+                            )
+                        else:
+                            y_fit = model_func(
+                                t_dense, params["A"], params["mu"], params["lag"]
+                            )
+
+                    # Add the fitted curve as a trace
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t_dense,
+                            y=y_fit,
+                            mode="lines",
+                            line=dict(width=2, color="blue"),
+                            hovertemplate=(
+                                f"Model: {model_type}<br>Time=%{{x:.2f}} h<br>"
+                                f"Fitted OD=%{{y:.4f}}<extra></extra>"
+                            ),
+                            showlegend=False,
+                        )
+                    )
+        else:
+            # Draw straight line for sliding window method
+            m = float(gs.get("Maximum U", 0.0) or 0.0)
+            t0 = gs.get("t_mu")
+            y0 = gs.get("y_mu")
+            t_win_start = gs.get("t_window_start")
+            t_win_end = gs.get("t_window_end")
+
+            if (
+                t0 is not None
+                and y0 is not None
+                and t_win_start is not None
+                and t_win_end is not None
+                and np.isfinite(m)
+                and np.isfinite(t0)
+                and np.isfinite(y0)
+                and np.isfinite(t_win_start)
+                and np.isfinite(t_win_end)
+            ):
+                t0 = float(t0)
+                y0 = float(y0)
+                # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
+                b0 = y0 - m * t0
+
+                # Use the actual window boundaries
+                x0 = max(tmin, float(t_win_start))
+                x1 = min(tmax, float(t_win_end))
+
+                fig.add_shape(
+                    type="line",
+                    xref="x",
+                    yref="y",
+                    x0=x0,
+                    y0=m * x0 + b0,
+                    x1=x1,
+                    y1=m * x1 + b0,
+                    line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
+                )
+
+    return fig
+
+
+# --- model-based fits ----------------------------------------------------------
+def add_model_fit_well(
+    fig,
+    *,
+    d,  # dataframe for this well (or None/empty)
+    well: str,
+    gs: dict | None = None,
+    row: int | None = None,
+    col: int | None = None,
+    marker_size: int = 5,
+    marker_color: str = "red",
+    line_color: str = "blue",
+    shade_lag="rgba(180,180,180,0.18)",
+    shade_exp="rgba(100,149,237,0.16)",
+    shade_stat="rgba(144,238,144,0.16)",
+    add_phase_shading: bool = True,
+    add_model_curve: bool = True,
+):
+    """
+    Draw a single well with fitted growth model curve overlay.
+
+    Similar to add_window_well but overlays the fitted parametric model
+    instead of the sliding window line.
+
+    Works for both:
+      - go.Figure() (row/col None)
+      - make_subplots() figure (row/col provided)
+    """
+    gs = gs or {}
+
+    # Helper: where to add traces
+    trace_kwargs = {}
+    if row is not None and col is not None:
+        trace_kwargs = dict(row=row, col=col)
+
+    # Empty: nothing to draw
+    if d is None or d.empty:
+        return
+
+    t, y = _finite_sorted_xy(
+        d["Time"].to_numpy(),
+        d["baseline_corrected"].to_numpy(),
+    )
+    if t.size == 0:
+        return
+
+    tmin, tmax = float(t[0]), float(t[-1])
+
+    # ---- Phase shading ----
+    bad = is_bad_fit(gs)
+    if add_phase_shading and (not bad):
+        lag_end = float(
+            np.clip(gs.get("lag_phase_end", gs.get("lag_end", tmin)), tmin, tmax)
+        )
+        exp_end = float(
+            np.clip(
+                gs.get("exponential_phase_end", gs.get("exp_end", tmax)), tmin, tmax
             )
+        )
+        if exp_end < lag_end:
+            exp_end = lag_end
+
+        # IMPORTANT: xref/yref differ between single-figure and subplots
+        if row is None:
+            xref = "x"
+            yref = "y domain"
+        else:
+            axis_index = (row - 1) * 12 + col  # for 8x12 plate only
+            xref = "x" if axis_index == 1 else f"x{axis_index}"
+            yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
+
+        for x0, x1, colr in (
+            (tmin, lag_end, shade_lag),
+            (lag_end, exp_end, shade_exp),
+            (exp_end, tmax, shade_stat),
+        ):
+            fig.add_shape(
+                type="rect",
+                x0=x0,
+                x1=x1,
+                y0=0,
+                y1=1,
+                xref=xref,
+                yref=yref,
+                fillcolor=colr,
+                line_width=0,
+                layer="below",
+            )
+
+    # ---- Scatter points ----
+    fig.add_trace(
+        go.Scatter(
+            x=t,
+            y=y,
+            mode="markers",
+            marker=dict(size=marker_size, color=marker_color),
+            hovertemplate=(
+                f"Well={well}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>"
+            ),
+            showlegend=False,
+        ),
+        **trace_kwargs,
+    )
+
+    # Note: Model fit curve overlay is now handled by _vlines() function
+    # to consolidate all growth line/curve drawing logic in one place
+
+
+@st.cache_data(show_spinner=False)
+def plot_model_fit_single(
+    processed_data: dict,
+    growth_stats: dict,
+    well: str,
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+):
+    """Plot a single well with fitted growth model overlay and lasso selection enabled."""
+    d = (processed_data or {}).get(well)
+    gs = (growth_stats or {}).get(well)
+
+    fig = go.Figure()
+
+    add_model_fit_well(
+        fig,
+        d=d,
+        well=well,
+        gs=gs,
+        marker_size=5,
+        marker_color="red",
+        line_color="blue",
+    )
+
+    fig.update_layout(
+        height=600,
+        showlegend=False,
+        plot_bgcolor=plot_bgcolor,
+        paper_bgcolor=paper_bgcolor,
+        uirevision="keep",
+        dragmode="lasso",
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
+    fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
+
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def plot_model_fit_single_annotated(
+    d,
+    gs: dict,
+    well: str,
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+):
+    """
+    Plot a single well with model fit and annotations for phase boundaries.
+    Similar to plot_window_single_annotated but for model-based fits.
+    """
+    if d is None or d.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title=f"Well {well} - No data",
+            xaxis_title="Time (hours)",
+            yaxis_title="OD600",
+        )
+        return fig
+
+    fig = go.Figure()
+
+    t, y = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
+    if t.size == 0:
+        return fig
+
+    tmin, tmax = float(t[0]), float(t[-1])
+
+    # --- shading + fit curve from growth stats ---
+    gs = gs or {}
+    if gs and not is_bad_fit(gs):
+        lag_end = float(np.clip(gs.get("lag_phase_end", tmin), tmin, tmax))
+        exp_end = float(np.clip(gs.get("exponential_phase_end", tmax), tmin, tmax))
+        exp_end = max(exp_end, lag_end)
+        max_od = float(gs.get("Maximum OD600", 0.0) or 0.0)
+
+        # colour code lag phase
+        fig.add_vrect(
+            x0=tmin,
+            x1=lag_end,
+            fillcolor="rgba(180,180,180,0.18)",
+            line_width=0,
+            layer="below",
+        )
+
+        # add line for lag end
+        fig.add_vline(x=lag_end, line_dash="dot")
+
+        # colour code exponential phase
+        fig.add_vrect(
+            x0=lag_end,
+            x1=exp_end,
+            fillcolor="rgba(100,149,237,0.16)",
+            line_width=0,
+            layer="below",
+        )
+
+        # add line for exp end
+        fig.add_vline(x=exp_end, line_dash="dot")
+
+        # colour code stationary phase
+        fig.add_vrect(
+            x0=exp_end,
+            x1=tmax,
+            fillcolor="rgba(144,238,144,0.16)",
+            line_width=0,
+            layer="below",
+        )
+
+        # add line for max OD600
+        fig.add_hline(y=max_od, line_dash="dot")
+
+        # Add fitted model curve
+        fit_method = gs.get("fit_method", "")
+        if fit_method and "Model Fitting" in fit_method:
+            if "(" in fit_method and ")" in fit_method:
+                model_type = fit_method.split("(")[1].split(")")[0]
+
+                fit_result = fit_growth_model(t, y, model_type=model_type)
+
+                if fit_result is not None:
+                    t_dense = np.linspace(float(t.min()), float(t.max()), 200)
+
+                    if fit_result["type"] == "spline":
+                        y_fit = fit_result["spline"](t_dense)
+                    else:
+                        model_func = fit_result["model"]
+                        params = fit_result["params"]
+                        if fit_result["type"] == "richards":
+                            y_fit = model_func(
+                                t_dense, params["A"], params["mu"], params["lag"], params["nu"]
+                            )
+                        else:
+                            y_fit = model_func(
+                                t_dense, params["A"], params["mu"], params["lag"]
+                            )
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t_dense,
+                            y=y_fit,
+                            mode="lines",
+                            line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
+                            name=f"Fitted {model_type} model",
+                            showlegend=True,
+                        )
+                    )
+
+    # Add data points
+    fig.add_trace(
+        go.Scatter(
+            x=t,
+            y=y,
+            mode="markers",
+            marker=dict(size=5, color="red"),
+            name="Data",
+            showlegend=True,
+        )
+    )
+
+    fig.update_layout(
+        title=f"Well {well} - Model Fit",
+        xaxis_title="Time (hours)",
+        yaxis_title="OD600 (baseline corrected)",
+        plot_bgcolor=plot_bgcolor,
+        paper_bgcolor=paper_bgcolor,
+        hovermode="closest",
+    )
 
     return fig
 
