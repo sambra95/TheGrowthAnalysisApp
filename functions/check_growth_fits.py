@@ -346,6 +346,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
+    lasso_time_key = f"lasso_time__{key}"
 
     def _sync_widgets_from_growth_stats():
         """Sync widget state from the current growth_stats dict."""
@@ -357,7 +358,14 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
         st.session_state[maxod_key] = float(growth_stats.get("Maximum OD600", 0.0))
 
-    if ss_key not in st.session_state:
+        # Track the last lasso update time we've synced
+        st.session_state[lasso_time_key] = growth_stats.get("_lasso_update_time")
+
+    # Sync widgets if they don't exist OR if growth_stats was updated by lasso selection
+    current_lasso_time = growth_stats.get("_lasso_update_time")
+    last_synced_time = st.session_state.get(lasso_time_key)
+
+    if ss_key not in st.session_state or current_lasso_time != last_synced_time:
         _sync_widgets_from_growth_stats()
 
     st.write("")  # just adds some space
@@ -407,6 +415,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         _delete_well_from_plate(plate, well)
         st.session_state.pop(ss_key, None)
         st.session_state.pop(maxod_key, None)
+        st.session_state.pop(lasso_time_key, None)
 
         # Update params to include this well in remove_wells list
         params = plate.setdefault("params", {})
