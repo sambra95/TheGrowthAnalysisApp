@@ -4,6 +4,7 @@ import streamlit as st
 from functions.plotting_functions import (
     plot_baseline,
     plot_replicates_by_sample,
+    plot_rmse_heatmap,
     plot_window_plate,
 )
 
@@ -41,6 +42,20 @@ def ui_window_fits_plate_overview(plates: dict):
         plot_window_plate(plates[plate_id]),
         width='stretch',
     )
+
+    # Show RMSE heatmap if using model-based fitting
+    growth_stats = plate.get("growth_stats", {})
+    has_model_fits = any(
+        gs.get("fit_method") and "Model Fitting" in str(gs.get("fit_method", ""))
+        for gs in growth_stats.values()
+    )
+
+    if has_model_fits:
+        st.subheader("Model Fit Quality (RMSE)")
+        st.plotly_chart(
+            plot_rmse_heatmap(plate),
+            width='stretch',
+        )
 
 
 # ---------------- Backwards-compatible aliases ----------------

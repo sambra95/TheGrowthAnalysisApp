@@ -269,7 +269,9 @@ def plot_single_growth_stat(
     df = long_df.copy()
 
     # Get the metric name from the data
-    metric = df["metric"].iloc[0] if "metric" in df.columns and not df.empty else "Metric"
+    metric = (
+        df["metric"].iloc[0] if "metric" in df.columns and not df.empty else "Metric"
+    )
 
     # ---- optionally derive Strain/Condition from sample_name (split on FIRST underscore) ----
     s = df["sample_name"].astype(str)
@@ -380,9 +382,7 @@ def plot_single_growth_stat(
                 fillcolor="rgba(0,0,0,0)",
                 line=dict(width=0),
                 marker=dict(size=6, opacity=0.8),
-                text=(
-                    df["plate"].astype(str) + " " + df["well"].astype(str)
-                ).tolist(),
+                text=(df["plate"].astype(str) + " " + df["well"].astype(str)).tolist(),
                 hovertemplate="Well=%{text}<br>Value=%{y:.4f}<extra></extra>",
             )
         )
@@ -1001,7 +1001,9 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                 if lasso_t_min is not None and lasso_t_max is not None:
                     # Use only the lasso-selected time range
                     time_tolerance = 0.1
-                    mask = (t >= lasso_t_min - time_tolerance) & (t <= lasso_t_max + time_tolerance)
+                    mask = (t >= lasso_t_min - time_tolerance) & (
+                        t <= lasso_t_max + time_tolerance
+                    )
                     fit_t = t[mask]
                     fit_y = y[mask]
                 else:
@@ -1023,7 +1025,11 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                         params = fit_result["params"]
                         if fit_result["type"] == "richards":
                             y_fit = model_func(
-                                t_dense, params["A"], params["mu"], params["lag"], params["nu"]
+                                t_dense,
+                                params["A"],
+                                params["mu"],
+                                params["lag"],
+                                params["nu"],
                             )
                         else:
                             y_fit = model_func(
@@ -1324,7 +1330,11 @@ def plot_model_fit_single_annotated(
                         params = fit_result["params"]
                         if fit_result["type"] == "richards":
                             y_fit = model_func(
-                                t_dense, params["A"], params["mu"], params["lag"], params["nu"]
+                                t_dense,
+                                params["A"],
+                                params["mu"],
+                                params["lag"],
+                                params["nu"],
                             )
                         else:
                             y_fit = model_func(
@@ -1530,4 +1540,109 @@ def plot_window_single_d2(
     )
     fig.update_xaxes(showgrid=False, title="Time (hours)")
     fig.update_yaxes(showgrid=False, title="d²(OD)/dt²")
+    return fig
+
+
+def plot_rmse_heatmap(plate: dict):
+    """
+    Plot a 96-well plate heatmap of RMSE values.
+
+    The heatmap is centered on 0 (green) with red indicating higher RMSE values.
+    Only applicable for model-based fits.
+
+    Args:
+        plate: Plate dictionary containing growth_stats
+
+    Returns:
+        Plotly figure with RMSE heatmap
+    """
+    growth_stats = plate.get("growth_stats") or {}
+
+    # Create a 8x12 grid for the plate layout
+    rows = "ABCDEFGH"
+    cols = range(1, 13)
+
+    # Extract RMSE values and organize into plate layout
+    rmse_matrix = []
+    hover_text = []
+    well_labels = []
+
+    for row in rows:
+        rmse_row = []
+        hover_row = []
+        label_row = []
+        for col in cols:
+            well = f"{row}{col}"
+            gs = growth_stats.get(well, {})
+            rmse = gs.get("rmse", np.nan)
+
+            # Only show RMSE for model-based fits (not sliding window)
+            fit_method = gs.get("fit_method", "")
+            if fit_method and "Model Fitting" not in str(fit_method):
+                rmse = np.nan
+
+            rmse_row.append(rmse if pd.notna(rmse) else np.nan)
+            hover_row.append(
+                f"Well: {well}<br>RMSE: {rmse:.5f}"
+                if pd.notna(rmse)
+                else f"Well: {well}<br>RMSE: N/A"
+            )
+            label_row.append(well)
+
+        rmse_matrix.append(rmse_row)
+        hover_text.append(hover_row)
+        well_labels.append(label_row)
+
+    # Convert to numpy array for easier manipulation
+    rmse_matrix = np.array(rmse_matrix)
+
+    # Find the maximum absolute RMSE for symmetric color scale
+    finite_rmse = rmse_matrix[np.isfinite(rmse_matrix)]
+    if len(finite_rmse) == 0:
+        max_rmse = 0.1
+    else:
+        max_rmse = np.max(np.abs(finite_rmse))
+
+    # Create the heatmap with colorblind-friendly colors
+    # Using a teal-white-orange scale that's accessible to most types of colorblindness
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=rmse_matrix,
+            x=[str(c) for c in cols],
+            y=list(rows),
+            colorscale=[
+                [0.0, "rgb(68, 170, 153)"],   # Teal/cyan at 0 (good fit)
+                [0.5, "rgb(238, 238, 238)"],  # Light gray at midpoint
+                [1.0, "rgb(221, 132, 82)"],   # Orange at max (poor fit)
+            ],
+            zmid=0,  # Center the color scale at 0
+            zmin=0,
+            zmax=max_rmse if max_rmse > 0 else 0.1,
+            text=well_labels,
+            texttemplate="%{text}",
+            textfont=dict(size=10, color="black"),
+            hovertext=hover_text,
+            hovertemplate="%{hovertext}<extra></extra>",
+            showscale=False,  # Remove the colorbar legend
+            xgap=1,  # Add gap between cells (creates black outline effect)
+            ygap=1,
+        )
+    )
+
+    fig.update_layout(
+        title="RMSE Heatmap (Model Fitting Only)",
+        xaxis=dict(
+            visible=False,  # Hide x-axis
+        ),
+        yaxis=dict(
+            visible=False,  # Hide y-axis
+            autorange="reversed",  # Reverse y-axis so A1 is at top left
+        ),
+        width=800,
+        height=500,
+        margin=dict(l=20, r=20, t=60, b=20),
+        plot_bgcolor="white",  # White background
+        paper_bgcolor="white",  # White paper background
+    )
+
     return fig

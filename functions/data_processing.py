@@ -24,6 +24,7 @@ BAD_FIT = {
     "t_window_start": np.nan,
     "t_window_end": np.nan,
     "fit_method": None,
+    "rmse": np.nan,
 }
 
 
@@ -31,6 +32,30 @@ BAD_FIT = {
 def _as_float(x):
     """Convert array-like input to a float NumPy array."""
     return np.asarray(x, dtype=float)
+
+
+def calculate_rmse(y_observed, y_predicted):
+    """
+    Calculate Root Mean Square Error between observed and predicted values.
+
+    Args:
+        y_observed: Observed/actual values
+        y_predicted: Predicted values from model
+
+    Returns:
+        RMSE value as float
+    """
+    y_observed = _as_float(y_observed)
+    y_predicted = _as_float(y_predicted)
+
+    # Filter out non-finite values
+    mask = np.isfinite(y_observed) & np.isfinite(y_predicted)
+    if mask.sum() == 0:
+        return np.nan
+
+    residuals = y_observed[mask] - y_predicted[mask]
+    rmse = np.sqrt(np.mean(residuals ** 2))
+    return float(rmse)
 
 
 @st.cache_data
@@ -214,7 +239,7 @@ def fit_growth_model(t, y, model_type="logistic"):
         return None
 
 
-def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10):
+def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10, y_data=None):
     """
     Extract growth descriptors from a fitted growth model.
 
@@ -222,12 +247,17 @@ def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10):
         fit_result: Dictionary returned by fit_growth_model
         t_data: Original time array for generating dense predictions
         frac_peak: Fraction of peak growth rate for phase boundary detection
+        y_data: Optional observed y values for RMSE calculation (if None, uses fit_result['y'])
 
     Returns:
         Dictionary with growth descriptors (same format as calculate_growth_descriptors)
     """
     if fit_result is None:
         return BAD_FIT.copy()
+
+    # Use the y_data from the fit if not provided separately
+    if y_data is None:
+        y_data = fit_result.get('y')
 
     t_dense = np.linspace(float(t_data.min()), float(t_data.max()), 500)
 
@@ -277,6 +307,22 @@ def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10):
     t_window_start = max(float(t_mu - window_half), float(t_dense[0]))
     t_window_end = min(float(t_mu + window_half), float(t_dense[-1]))
 
+    # Calculate RMSE using the original data points that were fitted
+    rmse = np.nan
+    if y_data is not None and len(y_data) > 0:
+        t_fit = fit_result.get('t', t_data)
+        # Generate predictions at the fitted time points
+        if fit_result["type"] == "spline":
+            y_pred_fit = fit_result["spline"](t_fit)
+        else:
+            model_func = fit_result["model"]
+            params = fit_result["params"]
+            if fit_result["type"] == "richards":
+                y_pred_fit = model_func(t_fit, params["A"], params["mu"], params["lag"], params["nu"])
+            else:
+                y_pred_fit = model_func(t_fit, params["A"], params["mu"], params["lag"])
+        rmse = calculate_rmse(y_data, y_pred_fit)
+
     return {
         "Maximum OD600": max_od,
         "Maximum U": max_u,
@@ -287,6 +333,7 @@ def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10):
         "t_window_start": t_window_start,
         "t_window_end": t_window_end,
         "fit_method": f"Model Fitting ({fit_result['type']})",
+        "rmse": rmse,
     }
 
 
@@ -403,6 +450,7 @@ def calculate_growth_descriptors(
         "t_window_start": float(t_window_start),
         "t_window_end": float(t_window_end),
         "fit_method": "Sliding Window",
+        "rmse": np.nan,  # RMSE not applicable for sliding window method
     }
 
     return out

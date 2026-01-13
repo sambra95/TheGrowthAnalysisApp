@@ -11,6 +11,7 @@ from functions.data_processing import (
     _read_table,
     calculate_growth_descriptors,
     calculate_growth_descriptors_model_based,
+    calculate_rmse,
     extract_growth_descriptors_from_model,
     fit_growth_model,
 )
@@ -139,6 +140,10 @@ def update_growth_stats_from_lasso(
             t_mu = float(xs.mean())
             y_mu = float(m * t_mu + b)
 
+            # Calculate RMSE for the linear fit on selected points
+            y_pred_linear = m * xs + b
+            rmse = calculate_rmse(ys, y_pred_linear)
+
             gs["Maximum U"] = float(m)
             gs["t_mu"] = t_mu
             gs["y_mu"] = y_mu
@@ -146,6 +151,7 @@ def update_growth_stats_from_lasso(
             gs["t_window_end"] = float(xs.max())
             # For Maximum OD600, use max from entire curve, not just selected points
             gs["Maximum OD600"] = float(all_y.max())
+            gs["rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
             # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
@@ -169,7 +175,8 @@ def update_growth_stats_from_lasso(
             descriptors = extract_growth_descriptors_from_model(
                 fit_result,
                 all_t,  # Use full time range, not just selected range
-                frac_peak=float(params.get("lag_frac", 0.20))
+                frac_peak=float(params.get("lag_frac", 0.20)),
+                y_data=refit_y  # Pass the selected y data for RMSE calculation
             )
 
             # Update growth stats with refit results
@@ -181,6 +188,7 @@ def update_growth_stats_from_lasso(
             gs["lag_phase_end"] = descriptors["lag_phase_end"]
             gs["exponential_phase_end"] = descriptors["exponential_phase_end"]
             gs["Maximum OD600"] = descriptors["Maximum OD600"]
+            gs["rmse"] = descriptors["rmse"]
             # Store the selected time range for plotting the refitted model curve
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -193,6 +201,10 @@ def update_growth_stats_from_lasso(
             t_mu = float(xs.mean())
             y_mu = float(m * t_mu + b)
 
+            # Calculate RMSE for the linear fit on selected points
+            y_pred_linear = m * xs + b
+            rmse = calculate_rmse(ys, y_pred_linear)
+
             gs["Maximum U"] = float(m)
             gs["t_mu"] = t_mu
             gs["y_mu"] = y_mu
@@ -200,6 +212,7 @@ def update_growth_stats_from_lasso(
             gs["t_window_end"] = float(xs.max())
             # For Maximum OD600, use max from entire curve, not just selected points
             gs["Maximum OD600"] = float(all_y.max())
+            gs["rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
             # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
@@ -320,6 +333,7 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     # Define metrics to display with nice labels and formatting
     metrics = [
         ("fit_method", "Fit Method", lambda x: str(x) if x else "Sliding Window"),
+        ("rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
         ("Maximum OD600", "Maximum OD600", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
         ("Maximum U", "Maximum Growth Rate (1/h)", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
         ("t_mu", "Time at Max Growth (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
@@ -572,6 +586,7 @@ def ui_window_fits_well_editor(plates: dict):
         f"{gs.get('Maximum OD600', 0)}_"
         f"{gs.get('lag_phase_end', 0)}_"
         f"{gs.get('exponential_phase_end', 0)}_"
+        f"{gs.get('rmse', 0)}_"
         f"{gs.get('_lasso_update_time', '')}"
     )
     st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
