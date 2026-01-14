@@ -133,8 +133,18 @@ def compute_second_derivative(t, y):
     return t, d2y
 
 
-def calculate_phase_ends(t, y_s, frac_peak=0.10):
-    """Estimate lag and exponential phase end times from a smoothed curve."""
+def calculate_phase_ends(t, y_s, lag_frac=0.10, exp_frac=0.10):
+    """Estimate lag and exponential phase end times from a smoothed curve.
+
+    Args:
+        t: Time array
+        y_s: Smoothed OD600 values
+        lag_frac: Fraction of peak growth rate for lag phase end detection
+        exp_frac: Fraction of peak growth rate for exponential phase end detection
+
+    Returns:
+        Tuple of (lag_end, exp_end) times
+    """
     t, y_s = _as_float(t), _as_float(y_s)
     if t.size < 5 or np.ptp(t) <= 0:
         a = float(t[0]) if t.size else np.nan
@@ -147,10 +157,13 @@ def calculate_phase_ends(t, y_s, frac_peak=0.10):
 
     dy_fit = d1_model(t, *p)
     peak_i = int(np.nanargmax(dy_fit))
-    thr = float(frac_peak * dy_fit[peak_i])
+    peak_val = dy_fit[peak_i]
 
-    lag_idx = np.where(dy_fit >= thr)[0]
-    exp_idx = np.where((dy_fit <= thr) & (np.arange(t.size) > peak_i))[0]
+    lag_thr = float(lag_frac * peak_val)
+    exp_thr = float(exp_frac * peak_val)
+
+    lag_idx = np.where(dy_fit >= lag_thr)[0]
+    exp_idx = np.where((dy_fit <= exp_thr) & (np.arange(t.size) > peak_i))[0]
 
     lag_end = float(t[lag_idx[0]]) if lag_idx.size else float(t[0])
     exp_end = float(t[exp_idx[0]]) if exp_idx.size else float(t[-1])
@@ -239,14 +252,15 @@ def fit_growth_model(t, y, model_type="logistic"):
         return None
 
 
-def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10, y_data=None):
+def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp_frac=0.10, y_data=None):
     """
     Extract growth descriptors from a fitted growth model.
 
     Args:
         fit_result: Dictionary returned by fit_growth_model
         t_data: Original time array for generating dense predictions
-        frac_peak: Fraction of peak growth rate for phase boundary detection
+        lag_frac: Fraction of peak growth rate for lag phase end detection
+        exp_frac: Fraction of peak growth rate for exponential phase end detection
         y_data: Optional observed y values for RMSE calculation (if None, uses fit_result['y'])
 
     Returns:
@@ -289,16 +303,17 @@ def extract_growth_descriptors_from_model(fit_result, t_data, frac_peak=0.10, y_
         out["Maximum OD600"] = max_od
         return out
 
-    # Calculate phase boundaries using derivative threshold
+    # Calculate phase boundaries using derivative thresholds
     peak_dy = dy_pred[max_u_idx]
-    threshold = frac_peak * peak_dy
+    lag_threshold = lag_frac * peak_dy
+    exp_threshold = exp_frac * peak_dy
 
-    # Lag phase end: first time derivative exceeds threshold
-    lag_idx = np.where(dy_pred >= threshold)[0]
+    # Lag phase end: first time derivative exceeds lag threshold
+    lag_idx = np.where(dy_pred >= lag_threshold)[0]
     lag_end = float(t_dense[lag_idx[0]]) if lag_idx.size else float(t_dense[0])
 
-    # Exponential phase end: first time after peak where derivative drops below threshold
-    exp_idx = np.where((dy_pred <= threshold) & (np.arange(t_dense.size) > max_u_idx))[0]
+    # Exponential phase end: first time after peak where derivative drops below exp threshold
+    exp_idx = np.where((dy_pred <= exp_threshold) & (np.arange(t_dense.size) > max_u_idx))[0]
     exp_end = float(t_dense[exp_idx[0]]) if exp_idx.size else float(t_dense[-1])
 
     # For model-based fits, window start/end represent the confidence region around max growth
@@ -343,6 +358,7 @@ def calculate_growth_descriptors_model_based(
     model_type="logistic",
     *,
     lag_frac=0.10,
+    exp_frac=0.10,
     min_data_points=5,
     min_signal_to_noise=5.0,
 ):
@@ -353,7 +369,8 @@ def calculate_growth_descriptors_model_based(
         t: Time array
         y: OD600 values (baseline-corrected)
         model_type: One of "logistic", "gompertz", "richards", "spline"
-        lag_frac: Fraction of peak for phase boundary detection
+        lag_frac: Fraction of peak for lag phase end detection
+        exp_frac: Fraction of peak for exponential phase end detection
         min_data_points: Minimum number of data points required for valid fit
         min_signal_to_noise: Minimum ratio of max/min signal for valid fit
 
@@ -375,7 +392,7 @@ def calculate_growth_descriptors_model_based(
     fit_result = fit_growth_model(t, y, model_type=model_type)
 
     # Extract growth descriptors from the fitted model
-    return extract_growth_descriptors_from_model(fit_result, t, frac_peak=lag_frac)
+    return extract_growth_descriptors_from_model(fit_result, t, lag_frac=lag_frac, exp_frac=exp_frac)
 
 
 def calculate_growth_descriptors(
@@ -386,6 +403,7 @@ def calculate_growth_descriptors(
     sg_window=11,
     sg_poly=1,
     lag_frac=0.10,
+    exp_frac=0.10,
     min_data_points=5,
     min_signal_to_noise=5.0,
 ):
@@ -397,7 +415,8 @@ def calculate_growth_descriptors(
         w: Window size for sliding window fit
         sg_window: Savitzky-Golay filter window size
         sg_poly: Savitzky-Golay filter polynomial order
-        lag_frac: Fraction of peak for phase boundary detection
+        lag_frac: Fraction of peak for lag phase end detection
+        exp_frac: Fraction of peak for exponential phase end detection
         min_data_points: Minimum number of data points required for valid fit
         min_signal_to_noise: Minimum ratio of max/min signal for valid fit
     """
@@ -450,7 +469,7 @@ def calculate_growth_descriptors(
     rmse = calculate_rmse(y_window, y_pred_window)
 
     # calculate exponential phase start and end
-    lag_end, exp_end = calculate_phase_ends(t, y_s, frac_peak=lag_frac)
+    lag_end, exp_end = calculate_phase_ends(t, y_s, lag_frac=lag_frac, exp_frac=exp_frac)
 
     out = {
         "Maximum OD600": A,
@@ -589,7 +608,8 @@ def analyse_plate(record: dict):
                     processed["Time"].to_numpy(float),
                     processed["baseline_corrected"].to_numpy(float),
                     model_type=p.get("model_type", "logistic"),
-                    lag_frac=float(p.get("lag_frac", 0.20)),
+                    lag_frac=float(p.get("lag_cutoff", 0.10)),
+                    exp_frac=float(p.get("exp_cutoff", 0.10)),
                     min_data_points=int(p.get("min_data_points", 5)),
                     min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
                 )
@@ -600,7 +620,8 @@ def analyse_plate(record: dict):
                     int(p["window_points"]),
                     sg_window=int(p.get("sg_window", 11)),
                     sg_poly=int(p.get("sg_poly", 2)),
-                    lag_frac=float(p.get("lag_frac", 0.20)),
+                    lag_frac=float(p.get("lag_cutoff", 0.10)),
+                    exp_frac=float(p.get("exp_cutoff", 0.10)),
                     min_data_points=int(p.get("min_data_points", 5)),
                     min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
                 )
@@ -621,7 +642,8 @@ def compute_window_fits(
     window_points=15,
     sg_window=11,
     sg_poly=2,
-    lag_frac=0.20,
+    lag_frac=0.10,
+    exp_frac=0.10,
     min_data_points=5,
     min_signal_to_noise=5.0,
 ):
@@ -641,6 +663,7 @@ def compute_window_fits(
                 sg_window=int(sg_window),
                 sg_poly=int(sg_poly),
                 lag_frac=float(lag_frac),
+                exp_frac=float(exp_frac),
                 min_data_points=int(min_data_points),
                 min_signal_to_noise=float(min_signal_to_noise),
             )

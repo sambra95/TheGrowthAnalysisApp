@@ -21,6 +21,8 @@ DEFAULT_PARAMS = dict(
     remove_wells=False,
     blank=True,
     window_points=15,
+    lag_cutoff=0.1,
+    exp_cutoff=0.1,
     sg_window=15,
     sg_poly=2,
     min_data_points=5,
@@ -124,7 +126,7 @@ with title_col:
     st.title("Upload and Analyze")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", width='stretch'):
+    with st.popover("Explain this page to me", width="stretch"):
         st.markdown(
             """
 **Actions you can perform on this page:**
@@ -147,7 +149,7 @@ with u1:
         with header_col:
             st.header("Step 1. Upload data file")
         with popover_col:
-            with st.popover("Help", width='stretch'):
+            with st.popover("Help", width="stretch"):
                 st.markdown("**Required Data File Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with time series data")
                 st.warning(
@@ -163,7 +165,7 @@ with u1:
                         "...": ["...", "...", "...", "..."],
                     }
                 )
-                st.dataframe(example_data, hide_index=True, width='stretch')
+                st.dataframe(example_data, hide_index=True, width="stretch")
 
                 # Download example file
                 with open("example_data.xlsx", "rb") as f:
@@ -172,7 +174,7 @@ with u1:
                         data=f.read(),
                         file_name="example_data.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        width='stretch',
+                        width="stretch",
                         type="primary",
                     )
         data_file = st.file_uploader(
@@ -184,7 +186,7 @@ with u2:
         with header_col:
             st.header("Step 2. Upload plate map")
         with popover_col:
-            with st.popover("Help", width='stretch'):
+            with st.popover("Help", width="stretch"):
                 st.markdown("**Required Plate Map Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with sample layout")
                 st.markdown(
@@ -222,7 +224,7 @@ with u2:
                         "...": ["...", "...", "...", "..."],
                     }
                 )
-                st.dataframe(example_map, hide_index=True, width='stretch')
+                st.dataframe(example_map, hide_index=True, width="stretch")
 
                 # Download example file
                 with open("example_plate_map.xls", "rb") as f:
@@ -231,7 +233,7 @@ with u2:
                         data=f.read(),
                         file_name="example_plate_map.xls",
                         mime="application/vnd.ms-excel",
-                        width='stretch',
+                        width="stretch",
                         type="primary",
                     )
         map_file = st.file_uploader(
@@ -241,7 +243,7 @@ with u2:
 if st.button(
     "Load plate",
     type="primary",
-    width='stretch',
+    width="stretch",
     disabled=not (data_file and map_file),
 ):
     plate_id = (
@@ -332,29 +334,431 @@ with st.container(border=True):
         remove_wells = remove_wells if remove_wells else False
 
         st.write("")
-        st.markdown("**Growth Descriptor Calculation Method**")
+        header_col, help_col = st.columns([0.85, 0.15])
+        with header_col:
+            st.markdown("**Growth Descriptor Calculation Method**")
+        with help_col:
+            with st.popover("Help", use_container_width=True):
+                import numpy as np
+                import plotly.graph_objects as go
 
-        growth_method = st.selectbox(
-            "Method",
-            options=["Sliding Window", "Model Fitting"],
-            index=0 if params0.get("growth_method", "Sliding Window") == "Sliding Window" else 1,
-            help="Choose how to calculate growth descriptors: Sliding Window uses linear fits over a moving window, Model Fitting fits parametric growth curves",
-        )
+                st.markdown("### Growth Descriptor Calculation Methods")
 
-        if growth_method == "Sliding Window":
-            window_points = st.number_input(
-                "Window size for maximum growth rate (points)",
-                5,
-                200,
-                int(params0["window_points"]),
-                1,
-                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+                # Sliding Window Expander
+                with st.expander("Sliding Window Method", expanded=False):
+                    # Generate data points (scatter)
+                    t_points = np.linspace(0, 48, 50)
+                    y_points = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_points - 24)))
+
+                    fig_sw = go.Figure()
+
+                    # Add the data as scatter points
+                    fig_sw.add_trace(
+                        go.Scatter(
+                            x=t_points,
+                            y=y_points,
+                            mode="markers",
+                            marker=dict(color="blue", size=6),
+                            name="Data points",
+                        )
+                    )
+
+                    # Add single sliding window box
+                    window_center_t = 24
+                    window_half_width = 4
+                    win_x0 = window_center_t - window_half_width
+                    win_x1 = window_center_t + window_half_width
+
+                    # Get y values at window boundaries for the box
+                    y_at_win = 0.05 + 0.95 / (
+                        1 + np.exp(-0.2 * (np.array([win_x0, win_x1]) - 24))
+                    )
+                    box_y_min = min(y_at_win) - 0.08
+                    box_y_max = max(y_at_win) + 0.08
+
+                    # Draw the sliding window box
+                    fig_sw.add_shape(
+                        type="rect",
+                        x0=win_x0,
+                        x1=win_x1,
+                        y0=box_y_min,
+                        y1=box_y_max,
+                        fillcolor="rgba(0,200,0,0.2)",
+                        line=dict(color="green", width=2),
+                    )
+
+                    # Add "Sliding Window" label
+                    fig_sw.add_annotation(
+                        x=window_center_t,
+                        y=box_y_max + 0.08,
+                        text="Sliding Window",
+                        showarrow=False,
+                        font=dict(color="green", size=12),
+                    )
+
+                    # Add dashed arrows showing movement direction
+                    arrow_y = box_y_min + (box_y_max - box_y_min) / 2
+
+                    # Left arrow (showing it came from left)
+                    fig_sw.add_annotation(
+                        x=win_x0 - 1,
+                        y=arrow_y,
+                        ax=win_x0 - 6,
+                        ay=arrow_y,
+                        xref="x",
+                        yref="y",
+                        axref="x",
+                        ayref="y",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1.5,
+                        arrowwidth=2,
+                        arrowcolor="gray",
+                        text="",
+                    )
+
+                    # Right arrow (showing it moves to right)
+                    fig_sw.add_annotation(
+                        x=win_x1 + 6,
+                        y=arrow_y,
+                        ax=win_x1 + 1,
+                        ay=arrow_y,
+                        xref="x",
+                        yref="y",
+                        axref="x",
+                        ayref="y",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1.5,
+                        arrowwidth=2,
+                        arrowcolor="gray",
+                        text="",
+                    )
+
+                    fig_sw.update_layout(
+                        height=250,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_sw, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                    st.markdown(
+                        """
+**How it works:**
+1. A window of fixed size (e.g., 15 points) slides across the growth curve
+2. At each position, a linear regression is fitted to log-transformed OD values
+3. The slope of each fit represents the growth rate (μ) at that window
+4. The **maximum slope** across all windows is reported as **μ_max**
+
+**Output metrics:**
+- **μ_max**: Maximum specific growth rate (h⁻¹)
+- **Doubling time**: ln(2) / μ_max
+- **Lag time**: Time at end of lag phase
+                        """
+                    )
+
+                # Model Fitting Expander
+                with st.expander("Model Fitting Method", expanded=False):
+                    st.markdown(
+                        """
+**How it works:**
+1. A parametric growth model is fitted to the entire growth curve
+2. The model's analytical derivative gives the growth rate at each time point
+3. **μ_max** is the maximum of the derivative (occurs at the inflection point)
+
+**Available models:**
+                        """
+                    )
+
+                    t = np.linspace(0, 48, 200)
+
+                    # Logistic model
+                    st.markdown("**Logistic**")
+                    st.latex(r"y(t) = \frac{A}{1 + e^{-\mu(t - \lambda)}}")
+                    st.caption(
+                        "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
+                    )
+                    y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
+                    fig_log = go.Figure()
+                    fig_log.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_logistic,
+                            mode="lines",
+                            line=dict(color="blue", width=2),
+                        )
+                    )
+                    fig_log.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_log, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                    # Gompertz model
+                    st.markdown("**Gompertz**")
+                    st.latex(r"y(t) = A \cdot e^{-e^{-\mu(t - \lambda)}}")
+                    st.caption(
+                        "Asymmetric S-curve with slower approach to stationary phase. Often fits bacterial growth better than logistic."
+                    )
+                    y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
+                    fig_gom = go.Figure()
+                    fig_gom.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_gompertz,
+                            mode="lines",
+                            line=dict(color="green", width=2),
+                        )
+                    )
+                    fig_gom.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_gom, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                    # Richards model
+                    st.markdown("**Richards**")
+                    st.latex(
+                        r"y(t) = \frac{A}{(1 + \nu \cdot e^{-\mu(t - \lambda)})^{1/\nu}}"
+                    )
+                    st.caption(
+                        "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
+                    )
+                    nu = 2.0
+                    y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
+                    fig_ric = go.Figure()
+                    fig_ric.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_richards,
+                            mode="lines",
+                            line=dict(color="orange", width=2),
+                        )
+                    )
+                    fig_ric.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_ric, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                    # Spline
+                    st.markdown("**Spline**")
+                    st.caption(
+                        "Non-parametric smoothing spline. Use when data doesn't follow standard growth patterns (e.g., diauxic growth)."
+                    )
+                    y_spline = 1.0 / (1 + np.exp(-0.15 * (t - 24))) + 0.05 * np.sin(
+                        t / 3
+                    )
+                    fig_spl = go.Figure()
+                    fig_spl.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_spline,
+                            mode="lines",
+                            line=dict(color="purple", width=2),
+                        )
+                    )
+                    fig_spl.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_spl, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                # Phase Boundary Detection Expander
+                with st.expander("Phase Boundary Detection", expanded=False):
+                    st.markdown(
+                        """
+**Both methods use the same approach** for detecting phase boundaries, based on the first derivative (growth rate) of the curve:
+
+1. **Lag phase end**: First time point where growth rate exceeds the threshold
+2. **Exponential phase end**: First time point *after* peak where rate drops below threshold
+
+**The threshold** is set as a fraction of μ_max (default 10%).
+                        """
+                    )
+
+                    # Generate derivative curve data for illustration
+                    t_deriv = np.linspace(0, 48, 200)
+                    exp_term = np.exp(-0.2 * (t_deriv - 24))
+                    y_deriv = 0.95 * 0.2 * exp_term / (1 + exp_term) ** 2
+
+                    mu_max = np.max(y_deriv)
+                    t_max = t_deriv[np.argmax(y_deriv)]
+                    sigma = 8
+                    y_fitted = mu_max * np.exp(
+                        -((t_deriv - t_max) ** 2) / (2 * sigma**2)
+                    )
+
+                    illustration_threshold = 0.25 * mu_max
+                    left_crossings = np.where(y_fitted[:100] >= illustration_threshold)[
+                        0
+                    ]
+                    t_lag_end = (
+                        t_deriv[left_crossings[0]] if len(left_crossings) > 0 else 10
+                    )
+                    right_crossings = np.where(
+                        y_fitted[100:] >= illustration_threshold
+                    )[0]
+                    t_exp_end = (
+                        t_deriv[100 + right_crossings[-1]]
+                        if len(right_crossings) > 0
+                        else 38
+                    )
+
+                    fig_deriv = go.Figure()
+
+                    t_deriv_points = np.linspace(0, 48, 50)
+                    exp_term_pts = np.exp(-0.2 * (t_deriv_points - 24))
+                    y_deriv_points = 0.95 * 0.2 * exp_term_pts / (1 + exp_term_pts) ** 2
+
+                    fig_deriv.add_trace(
+                        go.Scatter(
+                            x=t_deriv_points,
+                            y=y_deriv_points,
+                            mode="markers",
+                            marker=dict(color="blue", size=6),
+                            name="dOD/dt",
+                        )
+                    )
+
+                    fig_deriv.add_trace(
+                        go.Scatter(
+                            x=t_deriv,
+                            y=y_fitted,
+                            mode="lines",
+                            line=dict(color="orange", width=2, dash="dash"),
+                            name="Fitted curve",
+                        )
+                    )
+
+                    threshold = 0.25 * mu_max
+                    fig_deriv.add_hline(
+                        y=threshold,
+                        line_dash="dash",
+                        line_color="gray",
+                        annotation_text="Cutoff",
+                        annotation_position="right",
+                    )
+
+                    fig_deriv.add_vline(
+                        x=t_lag_end,
+                        line_dash="solid",
+                        line_color="green",
+                        line_width=2,
+                    )
+                    fig_deriv.add_vline(
+                        x=t_exp_end,
+                        line_dash="solid",
+                        line_color="red",
+                        line_width=2,
+                    )
+
+                    fig_deriv.add_annotation(
+                        x=t_lag_end,
+                        y=mu_max * 0.9,
+                        text="End of<br>Lag Phase",
+                        showarrow=False,
+                        font=dict(color="green", size=10),
+                        xanchor="right",
+                        xshift=-5,
+                    )
+                    fig_deriv.add_annotation(
+                        x=t_exp_end,
+                        y=mu_max * 0.9,
+                        text="End of<br>Exp. Phase",
+                        showarrow=False,
+                        font=dict(color="red", size=10),
+                        xanchor="left",
+                        xshift=5,
+                    )
+
+                    fig_deriv.add_annotation(
+                        x=t_max,
+                        y=mu_max + 0.003,
+                        text="μ_max",
+                        showarrow=False,
+                        font=dict(color="orange", size=11),
+                    )
+
+                    fig_deriv.update_layout(
+                        height=250,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="dOD/dt (h⁻¹)",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_deriv, use_container_width=True, config={"staticPlot": True}
+                    )
+
+                    st.markdown(
+                        """
+**Difference between methods:**
+
+| | Sliding Window | Model Fitting |
+|---|---|---|
+| **Derivative source** | Savitzky-Golay smoothed raw data | Analytical derivative of fitted model |
+| **Curve used** | Smoothed empirical data | Parametric model prediction |
+
+**Threshold parameters:**
+- *Lag cutoff*: Fraction of μ_max for lag phase end detection (default 10%)
+- *Exp cutoff*: Fraction of μ_max for exponential phase end detection (default 10%)
+
+Lower values detect transitions earlier; higher values require more pronounced rate changes.
+                        """
+                    )
+
+        method_col, option_col = st.columns(2)
+        with method_col:
+            growth_method = st.selectbox(
+                "Method",
+                options=["Sliding Window", "Model Fitting"],
+                index=(
+                    0
+                    if params0.get("growth_method", "Sliding Window")
+                    == "Sliding Window"
+                    else 1
+                ),
+                help="Choose how to calculate growth descriptors: Sliding Window uses linear fits over a moving window, Model Fitting fits parametric growth curves",
             )
-            model_type = params0.get("model_type", "logistic")
-        else:
-            # Model Fitting selected
-            model_col, help_col = st.columns([0.85, 0.15])
-            with model_col:
+        with option_col:
+            # Method-specific options
+            if growth_method == "Sliding Window":
+                window_points = st.number_input(
+                    "Window size (points)",
+                    5,
+                    200,
+                    int(params0["window_points"]),
+                    1,
+                    help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
+                )
+                model_type = params0.get("model_type", "logistic")
+            else:
+                # Model Fitting selected
                 model_type = st.selectbox(
                     "Growth model",
                     options=["logistic", "gompertz", "richards", "spline"],
@@ -363,101 +767,32 @@ with st.container(border=True):
                     ),
                     help="Parametric model to fit to the growth curve (logistic, gompertz, richards) or spline for non-parametric smoothing",
                 )
-            with help_col:
-                with st.popover("ℹ️ Models", use_container_width=True):
-                    st.markdown("### Growth Model Explanations")
+                window_points = int(params0["window_points"])
 
-                    # Generate example curves for visualization
-                    import numpy as np
-                    import plotly.graph_objects as go
-
-                    t = np.linspace(0, 48, 200)
-
-                    # Logistic model
-                    st.markdown("#### Logistic")
-                    st.latex(r"y(t) = \frac{A}{1 + e^{-\mu(t - \lambda)}}")
-                    st.markdown("""
-                    **Parameters:** A (max OD), μ (growth rate), λ (lag time)
-
-                    **Description:** Classic S-shaped curve with symmetric inflection point.
-                    Most commonly used for microbial growth. Assumes constant growth rate
-                    during exponential phase.
-                    """)
-                    y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
-                    fig_log = go.Figure()
-                    fig_log.add_trace(go.Scatter(x=t, y=y_logistic, mode='lines',
-                                                  line=dict(color='blue', width=2)))
-                    fig_log.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
-                                         xaxis_title="Time (h)", yaxis_title="OD600",
-                                         showlegend=False)
-                    st.plotly_chart(fig_log, use_container_width=True)
-
-                    st.divider()
-
-                    # Gompertz model
-                    st.markdown("#### Gompertz")
-                    st.latex(r"y(t) = A \cdot e^{-e^{-\mu(t - \lambda)}}")
-                    st.markdown("""
-                    **Parameters:** A (max OD), μ (growth rate), λ (lag time)
-
-                    **Description:** Asymmetric S-shaped curve with slower approach to
-                    stationary phase. Often fits bacterial growth better than logistic,
-                    especially when deceleration phase is gradual.
-                    """)
-                    y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
-                    fig_gom = go.Figure()
-                    fig_gom.add_trace(go.Scatter(x=t, y=y_gompertz, mode='lines',
-                                                  line=dict(color='green', width=2)))
-                    fig_gom.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
-                                         xaxis_title="Time (h)", yaxis_title="OD600",
-                                         showlegend=False)
-                    st.plotly_chart(fig_gom, use_container_width=True)
-
-                    st.divider()
-
-                    # Richards model
-                    st.markdown("#### Richards")
-                    st.latex(r"y(t) = \frac{A}{(1 + \nu \cdot e^{-\mu(t - \lambda)})^{1/\nu}}")
-                    st.markdown("""
-                    **Parameters:** A (max OD), μ (growth rate), λ (lag time), ν (shape)
-
-                    **Description:** Generalized logistic with additional shape parameter.
-                    Most flexible - can produce symmetric (ν=1, logistic-like) or
-                    asymmetric curves. Use when other models don't fit well.
-                    """)
-                    nu = 2.0
-                    y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
-                    fig_ric = go.Figure()
-                    fig_ric.add_trace(go.Scatter(x=t, y=y_richards, mode='lines',
-                                                  line=dict(color='orange', width=2)))
-                    fig_ric.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
-                                         xaxis_title="Time (h)", yaxis_title="OD600",
-                                         showlegend=False)
-                    st.plotly_chart(fig_ric, use_container_width=True)
-
-                    st.divider()
-
-                    # Spline
-                    st.markdown("#### Spline")
-                    st.markdown("""
-                    **Parameters:** Smoothing parameter (auto-tuned)
-
-                    **Description:** Non-parametric smoothing spline. Does not assume
-                    any specific growth model - fits flexible curve through data points.
-                    Use when data doesn't follow standard growth patterns or has
-                    unusual features (diauxic growth, etc.).
-                    """)
-                    # Simulate spline-like curve with some variation
-                    y_spline = 1.0 / (1 + np.exp(-0.15 * (t - 24))) + 0.05 * np.sin(t / 3)
-                    fig_spl = go.Figure()
-                    fig_spl.add_trace(go.Scatter(x=t, y=y_spline, mode='lines',
-                                                  line=dict(color='purple', width=2)))
-                    fig_spl.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
-                                         xaxis_title="Time (h)", yaxis_title="OD600",
-                                         showlegend=False)
-                    st.plotly_chart(fig_spl, use_container_width=True)
-
-            window_points = int(params0["window_points"])
+        # Phase boundary cutoffs - apply to both Sliding Window and Model Fitting methods
+        st.write("")
+        st.markdown("**Phase Boundary Detection**")
+        lag_col, exp_col = st.columns(2)
+        with lag_col:
+            lag_cutoff = st.number_input(
+                "Lag phase cutoff",
+                0.01,
+                0.5,
+                float(params0.get("lag_cutoff", 0.1)),
+                0.01,
+                format="%.2f",
+                help="Fraction of maximum growth rate used to define the end of lag phase",
+            )
+        with exp_col:
+            exp_cutoff = st.number_input(
+                "Exponential phase cutoff",
+                0.01,
+                0.5,
+                float(params0.get("exp_cutoff", 0.1)),
+                0.01,
+                format="%.2f",
+                help="Fraction of maximum growth rate used to define the end of exponential phase",
+            )
 
         st.write("")
         st.markdown("**'No Growth' Thresholds**")
@@ -490,6 +825,8 @@ with st.container(border=True):
             remove_wells=remove_wells,
             blank=bool(blank),
             window_points=int(window_points),
+            lag_cutoff=float(lag_cutoff),
+            exp_cutoff=float(exp_cutoff),
             sg_window=int(params0.get("sg_window", 15)),
             sg_poly=int(params0.get("sg_poly", 2)),
             min_data_points=int(min_data_points),
@@ -528,7 +865,7 @@ with st.container(border=True):
     if col1.button(
         "Update parameters and analyse selected plate",
         type="primary",
-        width='stretch',
+        width="stretch",
         disabled=not plate_id,
     ):
         rec = ss.plates.get(plate_id, {})
@@ -542,7 +879,7 @@ with st.container(border=True):
     if col2.button(
         "Remove selected plate",
         type="tertiary",
-        width='stretch',
+        width="stretch",
         disabled=not plate_id,
     ):
         ss.plates.pop(plate_id, None)

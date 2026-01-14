@@ -107,9 +107,15 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
         "clip_time_series": "Time series clip (hours)",
         "remove_wells": "Excluded wells",
         "blank": "Blank subtraction",
+        "growth_method": "Analysis method",
+        "model_type": "Growth model",
         "window_points": "Window size (points)",
         "sg_window": "Savitzky-Golay window",
         "sg_poly": "Savitzky-Golay polynomial order",
+        "lag_cutoff": "Lag phase cutoff (fraction of μ_max)",
+        "exp_cutoff": "Exponential phase cutoff (fraction of μ_max)",
+        "min_data_points": "Minimum data points",
+        "min_signal_to_noise": "Minimum signal-to-noise ratio",
     }
 
     for key, label in param_mapping.items():
