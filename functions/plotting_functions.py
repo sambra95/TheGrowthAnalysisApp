@@ -251,6 +251,31 @@ def plot_replicates_by_sample(plates: dict):
 
 
 # --- growth stats ----------------------------------------------------------------
+# Mapping of metric names to their units for y-axis labels
+METRIC_UNITS = {
+    "Maximum U": "h⁻¹",
+    "doubling_time": "hours",
+    "Maximum OD600": "OD600",
+    "lag_phase_end": "hours",
+    "exponential_phase_end": "hours",
+    "t_mu": "hours",
+    "y_mu": "OD600",
+    "t_peak": "hours",
+}
+
+# Mapping of metric names to display titles
+METRIC_TITLES = {
+    "Maximum U": "Maximum specific growth rate",
+    "doubling_time": "Doubling time",
+}
+
+# Mapping of metric names to y-axis labels (using Greek letters where appropriate)
+METRIC_Y_LABELS = {
+    "Maximum U": "μ",
+    "doubling_time": "tᵈ",
+}
+
+
 def plot_single_growth_stat(
     long_df: pd.DataFrame,
     *,
@@ -272,6 +297,14 @@ def plot_single_growth_stat(
     metric = (
         df["metric"].iloc[0] if "metric" in df.columns and not df.empty else "Metric"
     )
+
+    # Get display title (defaults to metric name if not specified)
+    display_title = METRIC_TITLES.get(metric, metric)
+
+    # Get the y-axis label (use Greek letter if available, otherwise metric name)
+    y_label = METRIC_Y_LABELS.get(metric, metric)
+    unit = METRIC_UNITS.get(metric, "")
+    y_axis_label = f"{y_label} ({unit})" if unit else y_label
 
     # ---- optionally derive Strain/Condition from sample_name (split on FIRST underscore) ----
     s = df["sample_name"].astype(str)
@@ -447,10 +480,10 @@ def plot_single_growth_stat(
         categoryarray=list(x_order),
         title_text=x_col,
     )
-    fig.update_yaxes(showgrid=False, range=[0, None], title_text=metric)
+    fig.update_yaxes(showgrid=False, range=[0, None], title_text=y_axis_label)
 
     fig.update_layout(
-        title=metric,
+        title=display_title,
         height=500,
         margin=dict(t=60, b=60),
         barmode="group",
@@ -838,22 +871,26 @@ def add_window_well(
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
 
                     if fit_result["type"] == "spline":
-                        y_fit = fit_result["spline"](t_dense)
+                        y_fit_log = fit_result["spline"](t_dense)
                     else:
                         model_func = fit_result["model"]
                         params = fit_result["params"]
                         if fit_result["type"] == "richards":
-                            y_fit = model_func(
+                            y_fit_log = model_func(
                                 t_dense,
-                                params["A"],
-                                params["mu"],
-                                params["lag"],
+                                params["y_max"],
+                                params["y_0"],
+                                params["k"],
+                                params["t_i"],
                                 params["nu"],
                             )
                         else:
-                            y_fit = model_func(
-                                t_dense, params["A"], params["mu"], params["lag"]
+                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
+                            y_fit_log = model_func(
+                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
                             )
+                    # Convert from log space back to linear OD for plotting
+                    y_fit = np.exp(y_fit_log)
 
                     # Add the fitted curve as a trace
                     fig.add_trace(
@@ -1092,22 +1129,26 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
 
                     if fit_result["type"] == "spline":
-                        y_fit = fit_result["spline"](t_dense)
+                        y_fit_log = fit_result["spline"](t_dense)
                     else:
                         model_func = fit_result["model"]
                         params = fit_result["params"]
                         if fit_result["type"] == "richards":
-                            y_fit = model_func(
+                            y_fit_log = model_func(
                                 t_dense,
-                                params["A"],
-                                params["mu"],
-                                params["lag"],
+                                params["y_max"],
+                                params["y_0"],
+                                params["k"],
+                                params["t_i"],
                                 params["nu"],
                             )
                         else:
-                            y_fit = model_func(
-                                t_dense, params["A"], params["mu"], params["lag"]
+                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
+                            y_fit_log = model_func(
+                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
                             )
+                    # Convert from log space back to linear OD for plotting
+                    y_fit = np.exp(y_fit_log)
 
                     # Add the fitted curve as a trace
                     fig.add_trace(
@@ -1403,22 +1444,26 @@ def plot_model_fit_single_annotated(
                     t_dense = np.linspace(float(t.min()), float(t.max()), 200)
 
                     if fit_result["type"] == "spline":
-                        y_fit = fit_result["spline"](t_dense)
+                        y_fit_log = fit_result["spline"](t_dense)
                     else:
                         model_func = fit_result["model"]
                         params = fit_result["params"]
                         if fit_result["type"] == "richards":
-                            y_fit = model_func(
+                            y_fit_log = model_func(
                                 t_dense,
-                                params["A"],
-                                params["mu"],
-                                params["lag"],
+                                params["y_max"],
+                                params["y_0"],
+                                params["k"],
+                                params["t_i"],
                                 params["nu"],
                             )
                         else:
-                            y_fit = model_func(
-                                t_dense, params["A"], params["mu"], params["lag"]
+                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
+                            y_fit_log = model_func(
+                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
                             )
+                    # Convert from log space back to linear OD for plotting
+                    y_fit = np.exp(y_fit_log)
 
                     fig.add_trace(
                         go.Scatter(

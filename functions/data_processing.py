@@ -17,6 +17,7 @@ ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 BAD_FIT = {
     "Maximum OD600": 0.0,
     "Maximum U": 0.0,
+    "doubling_time": np.nan,
     "lag_phase_end": np.nan,
     "exponential_phase_end": np.nan,
     "t_mu": np.nan,
@@ -171,22 +172,257 @@ def calculate_phase_ends(t, y_s, lag_frac=0.10, exp_frac=0.10):
 
 
 # ---------- Growth curve models ----------
-def logistic_model(t, A, mu, lag):
-    """Logistic growth model: y(t) = A / (1 + exp(-mu * (t - lag)))"""
-    return A / (1 + np.exp(-mu * (t - lag)))
+def logistic_model(t, y_max, y_0, k, t_i):
+    """
+    Logistic growth model for microbial growth (log-OD space).
+
+    y(t) = y_max + (y_0 - y_max) / [1 + exp(-k * (t - t_i))]
+
+    This is equivalent to Richards model with nu=1.
+
+    Parameters:
+        t: Time array
+        y_max: Final log-biomass (asymptotic upper limit)
+        y_0: Initial log-biomass
+        k: Growth rate constant (time^-1)
+        t_i: Time of inflection
+
+    Returns:
+        y(t) = ln(OD) values
+    """
+    return y_max + (y_0 - y_max) / (1 + np.exp(-k * (t - t_i)))
 
 
-def gompertz_model(t, A, mu, lag):
-    """Gompertz growth model: y(t) = A * exp(-exp(-mu * (t - lag)))"""
-    return A * np.exp(-np.exp(-mu * (t - lag)))
+def gompertz_model(t, y_max, y_0, k, t_i):
+    """
+    Gompertz growth model for microbial growth (log-OD space).
+
+    y(t) = y_max + (y_0 - y_max) * exp(-exp(k * (t - t_i)))
+
+    This is the limit of Richards model as nu → 0.
+
+    Parameters:
+        t: Time array
+        y_max: Final log-biomass (asymptotic upper limit)
+        y_0: Initial log-biomass
+        k: Growth rate constant (time^-1)
+        t_i: Time of inflection
+
+    Returns:
+        y(t) = ln(OD) values
+    """
+    return y_max + (y_0 - y_max) * np.exp(-np.exp(k * (t - t_i)))
 
 
-def richards_model(t, A, mu, lag, nu):
-    """Richards growth model (generalized logistic with shape parameter nu)"""
-    return A / (1 + nu * np.exp(-mu * (t - lag))) ** (1 / nu)
+def richards_model(t, y_max, y_0, k, t_i, nu):
+    """
+    Richards growth model for microbial growth (log-OD space).
+
+    y(t) = y_max + (y_0 - y_max) / [1 + nu * exp(-k * (t - t_i))]^(1/nu)
+
+    Parameters:
+        t: Time array
+        y_max: Final log-biomass (asymptotic upper limit)
+        y_0: Initial log-biomass
+        k: Growth rate constant (time^-1)
+        t_i: Time of inflection
+        nu: Shape parameter (nu=1 -> logistic, nu->0 -> Gompertz)
+
+    Returns:
+        y(t) = ln(OD) values
+    """
+    return y_max + (y_0 - y_max) / (1 + nu * np.exp(-k * (t - t_i))) ** (1 / nu)
+
+
+def _prepare_fit_data(t, y):
+    """Prepare and validate data for model fitting (log-transformed)."""
+    t, y = _as_float(t), _as_float(y)
+    m = np.isfinite(t) & np.isfinite(y) & (y > 0)
+    t, y = t[m], y[m]
+    if t.size < 10 or np.ptp(t) <= 0:
+        return None, None
+    # Log-transform the y data
+    y_log = np.log(y)
+    return t, y_log
 
 
 @st.cache_data
+def fit_logistic(t, y):
+    """
+    Fit a logistic growth model to data.
+
+    Model: y(t) = y_max + (y_0 - y_max) / [1 + exp(-k * (t - t_i))]
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected, will be log-transformed)
+
+    Returns:
+        Dictionary with fitted parameters and model info, or None if fit fails
+    """
+    t, y = _prepare_fit_data(t, y)
+    if t is None:
+        return None
+
+    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
+    y_max_init = float(np.nanmax(y))  # Final log-biomass
+    y_0_init = float(np.nanmin(y))    # Initial log-biomass
+    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
+    k_init = 0.5  # Growth rate constant
+
+    # Ensure y_max_init > y_0_init for valid initial guess
+    if y_max_init <= y_0_init:
+        y_max_init = y_0_init + 0.1
+
+    p0 = [y_max_init, y_0_init, k_init, t_i_init]
+    # Bounds: k > 0, t_i within data range
+    # Note: y values are in log space, so can be negative
+    bounds = (
+        [-np.inf, -np.inf, 0.001, float(t.min())],
+        [np.inf, np.inf, 10, float(t.max())]
+    )
+    param_names = ["y_max", "y_0", "k", "t_i"]
+
+    try:
+        params, _ = curve_fit(logistic_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+        return {
+            "type": "logistic",
+            "model": logistic_model,
+            "params": {name: float(val) for name, val in zip(param_names, params)},
+            "t": t,
+            "y": y,
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data
+def fit_gompertz(t, y):
+    """
+    Fit a Gompertz growth model to data.
+
+    Model: y(t) = y_max + (y_0 - y_max) * exp(-exp(k * (t - t_i)))
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected, will be log-transformed)
+
+    Returns:
+        Dictionary with fitted parameters and model info, or None if fit fails
+    """
+    t, y = _prepare_fit_data(t, y)
+    if t is None:
+        return None
+
+    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
+    y_max_init = float(np.nanmax(y))  # Final log-biomass
+    y_0_init = float(np.nanmin(y))    # Initial log-biomass
+    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
+    k_init = 0.5  # Growth rate constant
+
+    # Ensure y_max_init > y_0_init for valid initial guess
+    if y_max_init <= y_0_init:
+        y_max_init = y_0_init + 0.1
+
+    p0 = [y_max_init, y_0_init, k_init, t_i_init]
+    # Bounds: k > 0, t_i within data range
+    # Note: y values are in log space, so can be negative
+    bounds = (
+        [-np.inf, -np.inf, 0.001, float(t.min())],
+        [np.inf, np.inf, 10, float(t.max())]
+    )
+    param_names = ["y_max", "y_0", "k", "t_i"]
+
+    try:
+        params, _ = curve_fit(gompertz_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+        return {
+            "type": "gompertz",
+            "model": gompertz_model,
+            "params": {name: float(val) for name, val in zip(param_names, params)},
+            "t": t,
+            "y": y,
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data
+def fit_richards(t, y):
+    """
+    Fit a Richards growth model to data.
+
+    Model: y(t) = y_max + (y_0 - y_max) / [1 + nu * exp(-k * (t - t_i))]^(1/nu)
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected, will be log-transformed)
+
+    Returns:
+        Dictionary with fitted parameters and model info, or None if fit fails
+    """
+    t, y = _prepare_fit_data(t, y)
+    if t is None:
+        return None
+
+    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
+    y_max_init = float(np.nanmax(y))  # Final log-biomass
+    y_0_init = float(np.nanmin(y))    # Initial log-biomass
+    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
+    k_init = 0.5  # Growth rate constant
+    nu_init = 1.0  # Shape parameter (1.0 = logistic)
+
+    # Ensure y_max_init > y_0_init for valid bounds
+    if y_max_init <= y_0_init:
+        y_max_init = y_0_init + 0.1  # Add small buffer
+
+    p0 = [y_max_init, y_0_init, k_init, t_i_init, nu_init]
+    # Bounds: y_max > y_0 (for growth curves), k > 0, t_i within data range, nu > 0
+    # Note: y values are in log space, so can be negative
+    bounds = (
+        # Lower bounds: [y_max, y_0, k, t_i, nu]
+        [-np.inf, -np.inf, 0.001, float(t.min()), 0.01],
+        # Upper bounds: [y_max, y_0, k, t_i, nu]
+        [np.inf, np.inf, 10, float(t.max()), 100]
+    )
+    param_names = ["y_max", "y_0", "k", "t_i", "nu"]
+
+    try:
+        params, _ = curve_fit(richards_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+        return {
+            "type": "richards",
+            "model": richards_model,
+            "params": {name: float(val) for name, val in zip(param_names, params)},
+            "t": t,
+            "y": y,
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data
+def fit_spline(t, y):
+    """
+    Fit a smoothing spline to data.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+
+    Returns:
+        Dictionary with spline object and data, or None if fit fails
+    """
+    t, y = _prepare_fit_data(t, y)
+    if t is None:
+        return None
+
+    try:
+        s = max(0.01 * t.size, 1.0)
+        spline = UnivariateSpline(t, y, s=s, k=3)
+        return {"type": "spline", "spline": spline, "t": t, "y": y}
+    except Exception:
+        return None
+
+
 def fit_growth_model(t, y, model_type="logistic"):
     """
     Fit a parametric growth model to data.
@@ -199,62 +435,26 @@ def fit_growth_model(t, y, model_type="logistic"):
     Returns:
         Dictionary with fitted parameters and model info, or None if fit fails
     """
-    t, y = _as_float(t), _as_float(y)
-    m = np.isfinite(t) & np.isfinite(y)
-    t, y = t[m], y[m]
-
-    if t.size < 10 or np.ptp(t) <= 0:
-        return None
-
-    if model_type == "spline":
-        # Fit a smoothing spline
-        try:
-            # Use adaptive smoothing based on data size
-            s = max(0.01 * t.size, 1.0)
-            spline = UnivariateSpline(t, y, s=s, k=3)
-            return {"type": "spline", "spline": spline, "t": t, "y": y}
-        except Exception:
-            return None
-
-    # Parametric models
-    A_init = float(np.nanmax(y))
-    lag_init = float(t[np.argmax(np.gradient(y, t))])
-    mu_init = 0.5
-
     if model_type == "logistic":
-        model_func = logistic_model
-        p0 = [A_init, mu_init, lag_init]
-        bounds = ([0, 0, float(t.min())], [np.inf, 10, float(t.max())])
-        param_names = ["A", "mu", "lag"]
+        return fit_logistic(t, y)
     elif model_type == "gompertz":
-        model_func = gompertz_model
-        p0 = [A_init, mu_init, lag_init]
-        bounds = ([0, 0, float(t.min())], [np.inf, 10, float(t.max())])
-        param_names = ["A", "mu", "lag"]
+        return fit_gompertz(t, y)
     elif model_type == "richards":
-        model_func = richards_model
-        p0 = [A_init, mu_init, lag_init, 1.0]
-        bounds = ([0, 0, float(t.min()), 0.01], [np.inf, 10, float(t.max()), 100])
-        param_names = ["A", "mu", "lag", "nu"]
+        return fit_richards(t, y)
+    elif model_type == "spline":
+        return fit_spline(t, y)
     else:
-        return None
-
-    try:
-        params, _ = curve_fit(model_func, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        return {
-            "type": model_type,
-            "model": model_func,
-            "params": {name: float(val) for name, val in zip(param_names, params)},
-            "t": t,
-            "y": y,
-        }
-    except Exception:
         return None
 
 
 def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp_frac=0.10, y_data=None):
     """
     Extract growth descriptors from a fitted growth model.
+
+    Note: Models are fitted to log-transformed data (ln(OD)), so:
+    - y_pred represents ln(OD) values
+    - dy_pred represents d(ln(OD))/dt = specific growth rate (h⁻¹)
+    - OD values are converted back via exp(y_pred)
 
     Args:
         fit_result: Dictionary returned by fit_growth_model
@@ -275,28 +475,40 @@ def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp
 
     t_dense = np.linspace(float(t_data.min()), float(t_data.max()), 500)
 
-    # Generate predictions
+    # Generate predictions (in log space: ln(OD))
     if fit_result["type"] == "spline":
-        y_pred = fit_result["spline"](t_dense)
+        y_pred_log = fit_result["spline"](t_dense)
         dy_pred = fit_result["spline"].derivative()(t_dense)
     else:
         model_func = fit_result["model"]
         params = fit_result["params"]
         if fit_result["type"] == "richards":
-            y_pred = model_func(t_dense, params["A"], params["mu"], params["lag"], params["nu"])
+            # Richards model has nu parameter
+            y_pred_log = model_func(
+                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"], params["nu"]
+            )
         else:
-            y_pred = model_func(t_dense, params["A"], params["mu"], params["lag"])
-        dy_pred = np.gradient(y_pred, t_dense)
+            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
+            y_pred_log = model_func(
+                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
+            )
+        # dy_pred is d(ln(OD))/dt = specific growth rate (h⁻¹)
+        # Using numerical gradient as recommended: μ_max = max(dy/dt)
+        dy_pred = np.gradient(y_pred_log, t_dense)
 
-    # Maximum OD600
-    max_od_idx = np.nanargmax(y_pred)
-    max_od = float(y_pred[max_od_idx])
+    # Convert log predictions back to linear space for OD values
+    y_pred_linear = np.exp(y_pred_log)
 
-    # Maximum growth rate (U) and its location
+    # Maximum OD600 (in linear space)
+    max_od_idx = np.nanargmax(y_pred_linear)
+    max_od = float(y_pred_linear[max_od_idx])
+
+    # Maximum specific growth rate (U) in h⁻¹ and its location
     max_u_idx = np.nanargmax(dy_pred)
     max_u = float(dy_pred[max_u_idx])
     t_mu = float(t_dense[max_u_idx])
-    y_mu = float(y_pred[max_u_idx])
+    # y_mu is the OD at the time of maximum growth rate (in linear space)
+    y_mu = float(y_pred_linear[max_u_idx])
 
     if max_u <= 0:
         out = BAD_FIT.copy()
@@ -322,25 +534,34 @@ def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp
     t_window_start = max(float(t_mu - window_half), float(t_dense[0]))
     t_window_end = min(float(t_mu + window_half), float(t_dense[-1]))
 
-    # Calculate RMSE using the original data points that were fitted
+    # Calculate RMSE using the original data points that were fitted (in log space)
     rmse = np.nan
     if y_data is not None and len(y_data) > 0:
         t_fit = fit_result.get('t', t_data)
-        # Generate predictions at the fitted time points
+        # Generate predictions at the fitted time points (in log space)
         if fit_result["type"] == "spline":
             y_pred_fit = fit_result["spline"](t_fit)
         else:
             model_func = fit_result["model"]
             params = fit_result["params"]
             if fit_result["type"] == "richards":
-                y_pred_fit = model_func(t_fit, params["A"], params["mu"], params["lag"], params["nu"])
+                y_pred_fit = model_func(
+                    t_fit, params["y_max"], params["y_0"], params["k"], params["t_i"], params["nu"]
+                )
             else:
-                y_pred_fit = model_func(t_fit, params["A"], params["mu"], params["lag"])
+                # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
+                y_pred_fit = model_func(
+                    t_fit, params["y_max"], params["y_0"], params["k"], params["t_i"]
+                )
         rmse = calculate_rmse(y_data, y_pred_fit)
+
+    # Calculate doubling time: t_d = ln(2) / μ_max
+    doubling_time = np.log(2) / max_u if max_u > 0 else np.nan
 
     return {
         "Maximum OD600": max_od,
         "Maximum U": max_u,
+        "doubling_time": float(doubling_time),
         "lag_phase_end": lag_end,
         "exponential_phase_end": max(exp_end, lag_end),
         "t_mu": t_mu,
@@ -471,9 +692,13 @@ def calculate_growth_descriptors(
     # calculate exponential phase start and end
     lag_end, exp_end = calculate_phase_ends(t, y_s, lag_frac=lag_frac, exp_frac=exp_frac)
 
+    # Calculate doubling time: t_d = ln(2) / μ_max
+    doubling_time = np.log(2) / best_m if best_m > 0 else np.nan
+
     out = {
         "Maximum OD600": A,
         "Maximum U": float(best_m),
+        "doubling_time": float(doubling_time),
         "lag_phase_end": float(lag_end),
         "exponential_phase_end": float(exp_end),
         "t_mu": float(t_mu),

@@ -36,6 +36,7 @@ def _build_growth_stats_long_df(
 
     metrics = [
         "Maximum U",
+        "doubling_time",
         "Maximum OD600",
         "lag_phase_end",
         "exponential_phase_end",
@@ -462,6 +463,7 @@ def ui_growth_summaries(plates: dict):
         # Display each metric as a separate downloadable plot
         metrics = [
             "Maximum U",
+            "doubling_time",
             "Maximum OD600",
             "lag_phase_end",
             "exponential_phase_end",

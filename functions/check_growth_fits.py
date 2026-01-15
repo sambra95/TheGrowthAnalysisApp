@@ -175,8 +175,9 @@ def update_growth_stats_from_lasso(
             descriptors = extract_growth_descriptors_from_model(
                 fit_result,
                 all_t,  # Use full time range, not just selected range
-                frac_peak=float(params.get("lag_frac", 0.20)),
-                y_data=refit_y  # Pass the selected y data for RMSE calculation
+                lag_frac=float(params.get("lag_frac", 0.10)),
+                exp_frac=float(params.get("exp_frac", 0.10)),
+                y_data=fit_result.get('y')  # Use log-transformed y data from fit for RMSE
             )
 
             # Update growth stats with refit results
