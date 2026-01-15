@@ -987,8 +987,7 @@ def plot_window_plate(plate: dict):
         rows=8,
         cols=12,
         horizontal_spacing=0.004,
-        vertical_spacing=0.03,
-        subplot_titles=ALL_WELLS,
+        vertical_spacing=0.02,
         shared_xaxes=True,
         shared_yaxes=True,
     )
@@ -1028,7 +1027,21 @@ def plot_window_plate(plate: dict):
             marker_size=2,  # plate: smaller dots
         )
 
-    fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
+        # Add well name in top-left corner of each subplot
+        axis_suffix = "" if i == 1 else str(i)
+        fig.add_annotation(
+            text=well,
+            xref=f"x{axis_suffix} domain",
+            yref=f"y{axis_suffix} domain",
+            x=0.05,
+            y=0.95,
+            showarrow=False,
+            font=dict(size=9),
+            xanchor="left",
+            yanchor="top",
+        )
+
+    fig.update_layout(height=900, margin=dict(t=20), showlegend=False)
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
     return fig
