@@ -338,7 +338,7 @@ with st.container(border=True):
         with header_col:
             st.markdown("**Growth Descriptor Calculation Method**")
         with help_col:
-            with st.popover("Help", use_container_width=True):
+            with st.popover("Help", width='stretch'):
                 import numpy as np
                 import plotly.graph_objects as go
 
@@ -443,7 +443,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_sw, use_container_width=True, config={"staticPlot": True}
+                        fig_sw, width='stretch', config={"staticPlot": True}
                     )
 
                     st.markdown(
@@ -500,7 +500,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_log, use_container_width=True, config={"staticPlot": True}
+                        fig_log, width='stretch', config={"staticPlot": True}
                     )
 
                     # Gompertz model
@@ -527,7 +527,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_gom, use_container_width=True, config={"staticPlot": True}
+                        fig_gom, width='stretch', config={"staticPlot": True}
                     )
 
                     # Richards model
@@ -557,7 +557,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_ric, use_container_width=True, config={"staticPlot": True}
+                        fig_ric, width='stretch', config={"staticPlot": True}
                     )
 
                     # Spline
@@ -585,7 +585,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_spl, use_container_width=True, config={"staticPlot": True}
+                        fig_spl, width='stretch', config={"staticPlot": True}
                     )
 
                 # Phase Boundary Detection Expander
@@ -712,7 +712,7 @@ with st.container(border=True):
                         showlegend=False,
                     )
                     st.plotly_chart(
-                        fig_deriv, use_container_width=True, config={"staticPlot": True}
+                        fig_deriv, width='stretch', config={"staticPlot": True}
                     )
 
                     st.markdown(

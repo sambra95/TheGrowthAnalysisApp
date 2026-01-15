@@ -482,7 +482,7 @@ def ui_growth_summaries(plates: dict):
                     x_order=x_ordered,
                     legend_order=legend_ordered,
                 )
-                st.plotly_chart(fig, width='stretch', use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
     # Build the shared curves DF only if needed
     if apply_mean or apply_reps:
