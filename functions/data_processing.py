@@ -447,7 +447,7 @@ def fit_growth_model(t, y, model_type="logistic"):
         return None
 
 
-def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp_frac=0.10, y_data=None):
+def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp_frac=0.10, y_data=None, model_type=None):
     """
     Extract growth descriptors from a fitted growth model.
 
@@ -462,12 +462,16 @@ def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp
         lag_frac: Fraction of peak growth rate for lag phase end detection
         exp_frac: Fraction of peak growth rate for exponential phase end detection
         y_data: Optional observed y values for RMSE calculation (if None, uses fit_result['y'])
+        model_type: Model type string (used to preserve fit_method even when fit fails)
 
     Returns:
         Dictionary with growth descriptors (same format as calculate_growth_descriptors)
     """
     if fit_result is None:
-        return BAD_FIT.copy()
+        out = BAD_FIT.copy()
+        if model_type:
+            out["fit_method"] = f"Model Fitting ({model_type})"
+        return out
 
     # Use the y_data from the fit if not provided separately
     if y_data is None:
@@ -513,6 +517,7 @@ def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp
     if max_u <= 0:
         out = BAD_FIT.copy()
         out["Maximum OD600"] = max_od
+        out["fit_method"] = f"Model Fitting ({fit_result['type']})"
         return out
 
     # Calculate phase boundaries using derivative thresholds
@@ -602,18 +607,22 @@ def calculate_growth_descriptors_model_based(
     m = np.isfinite(t) & np.isfinite(y)
     t, y = t[m], y[m]
 
-    # Check data quality
+    # Check data quality - return BAD_FIT but preserve the model type for refit
     if t.size < max(int(min_data_points), 10) or np.ptp(t) <= 0:
-        return BAD_FIT.copy()
+        out = BAD_FIT.copy()
+        out["fit_method"] = f"Model Fitting ({model_type})"
+        return out
 
     if abs(y.max() / max(abs(y.min()), 1e-12)) <= float(min_signal_to_noise):
-        return BAD_FIT.copy()
+        out = BAD_FIT.copy()
+        out["fit_method"] = f"Model Fitting ({model_type})"
+        return out
 
     # Fit the growth model
     fit_result = fit_growth_model(t, y, model_type=model_type)
 
     # Extract growth descriptors from the fitted model
-    return extract_growth_descriptors_from_model(fit_result, t, lag_frac=lag_frac, exp_frac=exp_frac)
+    return extract_growth_descriptors_from_model(fit_result, t, lag_frac=lag_frac, exp_frac=exp_frac, model_type=model_type)
 
 
 def calculate_growth_descriptors(

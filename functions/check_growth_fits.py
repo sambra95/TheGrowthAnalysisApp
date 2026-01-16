@@ -177,7 +177,8 @@ def update_growth_stats_from_lasso(
                 all_t,  # Use full time range, not just selected range
                 lag_frac=float(params.get("lag_frac", 0.10)),
                 exp_frac=float(params.get("exp_frac", 0.10)),
-                y_data=fit_result.get('y')  # Use log-transformed y data from fit for RMSE
+                y_data=fit_result.get('y'),  # Use log-transformed y data from fit for RMSE
+                model_type=model_type,
             )
 
             # Update growth stats with refit results
