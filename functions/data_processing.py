@@ -1,31 +1,56 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
 
 import io
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import streamlit as st
-from scipy.interpolate import UnivariateSpline
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+
+# Add src directory to path for importing python_package
+_src_path = Path(__file__).parent.parent / "src"
+if str(_src_path) not in sys.path:
+    sys.path.insert(0, str(_src_path))
+
+# Import all growth fitting functions from python_package
+from python_package import (
+    fit_growth_model as pkg_fit_growth_model,
+    sliding_window_fit as pkg_sliding_window_fit,
+    fit_model,
+    fit_logistic,
+    fit_gompertz,
+    fit_richards,
+    logistic_model,
+    gompertz_model,
+    richards_model,
+    first_derivative,
+    second_derivative,
+    _smooth as pkg_smooth,
+    _compute_rmse,
+    _extract_stats_from_fit,
+)
 
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 
 
+# Keys match python_package._bad_fit_stats()
 BAD_FIT = {
-    "Maximum OD600": 0.0,
-    "Maximum U": 0.0,
+    "max_od": 0.0,
+    "specific_growth_rate": 0.0,
     "doubling_time": np.nan,
-    "lag_phase_end": np.nan,
-    "exponential_phase_end": np.nan,
-    "t_mu": np.nan,
-    "y_mu": np.nan,
+    "exp_phase_start": np.nan,
+    "exp_phase_end": np.nan,
+    "time_at_umax": np.nan,
+    "od_at_umax": np.nan,
     "t_window_start": np.nan,
     "t_window_end": np.nan,
     "fit_method": None,
-    "rmse": np.nan,
+    "model_rmse": np.nan,
 }
 
 
@@ -33,30 +58,6 @@ BAD_FIT = {
 def _as_float(x):
     """Convert array-like input to a float NumPy array."""
     return np.asarray(x, dtype=float)
-
-
-def calculate_rmse(y_observed, y_predicted):
-    """
-    Calculate Root Mean Square Error between observed and predicted values.
-
-    Args:
-        y_observed: Observed/actual values
-        y_predicted: Predicted values from model
-
-    Returns:
-        RMSE value as float
-    """
-    y_observed = _as_float(y_observed)
-    y_predicted = _as_float(y_predicted)
-
-    # Filter out non-finite values
-    mask = np.isfinite(y_observed) & np.isfinite(y_predicted)
-    if mask.sum() == 0:
-        return np.nan
-
-    residuals = y_observed[mask] - y_predicted[mask]
-    rmse = np.sqrt(np.mean(residuals ** 2))
-    return float(rmse)
 
 
 @st.cache_data
@@ -169,556 +170,6 @@ def calculate_phase_ends(t, y_s, lag_frac=0.10, exp_frac=0.10):
     lag_end = float(t[lag_idx[0]]) if lag_idx.size else float(t[0])
     exp_end = float(t[exp_idx[0]]) if exp_idx.size else float(t[-1])
     return lag_end, max(exp_end, lag_end)
-
-
-# ---------- Growth curve models ----------
-def logistic_model(t, y_max, y_0, k, t_i):
-    """
-    Logistic growth model for microbial growth (log-OD space).
-
-    y(t) = y_max + (y_0 - y_max) / [1 + exp(-k * (t - t_i))]
-
-    This is equivalent to Richards model with nu=1.
-
-    Parameters:
-        t: Time array
-        y_max: Final log-biomass (asymptotic upper limit)
-        y_0: Initial log-biomass
-        k: Growth rate constant (time^-1)
-        t_i: Time of inflection
-
-    Returns:
-        y(t) = ln(OD) values
-    """
-    return y_max + (y_0 - y_max) / (1 + np.exp(-k * (t - t_i)))
-
-
-def gompertz_model(t, y_max, y_0, k, t_i):
-    """
-    Gompertz growth model for microbial growth (log-OD space).
-
-    y(t) = y_max + (y_0 - y_max) * exp(-exp(k * (t - t_i)))
-
-    This is the limit of Richards model as nu → 0.
-
-    Parameters:
-        t: Time array
-        y_max: Final log-biomass (asymptotic upper limit)
-        y_0: Initial log-biomass
-        k: Growth rate constant (time^-1)
-        t_i: Time of inflection
-
-    Returns:
-        y(t) = ln(OD) values
-    """
-    return y_max + (y_0 - y_max) * np.exp(-np.exp(k * (t - t_i)))
-
-
-def richards_model(t, y_max, y_0, k, t_i, nu):
-    """
-    Richards growth model for microbial growth (log-OD space).
-
-    y(t) = y_max + (y_0 - y_max) / [1 + nu * exp(-k * (t - t_i))]^(1/nu)
-
-    Parameters:
-        t: Time array
-        y_max: Final log-biomass (asymptotic upper limit)
-        y_0: Initial log-biomass
-        k: Growth rate constant (time^-1)
-        t_i: Time of inflection
-        nu: Shape parameter (nu=1 -> logistic, nu->0 -> Gompertz)
-
-    Returns:
-        y(t) = ln(OD) values
-    """
-    return y_max + (y_0 - y_max) / (1 + nu * np.exp(-k * (t - t_i))) ** (1 / nu)
-
-
-def _prepare_fit_data(t, y):
-    """Prepare and validate data for model fitting (log-transformed)."""
-    t, y = _as_float(t), _as_float(y)
-    m = np.isfinite(t) & np.isfinite(y) & (y > 0)
-    t, y = t[m], y[m]
-    if t.size < 10 or np.ptp(t) <= 0:
-        return None, None
-    # Log-transform the y data
-    y_log = np.log(y)
-    return t, y_log
-
-
-@st.cache_data
-def fit_logistic(t, y):
-    """
-    Fit a logistic growth model to data.
-
-    Model: y(t) = y_max + (y_0 - y_max) / [1 + exp(-k * (t - t_i))]
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected, will be log-transformed)
-
-    Returns:
-        Dictionary with fitted parameters and model info, or None if fit fails
-    """
-    t, y = _prepare_fit_data(t, y)
-    if t is None:
-        return None
-
-    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
-    y_max_init = float(np.nanmax(y))  # Final log-biomass
-    y_0_init = float(np.nanmin(y))    # Initial log-biomass
-    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
-    k_init = 0.5  # Growth rate constant
-
-    # Ensure y_max_init > y_0_init for valid initial guess
-    if y_max_init <= y_0_init:
-        y_max_init = y_0_init + 0.1
-
-    p0 = [y_max_init, y_0_init, k_init, t_i_init]
-    # Bounds: k > 0, t_i within data range
-    # Note: y values are in log space, so can be negative
-    bounds = (
-        [-np.inf, -np.inf, 0.001, float(t.min())],
-        [np.inf, np.inf, 10, float(t.max())]
-    )
-    param_names = ["y_max", "y_0", "k", "t_i"]
-
-    try:
-        params, _ = curve_fit(logistic_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        return {
-            "type": "logistic",
-            "model": logistic_model,
-            "params": {name: float(val) for name, val in zip(param_names, params)},
-            "t": t,
-            "y": y,
-        }
-    except Exception:
-        return None
-
-
-@st.cache_data
-def fit_gompertz(t, y):
-    """
-    Fit a Gompertz growth model to data.
-
-    Model: y(t) = y_max + (y_0 - y_max) * exp(-exp(k * (t - t_i)))
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected, will be log-transformed)
-
-    Returns:
-        Dictionary with fitted parameters and model info, or None if fit fails
-    """
-    t, y = _prepare_fit_data(t, y)
-    if t is None:
-        return None
-
-    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
-    y_max_init = float(np.nanmax(y))  # Final log-biomass
-    y_0_init = float(np.nanmin(y))    # Initial log-biomass
-    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
-    k_init = 0.5  # Growth rate constant
-
-    # Ensure y_max_init > y_0_init for valid initial guess
-    if y_max_init <= y_0_init:
-        y_max_init = y_0_init + 0.1
-
-    p0 = [y_max_init, y_0_init, k_init, t_i_init]
-    # Bounds: k > 0, t_i within data range
-    # Note: y values are in log space, so can be negative
-    bounds = (
-        [-np.inf, -np.inf, 0.001, float(t.min())],
-        [np.inf, np.inf, 10, float(t.max())]
-    )
-    param_names = ["y_max", "y_0", "k", "t_i"]
-
-    try:
-        params, _ = curve_fit(gompertz_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        return {
-            "type": "gompertz",
-            "model": gompertz_model,
-            "params": {name: float(val) for name, val in zip(param_names, params)},
-            "t": t,
-            "y": y,
-        }
-    except Exception:
-        return None
-
-
-@st.cache_data
-def fit_richards(t, y):
-    """
-    Fit a Richards growth model to data.
-
-    Model: y(t) = y_max + (y_0 - y_max) / [1 + nu * exp(-k * (t - t_i))]^(1/nu)
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected, will be log-transformed)
-
-    Returns:
-        Dictionary with fitted parameters and model info, or None if fit fails
-    """
-    t, y = _prepare_fit_data(t, y)
-    if t is None:
-        return None
-
-    # Initial parameter estimates (y is already log-transformed by _prepare_fit_data)
-    y_max_init = float(np.nanmax(y))  # Final log-biomass
-    y_0_init = float(np.nanmin(y))    # Initial log-biomass
-    t_i_init = float(t[np.argmax(np.gradient(y, t))])  # Inflection point
-    k_init = 0.5  # Growth rate constant
-    nu_init = 1.0  # Shape parameter (1.0 = logistic)
-
-    # Ensure y_max_init > y_0_init for valid bounds
-    if y_max_init <= y_0_init:
-        y_max_init = y_0_init + 0.1  # Add small buffer
-
-    p0 = [y_max_init, y_0_init, k_init, t_i_init, nu_init]
-    # Bounds: y_max > y_0 (for growth curves), k > 0, t_i within data range, nu > 0
-    # Note: y values are in log space, so can be negative
-    bounds = (
-        # Lower bounds: [y_max, y_0, k, t_i, nu]
-        [-np.inf, -np.inf, 0.001, float(t.min()), 0.01],
-        # Upper bounds: [y_max, y_0, k, t_i, nu]
-        [np.inf, np.inf, 10, float(t.max()), 100]
-    )
-    param_names = ["y_max", "y_0", "k", "t_i", "nu"]
-
-    try:
-        params, _ = curve_fit(richards_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        return {
-            "type": "richards",
-            "model": richards_model,
-            "params": {name: float(val) for name, val in zip(param_names, params)},
-            "t": t,
-            "y": y,
-        }
-    except Exception:
-        return None
-
-
-@st.cache_data
-def fit_spline(t, y):
-    """
-    Fit a smoothing spline to data.
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected)
-
-    Returns:
-        Dictionary with spline object and data, or None if fit fails
-    """
-    t, y = _prepare_fit_data(t, y)
-    if t is None:
-        return None
-
-    try:
-        s = max(0.01 * t.size, 1.0)
-        spline = UnivariateSpline(t, y, s=s, k=3)
-        return {"type": "spline", "spline": spline, "t": t, "y": y}
-    except Exception:
-        return None
-
-
-def fit_growth_model(t, y, model_type="logistic"):
-    """
-    Fit a parametric growth model to data.
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected)
-        model_type: One of "logistic", "gompertz", "richards", "spline"
-
-    Returns:
-        Dictionary with fitted parameters and model info, or None if fit fails
-    """
-    if model_type == "logistic":
-        return fit_logistic(t, y)
-    elif model_type == "gompertz":
-        return fit_gompertz(t, y)
-    elif model_type == "richards":
-        return fit_richards(t, y)
-    elif model_type == "spline":
-        return fit_spline(t, y)
-    else:
-        return None
-
-
-def extract_growth_descriptors_from_model(fit_result, t_data, lag_frac=0.10, exp_frac=0.10, y_data=None, model_type=None):
-    """
-    Extract growth descriptors from a fitted growth model.
-
-    Note: Models are fitted to log-transformed data (ln(OD)), so:
-    - y_pred represents ln(OD) values
-    - dy_pred represents d(ln(OD))/dt = specific growth rate (h⁻¹)
-    - OD values are converted back via exp(y_pred)
-
-    Args:
-        fit_result: Dictionary returned by fit_growth_model
-        t_data: Original time array for generating dense predictions
-        lag_frac: Fraction of peak growth rate for lag phase end detection
-        exp_frac: Fraction of peak growth rate for exponential phase end detection
-        y_data: Optional observed y values for RMSE calculation (if None, uses fit_result['y'])
-        model_type: Model type string (used to preserve fit_method even when fit fails)
-
-    Returns:
-        Dictionary with growth descriptors (same format as calculate_growth_descriptors)
-    """
-    if fit_result is None:
-        out = BAD_FIT.copy()
-        if model_type:
-            out["fit_method"] = f"Model Fitting ({model_type})"
-        return out
-
-    # Use the y_data from the fit if not provided separately
-    if y_data is None:
-        y_data = fit_result.get('y')
-
-    t_dense = np.linspace(float(t_data.min()), float(t_data.max()), 500)
-
-    # Generate predictions (in log space: ln(OD))
-    if fit_result["type"] == "spline":
-        y_pred_log = fit_result["spline"](t_dense)
-        dy_pred = fit_result["spline"].derivative()(t_dense)
-    else:
-        model_func = fit_result["model"]
-        params = fit_result["params"]
-        if fit_result["type"] == "richards":
-            # Richards model has nu parameter
-            y_pred_log = model_func(
-                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"], params["nu"]
-            )
-        else:
-            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
-            y_pred_log = model_func(
-                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
-            )
-        # dy_pred is d(ln(OD))/dt = specific growth rate (h⁻¹)
-        # Using numerical gradient as recommended: μ_max = max(dy/dt)
-        dy_pred = np.gradient(y_pred_log, t_dense)
-
-    # Convert log predictions back to linear space for OD values
-    y_pred_linear = np.exp(y_pred_log)
-
-    # Maximum OD600 (in linear space)
-    max_od_idx = np.nanargmax(y_pred_linear)
-    max_od = float(y_pred_linear[max_od_idx])
-
-    # Maximum specific growth rate (U) in h⁻¹ and its location
-    max_u_idx = np.nanargmax(dy_pred)
-    max_u = float(dy_pred[max_u_idx])
-    t_mu = float(t_dense[max_u_idx])
-    # y_mu is the OD at the time of maximum growth rate (in linear space)
-    y_mu = float(y_pred_linear[max_u_idx])
-
-    if max_u <= 0:
-        out = BAD_FIT.copy()
-        out["Maximum OD600"] = max_od
-        out["fit_method"] = f"Model Fitting ({fit_result['type']})"
-        return out
-
-    # Calculate phase boundaries using derivative thresholds
-    peak_dy = dy_pred[max_u_idx]
-    lag_threshold = lag_frac * peak_dy
-    exp_threshold = exp_frac * peak_dy
-
-    # Lag phase end: first time derivative exceeds lag threshold
-    lag_idx = np.where(dy_pred >= lag_threshold)[0]
-    lag_end = float(t_dense[lag_idx[0]]) if lag_idx.size else float(t_dense[0])
-
-    # Exponential phase end: first time after peak where derivative drops below exp threshold
-    exp_idx = np.where((dy_pred <= exp_threshold) & (np.arange(t_dense.size) > max_u_idx))[0]
-    exp_end = float(t_dense[exp_idx[0]]) if exp_idx.size else float(t_dense[-1])
-
-    # For model-based fits, window start/end represent the confidence region around max growth
-    # Use a narrow window around the inflection point
-    window_half = 0.1 * (t_dense[-1] - t_dense[0])  # 10% of time range
-    t_window_start = max(float(t_mu - window_half), float(t_dense[0]))
-    t_window_end = min(float(t_mu + window_half), float(t_dense[-1]))
-
-    # Calculate RMSE using the original data points that were fitted (in log space)
-    rmse = np.nan
-    if y_data is not None and len(y_data) > 0:
-        t_fit = fit_result.get('t', t_data)
-        # Generate predictions at the fitted time points (in log space)
-        if fit_result["type"] == "spline":
-            y_pred_fit = fit_result["spline"](t_fit)
-        else:
-            model_func = fit_result["model"]
-            params = fit_result["params"]
-            if fit_result["type"] == "richards":
-                y_pred_fit = model_func(
-                    t_fit, params["y_max"], params["y_0"], params["k"], params["t_i"], params["nu"]
-                )
-            else:
-                # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
-                y_pred_fit = model_func(
-                    t_fit, params["y_max"], params["y_0"], params["k"], params["t_i"]
-                )
-        rmse = calculate_rmse(y_data, y_pred_fit)
-
-    # Calculate doubling time: t_d = ln(2) / μ_max
-    doubling_time = np.log(2) / max_u if max_u > 0 else np.nan
-
-    return {
-        "Maximum OD600": max_od,
-        "Maximum U": max_u,
-        "doubling_time": float(doubling_time),
-        "lag_phase_end": lag_end,
-        "exponential_phase_end": max(exp_end, lag_end),
-        "t_mu": t_mu,
-        "y_mu": y_mu,
-        "t_window_start": t_window_start,
-        "t_window_end": t_window_end,
-        "fit_method": f"Model Fitting ({fit_result['type']})",
-        "rmse": rmse,
-    }
-
-
-def calculate_growth_descriptors_model_based(
-    t,
-    y,
-    model_type="logistic",
-    *,
-    lag_frac=0.10,
-    exp_frac=0.10,
-    min_data_points=5,
-    min_signal_to_noise=5.0,
-):
-    """
-    Calculate growth descriptors by fitting a parametric growth model.
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected)
-        model_type: One of "logistic", "gompertz", "richards", "spline"
-        lag_frac: Fraction of peak for lag phase end detection
-        exp_frac: Fraction of peak for exponential phase end detection
-        min_data_points: Minimum number of data points required for valid fit
-        min_signal_to_noise: Minimum ratio of max/min signal for valid fit
-
-    Returns:
-        Dictionary with growth descriptors
-    """
-    t, y = _as_float(t), _as_float(y)
-    m = np.isfinite(t) & np.isfinite(y)
-    t, y = t[m], y[m]
-
-    # Check data quality - return BAD_FIT but preserve the model type for refit
-    if t.size < max(int(min_data_points), 10) or np.ptp(t) <= 0:
-        out = BAD_FIT.copy()
-        out["fit_method"] = f"Model Fitting ({model_type})"
-        return out
-
-    if abs(y.max() / max(abs(y.min()), 1e-12)) <= float(min_signal_to_noise):
-        out = BAD_FIT.copy()
-        out["fit_method"] = f"Model Fitting ({model_type})"
-        return out
-
-    # Fit the growth model
-    fit_result = fit_growth_model(t, y, model_type=model_type)
-
-    # Extract growth descriptors from the fitted model
-    return extract_growth_descriptors_from_model(fit_result, t, lag_frac=lag_frac, exp_frac=exp_frac, model_type=model_type)
-
-
-def calculate_growth_descriptors(
-    t,
-    y,
-    w=15,
-    *,
-    sg_window=11,
-    sg_poly=1,
-    lag_frac=0.10,
-    exp_frac=0.10,
-    min_data_points=5,
-    min_signal_to_noise=5.0,
-):
-    """Fit a sliding-window line to find max growth slope and phase boundaries.
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected)
-        w: Window size for sliding window fit
-        sg_window: Savitzky-Golay filter window size
-        sg_poly: Savitzky-Golay filter polynomial order
-        lag_frac: Fraction of peak for lag phase end detection
-        exp_frac: Fraction of peak for exponential phase end detection
-        min_data_points: Minimum number of data points required for valid fit
-        min_signal_to_noise: Minimum ratio of max/min signal for valid fit
-    """
-    t, y = _as_float(t), _as_float(y)
-    w = int(w)
-
-    # Return no fit if insufficient data.
-    y_s = smooth(y, sg_window, sg_poly)
-    m = np.isfinite(t) & np.isfinite(y_s)
-    t, y_s = t[m], y_s[m]
-    if t.size < max(int(min_data_points), w) or np.ptp(t) <= 0:
-        return BAD_FIT.copy()
-
-    if abs(y_s.max() / max(abs(y_s.min()), 1e-12)) <= float(min_signal_to_noise):
-        return BAD_FIT.copy()
-
-    # Take max OD measurement from non-smoothed line.
-    peak_i = int(np.nanargmax(y))
-    A = float(y[peak_i])
-
-    # calculate the growth rate (use raw data for fit, like manual lasso selection)
-    w = min(w, t.size)
-    best_m, best = -np.inf, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)  # (t_mu, y_mu, t_start, t_end, slope, intercept)
-    for i in range(t.size - w + 1):
-        tw, yw = t[i : i + w], y[i : i + w]  # use raw y, not smoothed y_s
-        if np.ptp(tw) <= 0:
-            continue
-        m_i, b_i = np.polyfit(tw, yw, 1)
-        t_mu = float(tw.mean())
-        if m_i > best_m:
-            best_m = float(m_i)
-            best = (t_mu, float(best_m * t_mu + b_i), float(tw[0]), float(tw[-1]), float(m_i), float(b_i))
-
-    t_mu, y_mu, t_window_start, t_window_end, slope, intercept = best
-    if not np.isfinite(best_m) or best_m <= 0:
-        out = BAD_FIT.copy()
-        out.update({"Maximum OD600": A})
-        return out
-
-    # Calculate RMSE for the sliding window fit
-    # Extract the data points that fall within the best window
-    window_mask = (t >= t_window_start) & (t <= t_window_end)
-    t_window = t[window_mask]
-    y_window = y[window_mask]
-
-    # Calculate predicted values using the linear fit
-    y_pred_window = slope * t_window + intercept
-
-    # Calculate RMSE
-    rmse = calculate_rmse(y_window, y_pred_window)
-
-    # calculate exponential phase start and end
-    lag_end, exp_end = calculate_phase_ends(t, y_s, lag_frac=lag_frac, exp_frac=exp_frac)
-
-    # Calculate doubling time: t_d = ln(2) / μ_max
-    doubling_time = np.log(2) / best_m if best_m > 0 else np.nan
-
-    out = {
-        "Maximum OD600": A,
-        "Maximum U": float(best_m),
-        "doubling_time": float(doubling_time),
-        "lag_phase_end": float(lag_end),
-        "exponential_phase_end": float(exp_end),
-        "t_mu": float(t_mu),
-        "y_mu": float(y_mu),
-        "t_window_start": float(t_window_start),
-        "t_window_end": float(t_window_end),
-        "fit_method": "Sliding Window",
-        "rmse": rmse,
-    }
-
-    return out
 
 
 # ---------- I/O + shaping ----------
@@ -836,28 +287,30 @@ def analyse_plate(record: dict):
 
         try:
             # Choose method based on user selection
+            # Uses python_package functions for growth statistics calculation
             growth_method = p.get("growth_method", "Sliding Window")
+            t_arr = processed["Time"].to_numpy(float)
+            y_arr = processed["baseline_corrected"].to_numpy(float)
+            lag_frac = float(p.get("lag_cutoff", 0.15))
+            exp_frac = float(p.get("exp_cutoff", 0.15))
+
             if growth_method == "Model Fitting":
-                fit = calculate_growth_descriptors_model_based(
-                    processed["Time"].to_numpy(float),
-                    processed["baseline_corrected"].to_numpy(float),
+                fit = pkg_fit_growth_model(
+                    t_arr,
+                    y_arr,
                     model_type=p.get("model_type", "logistic"),
-                    lag_frac=float(p.get("lag_cutoff", 0.10)),
-                    exp_frac=float(p.get("exp_cutoff", 0.10)),
-                    min_data_points=int(p.get("min_data_points", 5)),
-                    min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                    lag_frac=lag_frac,
+                    exp_frac=exp_frac,
                 )
             else:
-                fit = calculate_growth_descriptors(
-                    processed["Time"].to_numpy(float),
-                    processed["baseline_corrected"].to_numpy(float),
-                    int(p["window_points"]),
+                fit = pkg_sliding_window_fit(
+                    t_arr,
+                    y_arr,
+                    window_points=int(p["window_points"]),
                     sg_window=int(p.get("sg_window", 11)),
-                    sg_poly=int(p.get("sg_poly", 2)),
-                    lag_frac=float(p.get("lag_cutoff", 0.10)),
-                    exp_frac=float(p.get("exp_cutoff", 0.10)),
-                    min_data_points=int(p.get("min_data_points", 5)),
-                    min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                    sg_poly=int(p.get("sg_poly", 1)),
+                    lag_frac=lag_frac,
+                    exp_frac=exp_frac,
                 )
         except Exception:
             fit = BAD_FIT.copy()
@@ -890,34 +343,33 @@ def compute_window_fits(
         plate_stats = {}
         for well, wdict in plate["processed_data"].items():
             d = wdict["processed_values"]
-            fit = calculate_growth_descriptors(
+            # Use python_package sliding_window_fit function
+            fit = pkg_sliding_window_fit(
                 d["Time"].to_numpy(float),
                 d["baseline_corrected"].to_numpy(float),
-                int(window_points),
+                window_points=int(window_points),
                 sg_window=int(sg_window),
                 sg_poly=int(sg_poly),
                 lag_frac=float(lag_frac),
                 exp_frac=float(exp_frac),
-                min_data_points=int(min_data_points),
-                min_signal_to_noise=float(min_signal_to_noise),
             )
 
             wdict.update(
                 {
-                    "Maximum OD600": float(fit["Maximum OD600"]),
-                    "Maximum U": float(fit["Maximum U"]),
-                    "lag_phase_end": (
-                        float(fit["lag_phase_end"])
-                        if np.isfinite(fit["lag_phase_end"])
+                    "max_od": float(fit["max_od"]),
+                    "specific_growth_rate": float(fit["specific_growth_rate"]),
+                    "exp_phase_start": (
+                        float(fit["exp_phase_start"])
+                        if np.isfinite(fit["exp_phase_start"])
                         else np.nan
                     ),
-                    "exponential_phase_end": (
-                        float(fit["exponential_phase_end"])
-                        if np.isfinite(fit["exponential_phase_end"])
+                    "exp_phase_end": (
+                        float(fit["exp_phase_end"])
+                        if np.isfinite(fit["exp_phase_end"])
                         else np.nan
                     ),
-                    "t_mu": float(fit["t_mu"]) if np.isfinite(fit["t_mu"]) else np.nan,
-                    "y_mu": float(fit["y_mu"]) if np.isfinite(fit["y_mu"]) else np.nan,
+                    "time_at_umax": float(fit["time_at_umax"]) if np.isfinite(fit["time_at_umax"]) else np.nan,
+                    "od_at_umax": float(fit["od_at_umax"]) if np.isfinite(fit["od_at_umax"]) else np.nan,
                     "t_window_start": (
                         float(fit["t_window_start"])
                         if np.isfinite(fit["t_window_start"])
@@ -933,8 +385,8 @@ def compute_window_fits(
 
             plate_stats[well] = {
                 "Sample Name": plate["name"].get(well, ""),
-                "Maximum OD600": wdict["Maximum OD600"],
-                "Maximum U": wdict["Maximum U"],
+                "max_od": wdict["max_od"],
+                "specific_growth_rate": wdict["specific_growth_rate"],
             }
         stats[plate_id] = plate_stats
     return stats

@@ -12,9 +12,9 @@ from functions.data_processing import (
     ALL_WELLS,
     compute_first_derivative,
     compute_second_derivative,
-    fit_growth_model,
-    gompertz_model,
+    fit_model,
     logistic_model,
+    gompertz_model,
     richards_model,
     smooth,
 )
@@ -23,7 +23,7 @@ from functions.data_processing import (
 # --- helpers ------------------------------------------------------------------
 def is_bad_fit(gs: dict) -> bool:
     """Return True when growth stats indicate a failed or missing fit."""
-    mu = gs.get("Maximum U", gs.get("B", 0.0)) if gs else None
+    mu = gs.get("specific_growth_rate", 0.0) if gs else None
     return not gs or mu is None or (mu == 0.0)
 
 
@@ -37,6 +37,17 @@ def _finite_sorted_xy(time_s, y_s):
         o = np.argsort(t)
         t, y = t[o], y[o]
     return t, y
+
+
+def _model_type_from_fit_method(fit_method: str | None) -> str | None:
+    """Extract model type from fit_method strings."""
+    if not fit_method:
+        return None
+    if "(" in fit_method and ")" in fit_method:
+        return fit_method.split("(", 1)[1].split(")", 1)[0].strip()
+    if "model_fitting_" in fit_method:
+        return fit_method.split("model_fitting_", 1)[1].strip()
+    return None
 
 
 def _iter_wells(plates: dict):
@@ -252,26 +263,31 @@ def plot_replicates_by_sample(plates: dict):
 
 # --- growth stats ----------------------------------------------------------------
 # Mapping of metric names to their units for y-axis labels
+# Keys from python_package.py
 METRIC_UNITS = {
-    "Maximum U": "h⁻¹",
+    "specific_growth_rate": "h⁻¹",
     "doubling_time": "hours",
-    "Maximum OD600": "OD600",
-    "lag_phase_end": "hours",
-    "exponential_phase_end": "hours",
-    "t_mu": "hours",
-    "y_mu": "OD600",
-    "t_peak": "hours",
+    "max_od": "OD600",
+    "exp_phase_start": "hours",
+    "exp_phase_end": "hours",
+    "time_at_umax": "hours",
+    "od_at_umax": "OD600",
 }
 
 # Mapping of metric names to display titles
 METRIC_TITLES = {
-    "Maximum U": "Maximum specific growth rate",
+    "specific_growth_rate": "Maximum specific growth rate",
     "doubling_time": "Doubling time",
+    "max_od": "Maximum OD",
+    "exp_phase_start": "Lag phase end",
+    "exp_phase_end": "Exponential phase end",
+    "time_at_umax": "Time at max growth rate",
+    "od_at_umax": "OD at max growth rate",
 }
 
 # Mapping of metric names to y-axis labels (using Greek letters where appropriate)
 METRIC_Y_LABELS = {
-    "Maximum U": "μ",
+    "specific_growth_rate": "μ",
     "doubling_time": "tᵈ",
 }
 
@@ -509,14 +525,14 @@ def plot_growth_stats(
         fig.update_layout(title="Growth statistics", height=400)
         return fig
 
+    # Keys from python_package.py
     metrics = [
-        "Maximum U",
-        "Maximum OD600",
-        "lag_phase_end",
-        "exponential_phase_end",
-        "t_mu",
-        "y_mu",
-        "t_peak",
+        "specific_growth_rate",
+        "max_od",
+        "exp_phase_start",
+        "exp_phase_end",
+        "time_at_umax",
+        "od_at_umax",
     ]
 
     df = long_df.copy()
@@ -782,12 +798,10 @@ def add_window_well(
     bad = is_bad_fit(gs)
     if add_phase_shading and (not bad):
         lag_end = float(
-            np.clip(gs.get("lag_phase_end", gs.get("lag_end", tmin)), tmin, tmax)
+            np.clip(gs.get("exp_phase_start", tmin), tmin, tmax)
         )
         exp_end = float(
-            np.clip(
-                gs.get("exponential_phase_end", gs.get("exp_end", tmax)), tmin, tmax
-            )
+            np.clip(gs.get("exp_phase_end", tmax), tmin, tmax)
         )
         if exp_end < lag_end:
             exp_end = lag_end
@@ -801,23 +815,18 @@ def add_window_well(
             xref = "x" if axis_index == 1 else f"x{axis_index}"
             yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
 
-        for x0, x1, colr in (
-            (tmin, lag_end, shade_lag),
-            (lag_end, exp_end, shade_exp),
-            (exp_end, tmax, shade_stat),
-        ):
-            fig.add_shape(
-                type="rect",
-                x0=x0,
-                x1=x1,
-                y0=0,
-                y1=1,
-                xref=xref,
-                yref=yref,
-                fillcolor=colr,
-                line_width=0,
-                layer="below",
-            )
+        fig.add_shape(
+            type="rect",
+            x0=lag_end,
+            x1=exp_end,
+            y0=0,
+            y1=1,
+            xref=xref,
+            yref=yref,
+            fillcolor=shade_exp,
+            line_width=0,
+            layer="below",
+        )
 
     # ---- Scatter points ----
     fig.add_trace(
@@ -837,60 +846,63 @@ def add_window_well(
     # ---- Window/gradient line or fitted model curve ----
     if add_window_line:
         # Check which fitting method was used
-        fit_method = gs.get("fit_method", "Sliding Window")
-        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+        fit_method = gs.get("fit_method", "sliding_window")
+        is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
         if is_model_fit:
             # Draw fitted model curve for model-based fits
-            if "(" in fit_method and ")" in fit_method:
-                model_type = fit_method.split("(")[1].split(")")[0]
+            model_type = _model_type_from_fit_method(str(fit_method))
+            if model_type:
 
                 # Check if lasso selection was used to subset the data
                 lasso_t_min = gs.get("lasso_t_min")
                 lasso_t_max = gs.get("lasso_t_max")
 
-                # Determine which data to use for fitting
+                # Start with all data, then apply filters
+                fit_t = t.copy()
+                fit_y = y.copy()
+
+                # Apply lasso selection if used
                 if lasso_t_min is not None and lasso_t_max is not None:
                     # Use only the lasso-selected time range
                     time_tolerance = 0.1
-                    mask = (t >= lasso_t_min - time_tolerance) & (
-                        t <= lasso_t_max + time_tolerance
+                    lasso_mask = (fit_t >= lasso_t_min - time_tolerance) & (
+                        fit_t <= lasso_t_max + time_tolerance
                     )
-                    fit_t = t[mask]
-                    fit_y = y[mask]
-                else:
-                    # Use all data
-                    fit_t = t
-                    fit_y = y
+                    fit_t = fit_t[lasso_mask]
+                    fit_y = fit_y[lasso_mask]
 
-                # Refit the model to get the fitted curve
-                fit_result = fit_growth_model(fit_t, fit_y, model_type=model_type)
+                # Refit the model to get the fitted curve (using python_package)
+                fit_result = fit_model(fit_t, fit_y, model_type=model_type)
 
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+                    params = fit_result["params"]
 
-                    if fit_result["type"] == "spline":
-                        y_fit_log = fit_result["spline"](t_dense)
+                    # python_package models work in linear space directly
+                    if fit_result["model_type"] == "richards":
+                        y_fit = richards_model(
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["r"],
+                            params["t0"],
+                            params["nu"],
+                        )
+                    elif fit_result["model_type"] == "gompertz":
+                        y_fit = gompertz_model(
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["mu_max_param"],
+                            params["lam"],
+                        )
                     else:
-                        model_func = fit_result["model"]
-                        params = fit_result["params"]
-                        if fit_result["type"] == "richards":
-                            y_fit_log = model_func(
-                                t_dense,
-                                params["y_max"],
-                                params["y_0"],
-                                params["k"],
-                                params["t_i"],
-                                params["nu"],
-                            )
-                        else:
-                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
-                            y_fit_log = model_func(
-                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
-                            )
-                    # Convert from log space back to linear OD for plotting
-                    y_fit = np.exp(y_fit_log)
+                        # Logistic model
+                        y_fit = logistic_model(
+                            t_dense, params["K"], params["y0"], params["r"], params["t0"]
+                        )
 
                     # Add the fitted curve as a trace
                     fig.add_trace(
@@ -909,9 +921,9 @@ def add_window_well(
                     )
         else:
             # Draw straight line for sliding window method
-            m = float(gs.get("Maximum U", gs.get("B", 0.0)) or 0.0)
-            t0 = gs.get("t_mu")
-            y0 = gs.get("y_mu")
+            m = float(gs.get("specific_growth_rate", 0.0) or 0.0)
+            t0 = gs.get("time_at_umax")
+            y0 = gs.get("od_at_umax")
             t_win_start = gs.get("t_window_start")
             t_win_end = gs.get("t_window_end")
 
@@ -1066,19 +1078,10 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
     # --- shading + fit line from growth stats ---
     gs = gs or {}
     if gs and not is_bad_fit(gs):
-        lag_end = float(np.clip(gs.get("lag_phase_end", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exponential_phase_end", tmax), tmin, tmax))
+        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
+        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
         exp_end = max(exp_end, lag_end)
-        max_od = float(gs.get("Maximum OD600", 0.0) or 0.0)
-
-        # colour code lag phase
-        fig.add_vrect(
-            x0=tmin,
-            x1=lag_end,
-            fillcolor="rgba(180,180,180,0.18)",
-            line_width=0,
-            layer="below",
-        )
+        max_od = float(gs.get("max_od", 0.0) or 0.0)
 
         # add line for lag end
         fig.add_vline(x=lag_end, line_dash="dot")
@@ -1087,7 +1090,7 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
         fig.add_vrect(
             x0=lag_end,
             x1=exp_end,
-            fillcolor="rgba(100,149,237,0.16)",
+            fillcolor="rgba(76, 175, 80, 0.22)",
             line_width=0,
             layer="below",
         )
@@ -1095,73 +1098,89 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
         # add line for exp end
         fig.add_vline(x=exp_end, line_dash="dot")
 
-        # colour code stationary phase
-        fig.add_vrect(
-            x0=exp_end,
-            x1=tmax,
-            fillcolor="rgba(144,238,144,0.16)",
-            line_width=0,
-            layer="below",
-        )
-
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
 
+        # add point at Umax (time_at_umax, od_at_umax)
+        t_umax = gs.get("time_at_umax")
+        y_umax = gs.get("od_at_umax")
+        if (
+            t_umax is not None
+            and y_umax is not None
+            and np.isfinite(t_umax)
+            and np.isfinite(y_umax)
+        ):
+            fig.add_trace(
+                go.Scatter(
+                    x=[float(t_umax)],
+                    y=[float(y_umax)],
+                    mode="markers",
+                    marker=dict(size=12, color="#4CAF50"),
+                    hovertemplate=(
+                        "Umax point<br>Time=%{x:.2f} h<br>OD=%{y:.4f}<extra></extra>"
+                    ),
+                    showlegend=False,
+                )
+            )
+
         # Check which fitting method was used
-        fit_method = gs.get("fit_method", "Sliding Window")
-        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+        fit_method = gs.get("fit_method", "sliding_window")
+        is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
         if is_model_fit:
             # Draw fitted model curve for model-based fits
-            if "(" in fit_method and ")" in fit_method:
-                model_type = fit_method.split("(")[1].split(")")[0]
+            model_type = _model_type_from_fit_method(str(fit_method))
+            if model_type:
 
                 # Check if lasso selection was used to subset the data
                 lasso_t_min = gs.get("lasso_t_min")
                 lasso_t_max = gs.get("lasso_t_max")
 
-                # Determine which data to use for fitting
+                # Start with all data, then apply filters
+                fit_t = t.copy()
+                fit_y = y.copy()
+
+                # Apply lasso selection if used
                 if lasso_t_min is not None and lasso_t_max is not None:
                     # Use only the lasso-selected time range
                     time_tolerance = 0.1
-                    mask = (t >= lasso_t_min - time_tolerance) & (
-                        t <= lasso_t_max + time_tolerance
+                    lasso_mask = (fit_t >= lasso_t_min - time_tolerance) & (
+                        fit_t <= lasso_t_max + time_tolerance
                     )
-                    fit_t = t[mask]
-                    fit_y = y[mask]
-                else:
-                    # Use all data
-                    fit_t = t
-                    fit_y = y
+                    fit_t = fit_t[lasso_mask]
+                    fit_y = fit_y[lasso_mask]
 
-                # Refit the model to get the fitted curve
-                fit_result = fit_growth_model(fit_t, fit_y, model_type=model_type)
+                # Refit the model to get the fitted curve (using python_package)
+                fit_result = fit_model(fit_t, fit_y, model_type=model_type)
 
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+                    params = fit_result["params"]
 
-                    if fit_result["type"] == "spline":
-                        y_fit_log = fit_result["spline"](t_dense)
+                    # python_package models work in linear space directly
+                    if fit_result["model_type"] == "richards":
+                        y_fit = richards_model(
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["r"],
+                            params["t0"],
+                            params["nu"],
+                        )
+                    elif fit_result["model_type"] == "gompertz":
+                        y_fit = gompertz_model(
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["mu_max_param"],
+                            params["lam"],
+                        )
                     else:
-                        model_func = fit_result["model"]
-                        params = fit_result["params"]
-                        if fit_result["type"] == "richards":
-                            y_fit_log = model_func(
-                                t_dense,
-                                params["y_max"],
-                                params["y_0"],
-                                params["k"],
-                                params["t_i"],
-                                params["nu"],
-                            )
-                        else:
-                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
-                            y_fit_log = model_func(
-                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
-                            )
-                    # Convert from log space back to linear OD for plotting
-                    y_fit = np.exp(y_fit_log)
+                        # Logistic model
+                        y_fit = logistic_model(
+                            t_dense, params["K"], params["y0"], params["r"], params["t0"]
+                        )
 
                     # Add the fitted curve as a trace
                     fig.add_trace(
@@ -1179,9 +1198,9 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                     )
         else:
             # Draw straight line for sliding window method
-            m = float(gs.get("Maximum U", 0.0) or 0.0)
-            t0 = gs.get("t_mu")
-            y0 = gs.get("y_mu")
+            m = float(gs.get("specific_growth_rate", 0.0) or 0.0)
+            t0 = gs.get("time_at_umax")
+            y0 = gs.get("od_at_umax")
             t_win_start = gs.get("t_window_start")
             t_win_end = gs.get("t_window_end")
 
@@ -1277,12 +1296,10 @@ def add_model_fit_well(
     bad = is_bad_fit(gs)
     if add_phase_shading and (not bad):
         lag_end = float(
-            np.clip(gs.get("lag_phase_end", gs.get("lag_end", tmin)), tmin, tmax)
+            np.clip(gs.get("exp_phase_start", tmin), tmin, tmax)
         )
         exp_end = float(
-            np.clip(
-                gs.get("exponential_phase_end", gs.get("exp_end", tmax)), tmin, tmax
-            )
+            np.clip(gs.get("exp_phase_end", tmax), tmin, tmax)
         )
         if exp_end < lag_end:
             exp_end = lag_end
@@ -1296,23 +1313,18 @@ def add_model_fit_well(
             xref = "x" if axis_index == 1 else f"x{axis_index}"
             yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
 
-        for x0, x1, colr in (
-            (tmin, lag_end, shade_lag),
-            (lag_end, exp_end, shade_exp),
-            (exp_end, tmax, shade_stat),
-        ):
-            fig.add_shape(
-                type="rect",
-                x0=x0,
-                x1=x1,
-                y0=0,
-                y1=1,
-                xref=xref,
-                yref=yref,
-                fillcolor=colr,
-                line_width=0,
-                layer="below",
-            )
+        fig.add_shape(
+            type="rect",
+            x0=lag_end,
+            x1=exp_end,
+            y0=0,
+            y1=1,
+            xref=xref,
+            yref=yref,
+            fillcolor=shade_exp,
+            line_width=0,
+            layer="below",
+        )
 
     # ---- Scatter points ----
     fig.add_trace(
@@ -1404,19 +1416,10 @@ def plot_model_fit_single_annotated(
     # --- shading + fit curve from growth stats ---
     gs = gs or {}
     if gs and not is_bad_fit(gs):
-        lag_end = float(np.clip(gs.get("lag_phase_end", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exponential_phase_end", tmax), tmin, tmax))
+        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
+        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
         exp_end = max(exp_end, lag_end)
-        max_od = float(gs.get("Maximum OD600", 0.0) or 0.0)
-
-        # colour code lag phase
-        fig.add_vrect(
-            x0=tmin,
-            x1=lag_end,
-            fillcolor="rgba(180,180,180,0.18)",
-            line_width=0,
-            layer="below",
-        )
+        max_od = float(gs.get("max_od", 0.0) or 0.0)
 
         # add line for lag end
         fig.add_vline(x=lag_end, line_dash="dot")
@@ -1433,50 +1436,45 @@ def plot_model_fit_single_annotated(
         # add line for exp end
         fig.add_vline(x=exp_end, line_dash="dot")
 
-        # colour code stationary phase
-        fig.add_vrect(
-            x0=exp_end,
-            x1=tmax,
-            fillcolor="rgba(144,238,144,0.16)",
-            line_width=0,
-            layer="below",
-        )
-
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
 
         # Add fitted model curve
         fit_method = gs.get("fit_method", "")
-        if fit_method and "Model Fitting" in fit_method:
-            if "(" in fit_method and ")" in fit_method:
-                model_type = fit_method.split("(")[1].split(")")[0]
+        if fit_method and "model_fitting" in fit_method:
+            # Extract model type from fit_method string (e.g., "model_fitting_logistic")
+            model_type = fit_method.replace("model_fitting_", "")
 
-                fit_result = fit_growth_model(t, y, model_type=model_type)
+            # Refit the model to get the fitted curve (using python_package)
+            fit_result = fit_model(t, y, model_type=model_type)
 
-                if fit_result is not None:
-                    t_dense = np.linspace(float(t.min()), float(t.max()), 200)
+            if fit_result is not None:
+                t_dense = np.linspace(float(t.min()), float(t.max()), 200)
+                params = fit_result["params"]
 
-                    if fit_result["type"] == "spline":
-                        y_fit_log = fit_result["spline"](t_dense)
-                    else:
-                        model_func = fit_result["model"]
-                        params = fit_result["params"]
-                        if fit_result["type"] == "richards":
-                            y_fit_log = model_func(
-                                t_dense,
-                                params["y_max"],
-                                params["y_0"],
-                                params["k"],
-                                params["t_i"],
-                                params["nu"],
-                            )
-                        else:
-                            # Logistic and Gompertz use same parameter names (y_max, y_0, k, t_i)
-                            y_fit_log = model_func(
-                                t_dense, params["y_max"], params["y_0"], params["k"], params["t_i"]
-                            )
-                    # Convert from log space back to linear OD for plotting
-                    y_fit = np.exp(y_fit_log)
+                # python_package models work in linear space directly
+                if fit_result["model_type"] == "richards":
+                    y_fit = richards_model(
+                        t_dense,
+                        params["K"],
+                        params["y0"],
+                        params["r"],
+                        params["t0"],
+                        params["nu"],
+                    )
+                elif fit_result["model_type"] == "gompertz":
+                    y_fit = gompertz_model(
+                        t_dense,
+                        params["K"],
+                        params["y0"],
+                        params["mu_max_param"],
+                        params["lam"],
+                    )
+                else:
+                    # Logistic model
+                    y_fit = logistic_model(
+                        t_dense, params["K"], params["y0"], params["r"], params["t0"]
+                    )
 
                     fig.add_trace(
                         go.Scatter(
@@ -1612,6 +1610,8 @@ def plot_window_single_d1(
         title=f"First derivative (smoothed) – {well}",
         height=320,
         showlegend=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title="Time (hours)")
@@ -1673,6 +1673,8 @@ def plot_window_single_d2(
         title=f"Second derivative (smoothed) – {well}",
         height=320,
         showlegend=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title="Time (hours)")
@@ -1711,7 +1713,7 @@ def plot_rmse_heatmap(plate: dict):
         for col in cols:
             well = f"{row}{col}"
             gs = growth_stats.get(well, {})
-            rmse = gs.get("rmse", np.nan)
+            rmse = gs.get("model_rmse", np.nan)
 
             rmse_row.append(rmse if pd.notna(rmse) else np.nan)
             hover_row.append(

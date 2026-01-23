@@ -263,9 +263,9 @@ def build_export_zip(
                     if "raw" in well_graphs:
                         all_growth_stats = p.get("growth_stats") or {}
                         growth_stats = all_growth_stats.get(well) or {}
-                        lag_end = growth_stats.get("lag_phase_end")
-                        exp_end = growth_stats.get("exponential_phase_end")
-                        fit_method = growth_stats.get("fit_method", "Sliding Window")
+                        lag_end = growth_stats.get("exp_phase_start")
+                        exp_end = growth_stats.get("exp_phase_end")
+                        fit_method = growth_stats.get("fit_method", "sliding_window")
                         is_model_fit = fit_method and "Model Fitting" in str(fit_method)
 
                         # Use appropriate plot based on fit method
@@ -293,8 +293,8 @@ def build_export_zip(
                     # Only export derivative plots for sliding window method
                     if "d1" in well_graphs or "d2" in well_graphs:
                         gs = (p.get("growth_stats") or {}).get(well) or {}
-                        fit_method = gs.get("fit_method", "Sliding Window")
-                        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+                        fit_method = gs.get("fit_method", "sliding_window")
+                        is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
                         if not is_model_fit:
                             if "d1" in well_graphs:

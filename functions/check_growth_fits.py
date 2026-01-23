@@ -9,12 +9,12 @@ from functions.data_processing import (
     BAD_FIT,
     _plate_name_map,
     _read_table,
-    calculate_growth_descriptors,
-    calculate_growth_descriptors_model_based,
-    calculate_rmse,
-    extract_growth_descriptors_from_model,
-    fit_growth_model,
+    fit_model,
+    pkg_fit_growth_model,
+    pkg_sliding_window_fit,
+    _extract_stats_from_fit,
 )
+from python_package import _compute_rmse as calculate_rmse
 from functions.plotting_functions import (
     _vlines,
     is_bad_fit,
@@ -108,8 +108,8 @@ def update_growth_stats_from_lasso(
     gs["_lasso_update_time"] = time.time()
 
     # Check which method was used
-    fit_method = gs.get("fit_method", "Sliding Window")
-    is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+    fit_method = gs.get("fit_method", "sliding_window")
+    is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
     if is_model_fit:
         # Extract model type from fit_method string
@@ -144,16 +144,16 @@ def update_growth_stats_from_lasso(
             y_pred_linear = m * xs + b
             rmse = calculate_rmse(ys, y_pred_linear)
 
-            gs["Maximum U"] = float(m)
-            gs["t_mu"] = t_mu
-            gs["y_mu"] = y_mu
+            gs["specific_growth_rate"] = float(m)
+            gs["time_at_umax"] = t_mu
+            gs["od_at_umax"] = y_mu
             gs["t_window_start"] = float(xs.min())
             gs["t_window_end"] = float(xs.max())
-            # For Maximum OD600, use max from entire curve, not just selected points
-            gs["Maximum OD600"] = float(all_y.max())
-            gs["rmse"] = rmse
+            # For max_od, use max from entire curve, not just selected points
+            gs["max_od"] = float(all_y.max())
+            gs["model_rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
-            # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
+            # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -162,35 +162,29 @@ def update_growth_stats_from_lasso(
         # Get plate params for quality thresholds
         params = plate.get("params", {})
 
-        # Refit the model to selected points only
+        # Refit the model to selected points only (using python_package)
         try:
             # Fit model to selected points
-            fit_result = fit_growth_model(refit_t, refit_y, model_type=model_type)
+            fit_result = fit_model(refit_t, refit_y, model_type=model_type)
 
             if fit_result is None:
                 raise ValueError("Model fit failed")
 
-            # Extract growth descriptors using the FULL time range for phase boundary calculation
-            # This ensures phase boundaries can extend beyond the selected region
-            descriptors = extract_growth_descriptors_from_model(
-                fit_result,
-                all_t,  # Use full time range, not just selected range
-                lag_frac=float(params.get("lag_frac", 0.10)),
-                exp_frac=float(params.get("exp_frac", 0.10)),
-                y_data=fit_result.get('y'),  # Use log-transformed y data from fit for RMSE
-                model_type=model_type,
-            )
+            # Extract growth descriptors from the fitted model
+            lag_frac = float(params.get("lag_frac", 0.15))
+            exp_frac = float(params.get("exp_frac", 0.15))
+            descriptors = _extract_stats_from_fit(fit_result, lag_frac=lag_frac, exp_frac=exp_frac)
 
             # Update growth stats with refit results
-            gs["Maximum U"] = descriptors["Maximum U"]
-            gs["t_mu"] = descriptors["t_mu"]
-            gs["y_mu"] = descriptors["y_mu"]
+            gs["specific_growth_rate"] = descriptors["specific_growth_rate"]
+            gs["time_at_umax"] = descriptors["time_at_umax"]
+            gs["od_at_umax"] = descriptors["od_at_umax"]
             gs["t_window_start"] = descriptors["t_window_start"]
             gs["t_window_end"] = descriptors["t_window_end"]
-            gs["lag_phase_end"] = descriptors["lag_phase_end"]
-            gs["exponential_phase_end"] = descriptors["exponential_phase_end"]
-            gs["Maximum OD600"] = descriptors["Maximum OD600"]
-            gs["rmse"] = descriptors["rmse"]
+            gs["exp_phase_start"] = descriptors["exp_phase_start"]
+            gs["exp_phase_end"] = descriptors["exp_phase_end"]
+            gs["max_od"] = descriptors["max_od"]
+            gs["model_rmse"] = descriptors["model_rmse"]
             # Store the selected time range for plotting the refitted model curve
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -207,16 +201,16 @@ def update_growth_stats_from_lasso(
             y_pred_linear = m * xs + b
             rmse = calculate_rmse(ys, y_pred_linear)
 
-            gs["Maximum U"] = float(m)
-            gs["t_mu"] = t_mu
-            gs["y_mu"] = y_mu
+            gs["specific_growth_rate"] = float(m)
+            gs["time_at_umax"] = t_mu
+            gs["od_at_umax"] = y_mu
             gs["t_window_start"] = float(xs.min())
             gs["t_window_end"] = float(xs.max())
-            # For Maximum OD600, use max from entire curve, not just selected points
-            gs["Maximum OD600"] = float(all_y.max())
-            gs["rmse"] = rmse
+            # For max_od, use max from entire curve, not just selected points
+            gs["max_od"] = float(all_y.max())
+            gs["model_rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
-            # gs["lag_phase_end"] and gs["exponential_phase_end"] are left unchanged
+            # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
             # Store the selected time range even for linear fallback
             gs["lasso_t_min"] = float(selected_t_min)
             gs["lasso_t_max"] = float(selected_t_max)
@@ -230,13 +224,13 @@ def update_growth_stats_from_lasso(
         y_pred_linear = m * xs + b
         rmse = calculate_rmse(ys, y_pred_linear)
 
-        gs["Maximum U"] = float(m)
-        gs["t_mu"] = t_mu
-        gs["y_mu"] = y_mu
+        gs["specific_growth_rate"] = float(m)
+        gs["time_at_umax"] = t_mu
+        gs["od_at_umax"] = y_mu
         gs["t_window_start"] = float(xs.min())
         gs["t_window_end"] = float(xs.max())
-        gs["rmse"] = rmse
-        # Note: Maximum OD600, lag_phase_end, and exponential_phase_end are preserved
+        gs["model_rmse"] = rmse
+        # Note: max_od, exp_phase_start, and exp_phase_end are preserved
         # from the original analysis as they are not recalculated from lasso selection
         # in sliding window mode (only the growth rate window is updated)
 
@@ -305,26 +299,30 @@ def analyse_well(record: dict, well: str) -> dict:
 
     try:
         # Check which method to use
+        # Uses python_package functions for growth statistics calculation
         growth_method = p.get("growth_method", "Sliding Window")
+        t_arr = processed["Time"].to_numpy(float)
+        y_arr = processed["baseline_corrected"].to_numpy(float)
+        lag_frac = float(p.get("lag_cutoff", 0.15))
+        exp_frac = float(p.get("exp_cutoff", 0.15))
+
         if growth_method == "Model Fitting":
-            fit = calculate_growth_descriptors_model_based(
-                processed["Time"].to_numpy(float),
-                processed["baseline_corrected"].to_numpy(float),
+            fit = pkg_fit_growth_model(
+                t_arr,
+                y_arr,
                 model_type=p.get("model_type", "logistic"),
-                lag_frac=float(p.get("lag_frac", 0.20)),
-                min_data_points=int(p.get("min_data_points", 5)),
-                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                lag_frac=lag_frac,
+                exp_frac=exp_frac,
             )
         else:
-            fit = calculate_growth_descriptors(
-                processed["Time"].to_numpy(float),
-                processed["baseline_corrected"].to_numpy(float),
-                int(p["window_points"]),
+            fit = pkg_sliding_window_fit(
+                t_arr,
+                y_arr,
+                window_points=int(p["window_points"]),
                 sg_window=int(p.get("sg_window", 11)),
-                sg_poly=int(p.get("sg_poly", 2)),
-                lag_frac=float(p.get("lag_frac", 0.20)),
-                min_data_points=int(p.get("min_data_points", 5)),
-                min_signal_to_noise=float(p.get("min_signal_to_noise", 5.0)),
+                sg_poly=int(p.get("sg_poly", 1)),
+                lag_frac=lag_frac,
+                exp_frac=exp_frac,
             )
     except Exception:
         fit = BAD_FIT.copy()
@@ -338,15 +336,16 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
         return pd.DataFrame({"Metric": ["No growth detected"], "Value": ["--"]})
 
     # Define metrics to display with nice labels and formatting
+    # Keys from python_package.py
     metrics = [
-        ("fit_method", "Fit Method", lambda x: str(x) if x else "Sliding Window"),
-        ("rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
-        ("Maximum OD600", "Maximum OD600", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("Maximum U", "Maximum Growth Rate (1/h)", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("t_mu", "Time at Max Growth (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("y_mu", "OD600 at Max Growth", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("lag_phase_end", "Lag Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("exponential_phase_end", "Exponential Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("fit_method", "Fit Method", lambda x: str(x) if x else "sliding_window"),
+        ("model_rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
+        ("max_od", "Maximum OD", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("specific_growth_rate", "Maximum Growth Rate (1/h)", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("time_at_umax", "Time at Max Growth (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("od_at_umax", "OD at Max Growth", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
+        ("exp_phase_start", "Lag Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        ("exp_phase_end", "Exponential Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
         ("t_window_start", "Analysis Window Start (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
         ("t_window_end", "Analysis Window End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
     ]
@@ -382,13 +381,13 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     def _sync_widgets_from_growth_stats():
         """Sync widget state from the current growth_stats dict."""
-        lag0 = growth_stats.get("lag_phase_end")
-        exp0 = growth_stats.get("exponential_phase_end")
+        lag0 = growth_stats.get("exp_phase_start")
+        exp0 = growth_stats.get("exp_phase_end")
         lag0 = float(lag0) if pd.notna(lag0) else t_min
         exp0 = float(exp0) if pd.notna(exp0) else t_min
         st.session_state[ss_key] = (lag0, exp0)
 
-        st.session_state[maxod_key] = float(growth_stats.get("Maximum OD600", 0.0))
+        st.session_state[maxod_key] = float(growth_stats.get("max_od", 0.0))
 
         # Track the last lasso update time we've synced
         st.session_state[lasso_time_key] = growth_stats.get("_lasso_update_time")
@@ -415,18 +414,18 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     with c2:
         max_od = st.slider(
-            "Set maximum OD600",
+            "Set maximum OD",
             0.0,
             max(processed["baseline_corrected"]),
-            growth_stats.get("Maximum OD600", 0.0),
+            growth_stats.get("max_od", 0.0),
             step=max(processed["baseline_corrected"]) / 120,
             key=maxod_key,
         )
 
     # Persist boundaries unless we're deleting
-    growth_stats["lag_phase_end"] = float(lag_end)
-    growth_stats["exponential_phase_end"] = float(exp_end)
-    growth_stats["Maximum OD600"] = float(max_od)
+    growth_stats["exp_phase_start"] = float(lag_end)
+    growth_stats["exp_phase_end"] = float(exp_end)
+    growth_stats["max_od"] = float(max_od)
 
     c1, c2, c3 = st.columns(3)
 
@@ -589,11 +588,11 @@ def ui_window_fits_well_editor(plates: dict):
         # Include all key metrics that change during lasso selection
         table_key = (
             f"stats_table_{plate_id}_{well}_"
-            f"{gs.get('Maximum U', 0)}_"
-            f"{gs.get('Maximum OD600', 0)}_"
-            f"{gs.get('lag_phase_end', 0)}_"
-            f"{gs.get('exponential_phase_end', 0)}_"
-            f"{gs.get('rmse', 0)}_"
+            f"{gs.get('specific_growth_rate', 0)}_"
+            f"{gs.get('max_od', 0)}_"
+            f"{gs.get('exp_phase_start', 0)}_"
+            f"{gs.get('exp_phase_end', 0)}_"
+            f"{gs.get('model_rmse', 0)}_"
             f"{gs.get('_lasso_update_time', '')}"
         )
         st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
@@ -601,8 +600,8 @@ def ui_window_fits_well_editor(plates: dict):
     st.divider()
 
     # Check which fitting method was used
-    fit_method = gs.get("fit_method", "Sliding Window")
-    is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+    fit_method = gs.get("fit_method", "sliding_window")
+    is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
 
@@ -611,7 +610,7 @@ def ui_window_fits_well_editor(plates: dict):
     # Use a version key based on critical growth stats to bust cache when they change
     if is_model_fit:
         # Create a version string from the growth stats to trigger cache updates
-        version_key = f"{gs.get('Maximum U', 0)}_{gs.get('t_mu', 0)}_{gs.get('y_mu', 0)}_{gs.get('lasso_t_min', '')}_{gs.get('lasso_t_max', '')}"
+        version_key = f"{gs.get('specific_growth_rate', 0)}_{gs.get('time_at_umax', 0)}_{gs.get('od_at_umax', 0)}_{gs.get('lasso_t_min', '')}_{gs.get('lasso_t_max', '')}"
         fig_main = go.Figure(_cached_model_fit_single(processed, growth_stats, well, version_key))
     else:
         fig_main = go.Figure(_cached_window_single(processed, well))

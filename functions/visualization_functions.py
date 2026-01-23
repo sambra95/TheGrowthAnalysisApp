@@ -34,15 +34,15 @@ def _build_growth_stats_long_df(
         if nm and nm not in sample_order:
             sample_order.append(nm)
 
+    # Keys from python_package.py
     metrics = [
-        "Maximum U",
+        "specific_growth_rate",
         "doubling_time",
-        "Maximum OD600",
-        "lag_phase_end",
-        "exponential_phase_end",
-        "t_mu",
-        "y_mu",
-        "t_peak",
+        "max_od",
+        "exp_phase_start",
+        "exp_phase_end",
+        "time_at_umax",
+        "od_at_umax",
     ]
 
     rows: list[dict] = []
@@ -461,15 +461,15 @@ def ui_growth_summaries(plates: dict):
         long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
 
         # Display each metric as a separate downloadable plot
+        # Keys from python_package.py
         metrics = [
-            "Maximum U",
+            "specific_growth_rate",
             "doubling_time",
-            "Maximum OD600",
-            "lag_phase_end",
-            "exponential_phase_end",
-            "t_mu",
-            "y_mu",
-            "t_peak",
+            "max_od",
+            "exp_phase_start",
+            "exp_phase_end",
+            "time_at_umax",
+            "od_at_umax",
         ]
 
         for metric in metrics:
