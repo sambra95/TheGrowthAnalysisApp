@@ -17,14 +17,39 @@ from functions.data_processing import (
     gompertz_model,
     richards_model,
     smooth,
+    is_no_growth,
 )
 
 
+# --- time unit helpers --------------------------------------------------------
+def get_time_label(time_unit: str = "hours") -> str:
+    """Get the x-axis label for time based on the unit."""
+    return f"Time ({time_unit})"
+
+
+def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
+    """Convert time from hours to the specified display unit.
+
+    Args:
+        hours: Time value(s) in hours
+        time_unit: Target unit ("seconds", "minutes", or "hours")
+
+    Returns:
+        Time value(s) in the target unit
+    """
+    if time_unit == "seconds":
+        return hours * 3600.0
+    elif time_unit == "minutes":
+        return hours * 60.0
+    else:  # hours
+        return hours
+
+
 # --- helpers ------------------------------------------------------------------
+# Alias for backward compatibility - use is_no_growth from python_package
 def is_bad_fit(gs: dict) -> bool:
     """Return True when growth stats indicate a failed or missing fit."""
-    mu = gs.get("specific_growth_rate", 0.0) if gs else None
-    return not gs or mu is None or (mu == 0.0)
+    return is_no_growth(gs)
 
 
 def _finite_sorted_xy(time_s, y_s):
@@ -63,12 +88,13 @@ def _iter_wells(plates: dict):
 
 
 # --- blanks ----------------------------------------------------------------
-def plot_baseline(baseline, name_by_well: dict | None = None):
+def plot_baseline(baseline, name_by_well: dict | None = None, time_unit: str = "hours"):
     """Plot blank wells and mean baseline over time.
 
     Args:
         baseline: DataFrame with Time index and wells as columns (plus 'Mean' column)
         name_by_well: Optional dict mapping well IDs to sample names for color coding
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
     fig = go.Figure()
 
@@ -81,18 +107,22 @@ def plot_baseline(baseline, name_by_well: dict | None = None):
     sample_names = list(dict.fromkeys([name_by_well.get(w, w) for w in well_cols]))
     color_map = {n: palette[i % len(palette)] for i, n in enumerate(sample_names)}
 
+    # Convert time index to display unit
+    time_display = convert_hours_to_unit(baseline.index.to_numpy(), time_unit)
+
     for col in baseline.columns:
         sample_name = name_by_well.get(col, col) if col != "Mean" else "Mean"
         color = color_map.get(sample_name, "black")
 
         fig.add_scatter(
-            x=baseline.index,
+            x=time_display,
             y=baseline[col],
             mode="markers" if col != "Mean" else "lines+markers",
             name=sample_name if col != "Mean" else "Mean",
             marker=dict(color=color) if col != "Mean" else None,
             line=dict(color=color) if col == "Mean" else None,
         )
+    fig.update_xaxes(title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False)
 
     return fig
@@ -114,38 +144,63 @@ def plot_replicates_scatter(
     sample_order: list[str] | None = None,
     t_start=0.0,
     t_end=72.0,
+    time_unit: str = "hours",
 ):
-    """Scatter plot of replicate curves for selected samples and time window."""
+    """Scatter plot of replicate curves for selected samples and time window.
+
+    Args:
+        curves_df: DataFrame with Time, baseline_corrected, Sample Name columns
+        sample_order: Optional list of sample names for ordering
+        t_start: Start time for filtering (in hours)
+        t_end: End time for filtering (in hours)
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
+    time_label = get_time_label(time_unit)
     fig = go.Figure()
     fig.update_layout(
-        xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
+        xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
     )
     if curves_df is None or curves_df.empty:
         return fig
 
     d = curves_df[(curves_df["Time"] >= t_start) & (curves_df["Time"] <= t_end)].copy()
+    # Convert time to display unit
+    d["Time_display"] = convert_hours_to_unit(d["Time"].to_numpy(), time_unit)
     names, color_map = _order_and_colors(d, sample_order)
 
     return px.scatter(
         d,
-        x="Time",
+        x="Time_display",
         y="baseline_corrected",
         color="Sample Name",
         hover_data=["plate", "well", "key"],
         category_orders={"Sample Name": names},
         color_discrete_map=color_map,
     ).update_layout(
-        height=600, xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)"
+        height=600, xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)"
     )
 
 
 def plot_mean_growth(
-    curves_df: pd.DataFrame, sample_order: list[str] | None, t_start=0.0, t_end=72.0
+    curves_df: pd.DataFrame,
+    sample_order: list[str] | None,
+    t_start=0.0,
+    t_end=72.0,
+    time_unit: str = "hours",
 ):
-    """Plot mean curve with +/-1 SD shading for each sample."""
+    """Plot mean curve with +/-1 SD shading for each sample.
+
+    Args:
+        curves_df: DataFrame with Time, baseline_corrected, Sample Name columns
+        sample_order: Optional list of sample names for ordering
+        t_start: Start time for filtering (in hours)
+        t_end: End time for filtering (in hours)
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
+    time_label = get_time_label(time_unit)
     fig = go.Figure()
     fig.update_layout(
-        xaxis_title="Time (hours)", yaxis_title="OD600 (baseline-corrected)", height=600
+        xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
     )
     if curves_df is None or curves_df.empty:
         return fig
@@ -160,6 +215,8 @@ def plot_mean_growth(
     )
     agg["upper"] = agg["mean"] + agg["sd"]
     agg["lower"] = agg["mean"] - agg["sd"]
+    # Convert time to display unit
+    agg["Time_display"] = convert_hours_to_unit(agg["Time"].to_numpy(), time_unit)
 
     for nm in names:
         sub = agg[agg["Sample Name"] == nm].sort_values("Time")
@@ -169,7 +226,7 @@ def plot_mean_growth(
 
         fig.add_trace(
             go.Scatter(
-                x=pd.concat([sub["Time"], sub["Time"][::-1]]),
+                x=pd.concat([sub["Time_display"], sub["Time_display"][::-1]]),
                 y=pd.concat([sub["upper"], sub["lower"][::-1]]),
                 fill="toself",
                 fillcolor=c,
@@ -181,13 +238,13 @@ def plot_mean_growth(
         )
         fig.add_trace(
             go.Scatter(
-                x=sub["Time"],
+                x=sub["Time_display"],
                 y=sub["mean"],
                 mode="lines",
                 name=nm,
                 line=dict(color=c),
                 text=[nm] * len(sub),
-                hovertemplate="Sample=%{text}<br>Time=%{x:.2f} h<br>Mean=%{y:.4f}<extra></extra>",
+                hovertemplate=f"Sample=%{{text}}<br>Time=%{{x:.2f}} {time_unit}<br>Mean=%{{y:.4f}}<extra></extra>",
             )
         )
 
@@ -197,8 +254,13 @@ def plot_mean_growth(
     return fig
 
 
-def plot_replicates_by_sample(plates: dict):
-    """Create a grid of replicate scatter plots grouped by sample."""
+def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
+    """Create a grid of replicate scatter plots grouped by sample.
+
+    Args:
+        plates: Dictionary of plate data
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
         {(nm or "").strip() for *_, nm, __ in items} - {"", "False", "BLANK"}
@@ -208,6 +270,7 @@ def plot_replicates_by_sample(plates: dict):
     rows = (len(names) + cols - 1) // cols
     pos = {n: divmod(i, cols) for i, n in enumerate(names)}
 
+    time_label = get_time_label(time_unit)
     fig = make_subplots(
         rows=rows,
         cols=cols,
@@ -216,7 +279,7 @@ def plot_replicates_by_sample(plates: dict):
         shared_yaxes=True,
         horizontal_spacing=0.04,
         vertical_spacing=0.07,
-        x_title="Time (hours)",
+        x_title=time_label,
         y_title="OD600 (baseline-corrected)",
     )
 
@@ -232,20 +295,23 @@ def plot_replicates_by_sample(plates: dict):
         r, c = pos[nm]
         key = f"{pid}_{well}"
 
+        # Convert time to display unit
+        time_display = convert_hours_to_unit(d["Time"].to_numpy(), time_unit)
+
         fig.add_trace(
             go.Scatter(
-                x=d["Time"],
+                x=time_display,
                 y=d["baseline_corrected"],
                 mode="markers",
                 marker=dict(size=3, color=cmap[key]),
-                hovertemplate=f"Sample: {nm}<br>Well: {well}<br>Hour: %{{x:.2f}}<br>OD: %{{y:.4f}}<extra></extra><br>Plate: {pid}",
+                hovertemplate=f"Sample: {nm}<br>Well: {well}<br>Time: %{{x:.2f}} {time_unit}<br>OD: %{{y:.4f}}<extra></extra><br>Plate: {pid}",
                 showlegend=False,
             ),
             row=r + 1,
             col=c + 1,
         )
-        tmins.append(float(d["Time"].min()))
-        tmaxs.append(float(d["Time"].max()))
+        tmins.append(float(time_display.min()))
+        tmaxs.append(float(time_display.max()))
         ymins.append(float(d["baseline_corrected"].min()))
         ymaxs.append(float(d["baseline_corrected"].max()))
 
@@ -761,6 +827,7 @@ def add_window_well(
     shade_stat="rgba(144,238,144,0.16)",
     add_phase_shading: bool = True,
     add_window_line: bool = True,
+    time_unit: str = "hours",
 ):
     """
     Draw a single well (points + optional phase shading + optional fit line/curve)
@@ -773,6 +840,9 @@ def add_window_well(
     Works for both:
       - go.Figure() (row/col None)
       - make_subplots() figure (row/col provided)
+
+    Args:
+        time_unit: Unit for time display ("seconds", "minutes", or "hours")
     """
     gs = gs or {}
 
@@ -792,7 +862,10 @@ def add_window_well(
     if t.size == 0:
         return
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
     tmin, tmax = float(t[0]), float(t[-1])
+    tmin_display, tmax_display = float(t_display[0]), float(t_display[-1])
 
     # ---- Phase shading (needs correct xref/yref for each subplot) ----
     bad = is_bad_fit(gs)
@@ -806,6 +879,10 @@ def add_window_well(
         if exp_end < lag_end:
             exp_end = lag_end
 
+        # Convert to display unit
+        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
+        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
+
         # IMPORTANT: xref/yref differ between single-figure and subplots
         if row is None:
             xref = "x"
@@ -817,8 +894,8 @@ def add_window_well(
 
         fig.add_shape(
             type="rect",
-            x0=lag_end,
-            x1=exp_end,
+            x0=lag_end_display,
+            x1=exp_end_display,
             y0=0,
             y1=1,
             xref=xref,
@@ -831,12 +908,12 @@ def add_window_well(
     # ---- Scatter points ----
     fig.add_trace(
         go.Scatter(
-            x=t,
+            x=t_display,
             y=y,
             mode="markers",
             marker=dict(size=marker_size, color=marker_color),
             hovertemplate=(
-                f"Well={well}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>"
+                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
             ),
             showlegend=False,
         ),
@@ -878,6 +955,7 @@ def add_window_well(
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+                    t_dense_display = convert_hours_to_unit(t_dense, time_unit)
                     params = fit_result["params"]
 
                     # python_package models work in linear space directly
@@ -907,12 +985,12 @@ def add_window_well(
                     # Add the fitted curve as a trace
                     fig.add_trace(
                         go.Scatter(
-                            x=t_dense,
+                            x=t_dense_display,
                             y=y_fit,
                             mode="lines",
                             line=dict(width=2, color=line_color),
                             hovertemplate=(
-                                f"Model: {model_type}<br>Time=%{{x:.2f}} h<br>"
+                                f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
                                 f"Fitted OD=%{{y:.4f}}<extra></extra>"
                             ),
                             showlegend=False,
@@ -942,11 +1020,13 @@ def add_window_well(
                 y0 = float(y0)
                 # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
                 b0 = y0 - m * t0
-                # Use the actual window boundaries
+                # Use the actual window boundaries and convert to display unit
                 x0, x1 = float(t_win_start), float(t_win_end)
+                x0_display = convert_hours_to_unit(x0, time_unit)
+                x1_display = convert_hours_to_unit(x1, time_unit)
                 fig.add_trace(
                     go.Scatter(
-                        x=[x0, x1],
+                        x=[x0_display, x1_display],
                         y=[m * x0 + b0, m * x1 + b0],
                         mode="lines",
                         line=dict(width=2, color=line_color),
@@ -959,9 +1039,21 @@ def add_window_well(
 
 @st.cache_data(show_spinner=False)
 def plot_window_single(
-    processed_data: dict, well: str, plot_bgcolor="white", paper_bgcolor="white"
+    processed_data: dict,
+    well: str,
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    time_unit: str = "hours",
 ):
-    """Plot a single well with lasso selection enabled."""
+    """Plot a single well with lasso selection enabled.
+
+    Args:
+        processed_data: Dictionary of processed data by well
+        well: Well identifier
+        plot_bgcolor: Background color for plot area
+        paper_bgcolor: Background color for paper
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     d = (processed_data or {}).get(well)
     fig = go.Figure()
 
@@ -973,6 +1065,7 @@ def plot_window_single(
         row=None,
         col=None,
         marker_size=5,
+        time_unit=time_unit,
     )
 
     # layout only here
@@ -985,13 +1078,18 @@ def plot_window_single(
         dragmode="lasso",
         margin=dict(l=20, r=20, t=20, b=20),
     )
-    fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
+    fig.update_xaxes(type="linear", showgrid=False, title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
     return fig
 
 
-def plot_window_plate(plate: dict):
-    """Plot a full 96-well plate overview with window-fit overlays."""
+def plot_window_plate(plate: dict, time_unit: str = "hours"):
+    """Plot a full 96-well plate overview with window-fit overlays.
+
+    Args:
+        plate: Plate dictionary containing processed_data and growth_stats
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
 
@@ -1016,9 +1114,12 @@ def plot_window_plate(plate: dict):
         return fig
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
+    # Convert to display unit for range
+    x_min_display = convert_hours_to_unit(x_min, time_unit)
+    x_max_display = convert_hours_to_unit(x_max, time_unit)
     y_min, y_max = float(min(y.min() for y in ys)), float(max(y.max() for y in ys))
-    xr, yr = x_max - x_min, y_max - y_min
-    x_range = [x_min - 0.02 * xr, x_max + 0.02 * xr]
+    xr, yr = x_max_display - x_min_display, y_max - y_min
+    x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
     y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
     for i, well in enumerate(ALL_WELLS, 1):
@@ -1037,6 +1138,7 @@ def plot_window_plate(plate: dict):
             row=r,
             col=c,
             marker_size=2,  # plate: smaller dots
+            time_unit=time_unit,
         )
 
         # Add well name in top-left corner of each subplot
@@ -1059,8 +1161,17 @@ def plot_window_plate(plate: dict):
     return fig
 
 
-def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
-    """Add phase shading, phase lines, and fit line/curve annotations to a figure."""
+def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str = "hours"):
+    """Add phase shading, phase lines, and fit line/curve annotations to a figure.
+
+    Args:
+        fig: Plotly figure to annotate
+        processed_data: Dictionary of processed data by well
+        well: Well identifier
+        *xs: Additional x positions for vertical lines
+        gs: Growth statistics dictionary
+        time_unit: Unit for time display ("seconds", "minutes", or "hours")
+    """
     # always start clean (important when reusing/copying figures)
     fig.update_layout(shapes=[])
 
@@ -1073,7 +1184,10 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
     if t.size == 0:
         return fig
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
     tmin, tmax = float(t[0]), float(t[-1])
+    tmin_display, tmax_display = float(t_display[0]), float(t_display[-1])
 
     # --- shading + fit line from growth stats ---
     gs = gs or {}
@@ -1083,20 +1197,24 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
         exp_end = max(exp_end, lag_end)
         max_od = float(gs.get("max_od", 0.0) or 0.0)
 
+        # Convert to display unit
+        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
+        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
+
         # add line for lag end
-        fig.add_vline(x=lag_end, line_dash="dot")
+        fig.add_vline(x=lag_end_display, line_dash="dot")
 
         # colour code exponential phase
         fig.add_vrect(
-            x0=lag_end,
-            x1=exp_end,
+            x0=lag_end_display,
+            x1=exp_end_display,
             fillcolor="rgba(76, 175, 80, 0.22)",
             line_width=0,
             layer="below",
         )
 
         # add line for exp end
-        fig.add_vline(x=exp_end, line_dash="dot")
+        fig.add_vline(x=exp_end_display, line_dash="dot")
 
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
@@ -1110,14 +1228,15 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
             and np.isfinite(t_umax)
             and np.isfinite(y_umax)
         ):
+            t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
             fig.add_trace(
                 go.Scatter(
-                    x=[float(t_umax)],
+                    x=[t_umax_display],
                     y=[float(y_umax)],
                     mode="markers",
                     marker=dict(size=12, color="#4CAF50"),
                     hovertemplate=(
-                        "Umax point<br>Time=%{x:.2f} h<br>OD=%{y:.4f}<extra></extra>"
+                        f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
                     ),
                     showlegend=False,
                 )
@@ -1156,6 +1275,7 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
                     t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
+                    t_dense_display = convert_hours_to_unit(t_dense, time_unit)
                     params = fit_result["params"]
 
                     # python_package models work in linear space directly
@@ -1185,12 +1305,12 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                     # Add the fitted curve as a trace
                     fig.add_trace(
                         go.Scatter(
-                            x=t_dense,
+                            x=t_dense_display,
                             y=y_fit,
                             mode="lines",
                             line=dict(width=2, color="blue"),
                             hovertemplate=(
-                                f"Model: {model_type}<br>Time=%{{x:.2f}} h<br>"
+                                f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
                                 f"Fitted OD=%{{y:.4f}}<extra></extra>"
                             ),
                             showlegend=False,
@@ -1223,14 +1343,17 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
                 # Use the actual window boundaries
                 x0 = max(tmin, float(t_win_start))
                 x1 = min(tmax, float(t_win_end))
+                # Convert to display unit
+                x0_display = convert_hours_to_unit(x0, time_unit)
+                x1_display = convert_hours_to_unit(x1, time_unit)
 
                 fig.add_shape(
                     type="line",
                     xref="x",
                     yref="y",
-                    x0=x0,
+                    x0=x0_display,
                     y0=m * x0 + b0,
-                    x1=x1,
+                    x1=x1_display,
                     y1=m * x1 + b0,
                     line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
                 )
@@ -1238,7 +1361,7 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None):
     # Constrain axes to the actual data range (prevents infinite lines from extending axes)
     # Add small margin for y-axis for better visualization
     y_range = y.max() - y.min()
-    fig.update_xaxes(range=[tmin, tmax])
+    fig.update_xaxes(range=[tmin_display, tmax_display])
     fig.update_yaxes(range=[y.min() - 0.05 * y_range, y.max() + 0.05 * y_range])
 
     return fig
@@ -1261,6 +1384,7 @@ def add_model_fit_well(
     shade_stat="rgba(144,238,144,0.16)",
     add_phase_shading: bool = True,
     add_model_curve: bool = True,
+    time_unit: str = "hours",
 ):
     """
     Draw a single well with fitted growth model curve overlay.
@@ -1271,6 +1395,9 @@ def add_model_fit_well(
     Works for both:
       - go.Figure() (row/col None)
       - make_subplots() figure (row/col provided)
+
+    Args:
+        time_unit: Unit for time display ("seconds", "minutes", or "hours")
     """
     gs = gs or {}
 
@@ -1290,6 +1417,8 @@ def add_model_fit_well(
     if t.size == 0:
         return
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
     tmin, tmax = float(t[0]), float(t[-1])
 
     # ---- Phase shading ----
@@ -1304,6 +1433,10 @@ def add_model_fit_well(
         if exp_end < lag_end:
             exp_end = lag_end
 
+        # Convert to display unit
+        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
+        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
+
         # IMPORTANT: xref/yref differ between single-figure and subplots
         if row is None:
             xref = "x"
@@ -1315,8 +1448,8 @@ def add_model_fit_well(
 
         fig.add_shape(
             type="rect",
-            x0=lag_end,
-            x1=exp_end,
+            x0=lag_end_display,
+            x1=exp_end_display,
             y0=0,
             y1=1,
             xref=xref,
@@ -1329,12 +1462,12 @@ def add_model_fit_well(
     # ---- Scatter points ----
     fig.add_trace(
         go.Scatter(
-            x=t,
+            x=t_display,
             y=y,
             mode="markers",
             marker=dict(size=marker_size, color=marker_color),
             hovertemplate=(
-                f"Well={well}<br>Time=%{{x:.2f}} h<br>OD=%{{y:.4f}}<extra></extra>"
+                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
             ),
             showlegend=False,
         ),
@@ -1352,8 +1485,18 @@ def plot_model_fit_single(
     well: str,
     plot_bgcolor="white",
     paper_bgcolor="white",
+    time_unit: str = "hours",
 ):
-    """Plot a single well with fitted growth model overlay and lasso selection enabled."""
+    """Plot a single well with fitted growth model overlay and lasso selection enabled.
+
+    Args:
+        processed_data: Dictionary of processed data by well
+        growth_stats: Dictionary of growth statistics by well
+        well: Well identifier
+        plot_bgcolor: Background color for plot area
+        paper_bgcolor: Background color for paper
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     d = (processed_data or {}).get(well)
     gs = (growth_stats or {}).get(well)
 
@@ -1367,6 +1510,7 @@ def plot_model_fit_single(
         marker_size=5,
         marker_color="red",
         line_color="blue",
+        time_unit=time_unit,
     )
 
     fig.update_layout(
@@ -1378,7 +1522,7 @@ def plot_model_fit_single(
         dragmode="lasso",
         margin=dict(l=20, r=20, t=20, b=20),
     )
-    fig.update_xaxes(type="linear", showgrid=False, title="Time (hours)")
+    fig.update_xaxes(type="linear", showgrid=False, title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
 
     return fig
@@ -1391,16 +1535,26 @@ def plot_model_fit_single_annotated(
     well: str,
     plot_bgcolor="white",
     paper_bgcolor="white",
+    time_unit: str = "hours",
 ):
     """
     Plot a single well with model fit and annotations for phase boundaries.
     Similar to plot_window_single_annotated but for model-based fits.
+
+    Args:
+        d: DataFrame with Time and baseline_corrected columns
+        gs: Growth statistics dictionary
+        well: Well identifier
+        plot_bgcolor: Background color for plot area
+        paper_bgcolor: Background color for paper
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
+    time_label = get_time_label(time_unit)
     if d is None or d.empty:
         fig = go.Figure()
         fig.update_layout(
             title=f"Well {well} - No data",
-            xaxis_title="Time (hours)",
+            xaxis_title=time_label,
             yaxis_title="OD600",
         )
         return fig
@@ -1411,6 +1565,8 @@ def plot_model_fit_single_annotated(
     if t.size == 0:
         return fig
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
     tmin, tmax = float(t[0]), float(t[-1])
 
     # --- shading + fit curve from growth stats ---
@@ -1421,20 +1577,24 @@ def plot_model_fit_single_annotated(
         exp_end = max(exp_end, lag_end)
         max_od = float(gs.get("max_od", 0.0) or 0.0)
 
+        # Convert to display unit
+        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
+        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
+
         # add line for lag end
-        fig.add_vline(x=lag_end, line_dash="dot")
+        fig.add_vline(x=lag_end_display, line_dash="dot")
 
         # colour code exponential phase
         fig.add_vrect(
-            x0=lag_end,
-            x1=exp_end,
+            x0=lag_end_display,
+            x1=exp_end_display,
             fillcolor="rgba(100,149,237,0.16)",
             line_width=0,
             layer="below",
         )
 
         # add line for exp end
-        fig.add_vline(x=exp_end, line_dash="dot")
+        fig.add_vline(x=exp_end_display, line_dash="dot")
 
         # add line for max OD600
         fig.add_hline(y=max_od, line_dash="dot")
@@ -1450,6 +1610,7 @@ def plot_model_fit_single_annotated(
 
             if fit_result is not None:
                 t_dense = np.linspace(float(t.min()), float(t.max()), 200)
+                t_dense_display = convert_hours_to_unit(t_dense, time_unit)
                 params = fit_result["params"]
 
                 # python_package models work in linear space directly
@@ -1478,7 +1639,7 @@ def plot_model_fit_single_annotated(
 
                     fig.add_trace(
                         go.Scatter(
-                            x=t_dense,
+                            x=t_dense_display,
                             y=y_fit,
                             mode="lines",
                             line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
@@ -1490,7 +1651,7 @@ def plot_model_fit_single_annotated(
     # Add data points
     fig.add_trace(
         go.Scatter(
-            x=t,
+            x=t_display,
             y=y,
             mode="markers",
             marker=dict(size=5, color="red"),
@@ -1501,7 +1662,7 @@ def plot_model_fit_single_annotated(
 
     fig.update_layout(
         title=f"Well {well} - Model Fit",
-        xaxis_title="Time (hours)",
+        xaxis_title=time_label,
         yaxis_title="OD600 (baseline corrected)",
         plot_bgcolor=plot_bgcolor,
         paper_bgcolor=paper_bgcolor,
@@ -1548,9 +1709,25 @@ def _fit_idealised_derivatives(t, dy):
 
 
 def plot_window_single_d1(
-    plate: dict, well: str, sg_window=11, sg_poly=2, frac_peak=0.15, add_fit=True
+    plate: dict,
+    well: str,
+    sg_window=11,
+    sg_poly=2,
+    frac_peak=0.15,
+    add_fit=True,
+    time_unit: str = "hours",
 ):
-    """Plot the first derivative of a well's smoothed curve."""
+    """Plot the first derivative of a well's smoothed curve.
+
+    Args:
+        plate: Plate dictionary containing processed_data
+        well: Well identifier
+        sg_window: Savitzky-Golay window size
+        sg_poly: Savitzky-Golay polynomial order
+        frac_peak: Fraction of peak for threshold
+        add_fit: Whether to add fitted curve
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
@@ -1564,14 +1741,17 @@ def plot_window_single_d1(
     # Compute first derivative using the data processing function
     t, dy = compute_first_derivative(t, y_s)
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=t,
+            x=t_display,
             y=dy,
             mode="lines",
             line=dict(width=2),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} h<br>dy/dt=%{{y:.6f}}<extra></extra>",
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>dy/dt=%{{y:.6f}}<extra></extra>",
             showlegend=False,
             hoverinfo="skip",
         )
@@ -1598,7 +1778,7 @@ def plot_window_single_d1(
         if dy_fit is not None and np.isfinite(dy_fit).any():
             fig.add_trace(
                 go.Scatter(
-                    x=t,
+                    x=t_display,
                     y=dy_fit,
                     mode="lines",
                     line=dict(width=2, dash="dash"),
@@ -1614,15 +1794,24 @@ def plot_window_single_d1(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title="Time (hours)")
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False, title="d(OD)/dt")
     return fig
 
 
 def plot_window_single_d2(
-    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True
+    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True, time_unit: str = "hours"
 ):
-    """Plot the second derivative of a well's smoothed curve."""
+    """Plot the second derivative of a well's smoothed curve.
+
+    Args:
+        plate: Plate dictionary containing processed_data
+        well: Well identifier
+        sg_window: Savitzky-Golay window size
+        sg_poly: Savitzky-Golay polynomial order
+        add_fit: Whether to add fitted curve
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
@@ -1636,14 +1825,17 @@ def plot_window_single_d2(
     # Compute second derivative using the data processing function
     t, d2y = compute_second_derivative(t, y_s)
 
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=t,
+            x=t_display,
             y=d2y,
             mode="lines",
             line=dict(width=2),
-            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} h<br>d²y/dt²=%{{y:.6f}}<extra></extra>",
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>d²y/dt²=%{{y:.6f}}<extra></extra>",
             showlegend=False,
             hoverinfo="skip",
         )
@@ -1661,7 +1853,7 @@ def plot_window_single_d2(
         if d2_fit is not None and np.isfinite(d2_fit).any():
             fig.add_trace(
                 go.Scatter(
-                    x=t,
+                    x=t_display,
                     y=d2_fit,
                     mode="lines",
                     line=dict(width=2, dash="dash"),
@@ -1677,7 +1869,7 @@ def plot_window_single_d2(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title="Time (hours)")
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False, title="d²(OD)/dt²")
     return fig
 

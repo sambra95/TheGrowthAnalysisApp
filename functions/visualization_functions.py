@@ -5,6 +5,13 @@ import pandas as pd
 import streamlit as st
 from streamlit_sortables import sort_items
 
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+except Exception:
+    AgGrid = None
+    GridOptionsBuilder = None
+    GridUpdateMode = None
+
 from functions.plotting_functions import (
     plot_growth_stats,
     plot_single_growth_stat,
@@ -199,6 +206,8 @@ def ui_growth_summaries(plates: dict):
     sel = st.session_state.setdefault(sel_key, {})
     st.session_state[sel_key] = {sid: bool(sel.get(sid, False)) for sid in ids}
     sel = st.session_state[sel_key]
+    grid_ver_key = "sample_selection_grid_ver"
+    st.session_state.setdefault(grid_ver_key, 0)
 
     max_t = _max_time_hours(plates)
 
@@ -236,41 +245,46 @@ def ui_growth_summaries(plates: dict):
     st.session_state.setdefault(curves_order_ver_key, 0)
 
     # -----------------------------
-    # UI
+    # UI: Step 1 selection (outside form so grid changes rerun)
     # -----------------------------
-    with st.form(
-        "growth_combined_form",
-        border=False,
-    ):
-        with st.container(border=True):
-            st.header("Step 1. Select Samples for Visualization")
+    with st.container(border=True):
+        st.header("Step 1. Select Samples for Visualization")
 
-            # Add custom CSS to increase font size in data editor
-            st.markdown("""
-                <style>
-                    div[data-testid="stDataFrame"] table {
-                        font-size: 16px !important;
-                    }
-                    div[data-testid="stDataFrame"] thead th {
-                        font-size: 17px !important;
-                        font-weight: bold !important;
-                    }
-                </style>
-            """, unsafe_allow_html=True)
+        # Add custom CSS to increase font size in data editor
+        st.markdown("""
+            <style>
+                div[data-testid="stDataFrame"] table {
+                    font-size: 16px !important;
+                }
+                div[data-testid="stDataFrame"] thead th {
+                    font-size: 17px !important;
+                    font-weight: bold !important;
+                }
+                .ag-theme-streamlit .ag-cell {
+                    font-size: 16px !important;
+                }
+                .ag-theme-streamlit .ag-header-cell-text {
+                    font-size: 17px !important;
+                    font-weight: bold !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
-            # Prepare dataframe for display with selection column
-            if has_split:
-                display_cols = ["Plate", "Sample Name", "Strain", "Condition", "Wells"]
-            else:
-                display_cols = ["Plate", "Sample Name", "Wells"]
+        # Prepare dataframe for display with selection column
+        if has_split:
+            display_cols = ["Plate", "Sample Name", "Strain", "Condition", "Wells"]
+        else:
+            display_cols = ["Plate", "Sample Name", "Wells"]
 
-            # Add Select column with current selection state
-            display_df = opt[display_cols].copy()
-            display_df["Select"] = display_df.index.map(lambda i: sel.get(opt.iloc[i]["_id"], False))
+        display_df = opt[display_cols + ["_id"]].copy()
 
-            # Use data_editor for interactive table with visible cells
+        if AgGrid is None:
+            st.info("Install `streamlit-aggrid` to enable multi-select with checkboxes.")
+            display_df["Select"] = display_df.index.map(
+                lambda i: sel.get(opt.iloc[i]["_id"], False)
+            )
             edited_df = st.data_editor(
-                display_df,
+                display_df.drop(columns=["_id"]),
                 column_config={
                     "Select": st.column_config.CheckboxColumn(
                         "Select",
@@ -280,24 +294,74 @@ def ui_growth_summaries(plates: dict):
                 },
                 disabled=display_cols,  # Make all columns except Select read-only
                 hide_index=True,
-                width='stretch',
+                width="stretch",
                 height=400,
-                key="sample_selection_table"
+                key="sample_selection_table",
             )
-
-            # Update selection state from edited dataframe
             for idx, row in edited_df.iterrows():
                 sid = opt.iloc[idx]["_id"]
                 sel[sid] = row["Select"]
-
-            sel_ids = _selected_ids()
-            sel_opt = _selected_opt_rows(sel_ids)
-            sel_sample_names = (
-                _unique_preserve_order(sel_opt["Sample Name"].astype(str).tolist())
-                if not sel_opt.empty
-                else []
+        else:
+            gb = GridOptionsBuilder.from_dataframe(display_df)
+            gb.configure_selection(
+                "multiple",
+                use_checkbox=True,
+                rowMultiSelectWithClick=True,
             )
+            gb.configure_column("_id", hide=True)
+            gb.configure_columns(display_cols, editable=False)
+            if display_cols:
+                gb.configure_column(
+                    display_cols[0],
+                    headerCheckboxSelection=True,
+                    checkboxSelection=True,
+                )
+            grid_options = gb.build()
+            pre_selected_rows = [
+                idx for idx, sid in enumerate(ids) if sel.get(sid, False)
+            ]
+            grid_response = AgGrid(
+                display_df,
+                gridOptions=grid_options,
+                update_mode=GridUpdateMode.SELECTION_CHANGED,
+                pre_selected_rows=pre_selected_rows,
+                fit_columns_on_grid_load=True,
+                height=400,
+                width="100%",
+                key=f"sample_selection_grid_{st.session_state[grid_ver_key]}",
+            )
+            selected_rows = grid_response.get("selected_rows")
+            if selected_rows is None:
+                selected_ids = set()
+            elif isinstance(selected_rows, pd.DataFrame):
+                selected_ids = set(selected_rows.get("_id", pd.Series([], dtype=str)).tolist())
+            elif isinstance(selected_rows, list):
+                if selected_rows and isinstance(selected_rows[0], dict):
+                    selected_ids = {
+                        row.get("_id") for row in selected_rows if row.get("_id")
+                    }
+                else:
+                    selected_ids = {row for row in selected_rows if isinstance(row, str)}
+            else:
+                selected_ids = set()
+            for sid in ids:
+                sel[sid] = sid in selected_ids
 
+        sel_ids = _selected_ids()
+        sel_opt = _selected_opt_rows(sel_ids)
+        sel_sample_names = (
+            _unique_preserve_order(sel_opt["Sample Name"].astype(str).tolist())
+            if not sel_opt.empty
+            else []
+        )
+
+    # -----------------------------
+    # UI: Step 2 controls (form)
+    # -----------------------------
+    with st.form(
+        "growth_combined_form",
+        border=False,
+    ):
         col1, col_or, col2 = st.columns([1, 0.1, 1])
         # ============================================================
         # Box 1: Growth stats controls

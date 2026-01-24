@@ -13,6 +13,7 @@ from functions.data_processing import (
     pkg_fit_growth_model,
     pkg_sliding_window_fit,
     _extract_stats_from_fit,
+    detect_no_growth,
 )
 from python_package import _compute_rmse as calculate_rmse
 from functions.plotting_functions import (
@@ -324,6 +325,21 @@ def analyse_well(record: dict, well: str) -> dict:
                 lag_frac=lag_frac,
                 exp_frac=exp_frac,
             )
+
+        # Check for no growth using consolidated detection function
+        min_data_points = int(p.get("min_data_points", 5))
+        min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
+        no_growth_result = detect_no_growth(
+            t_arr,
+            y_arr,
+            growth_stats=fit,
+            min_data_points=min_data_points,
+            min_signal_to_noise=min_signal_to_noise,
+        )
+        if no_growth_result["is_no_growth"]:
+            fit = BAD_FIT.copy()
+            fit["no_growth_reason"] = no_growth_result["reason"]
+
     except Exception:
         fit = BAD_FIT.copy()
 

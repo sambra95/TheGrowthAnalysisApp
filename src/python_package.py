@@ -376,6 +376,134 @@ def fit_model(t, y, model_type="logistic"):
 
 
 # -----------------------------------------------------------------------------
+# No-Growth Detection
+# -----------------------------------------------------------------------------
+
+
+def detect_no_growth(
+    t,
+    y,
+    growth_stats=None,
+    min_data_points=5,
+    min_signal_to_noise=5.0,
+    min_od_increase=0.05,
+    min_growth_rate=1e-6,
+):
+    """
+    Detect whether a growth curve shows no significant growth.
+
+    Performs multiple checks to determine if a well should be marked as "no growth":
+    1. Insufficient data points
+    2. Low signal-to-noise ratio (max/min OD ratio)
+    3. Insufficient OD increase (flat curve)
+    4. Zero or near-zero growth rate (from fitted stats)
+
+    Parameters:
+        t: Time array
+        y: OD values (baseline-corrected)
+        growth_stats: Optional dict of fitted growth statistics (from fit_growth_model
+            or sliding_window_fit). If provided, growth rate is checked.
+        min_data_points: Minimum number of valid data points required (default: 5)
+        min_signal_to_noise: Minimum ratio of max/min OD values (default: 5.0)
+        min_od_increase: Minimum absolute OD increase required (default: 0.05)
+        min_growth_rate: Minimum specific growth rate to be considered growth (default: 1e-6)
+
+    Returns:
+        Dict with:
+            - is_no_growth: bool, True if no growth detected
+            - reason: str, description of why it was flagged (or "growth detected")
+            - checks: dict with individual check results
+    """
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    # Filter to finite positive values
+    mask = np.isfinite(t) & np.isfinite(y) & (y > 0)
+    t_valid = t[mask]
+    y_valid = y[mask]
+
+    checks = {
+        "has_sufficient_data": True,
+        "has_sufficient_snr": True,
+        "has_sufficient_od_increase": True,
+        "has_positive_growth_rate": True,
+    }
+
+    # Check 1: Minimum data points
+    if len(t_valid) < min_data_points:
+        checks["has_sufficient_data"] = False
+        return {
+            "is_no_growth": True,
+            "reason": f"Insufficient data points ({len(t_valid)} < {min_data_points})",
+            "checks": checks,
+        }
+
+    # Check 2: Signal-to-noise ratio (max/min OD)
+    y_min = np.min(y_valid)
+    y_max = np.max(y_valid)
+
+    if y_min > 0:
+        snr = y_max / y_min
+    else:
+        snr = np.inf if y_max > 0 else 0.0
+
+    if snr < min_signal_to_noise:
+        checks["has_sufficient_snr"] = False
+        return {
+            "is_no_growth": True,
+            "reason": f"Low signal-to-noise ratio ({snr:.2f} < {min_signal_to_noise})",
+            "checks": checks,
+        }
+
+    # Check 3: Minimum OD increase (detects flat curves)
+    od_increase = y_max - y_min
+    if od_increase < min_od_increase:
+        checks["has_sufficient_od_increase"] = False
+        return {
+            "is_no_growth": True,
+            "reason": f"Insufficient OD increase ({od_increase:.4f} < {min_od_increase})",
+            "checks": checks,
+        }
+
+    # Check 4: Growth rate from fitted statistics (if provided)
+    if growth_stats is not None:
+        mu = growth_stats.get("specific_growth_rate")
+        if mu is None or not np.isfinite(mu) or mu < min_growth_rate:
+            checks["has_positive_growth_rate"] = False
+            mu_str = f"{mu:.6f}" if mu is not None and np.isfinite(mu) else "N/A"
+            return {
+                "is_no_growth": True,
+                "reason": f"Zero or negative growth rate (μ = {mu_str})",
+                "checks": checks,
+            }
+
+    return {
+        "is_no_growth": False,
+        "reason": "growth detected",
+        "checks": checks,
+    }
+
+
+def is_no_growth(growth_stats):
+    """
+    Simple check if growth stats indicate no growth (failed or missing fit).
+
+    This is a convenience function for quick checks on growth_stats dicts.
+    For more comprehensive checks including raw data analysis, use detect_no_growth().
+
+    Parameters:
+        growth_stats: Dict from fit_growth_model or sliding_window_fit
+
+    Returns:
+        bool: True if no growth detected (empty stats or zero growth rate)
+    """
+    if not growth_stats:
+        return True
+    mu = growth_stats.get("specific_growth_rate", 0.0)
+    return mu is None or mu == 0.0
+
+
+# -----------------------------------------------------------------------------
 # Growth Statistics Extraction
 # -----------------------------------------------------------------------------
 
@@ -493,6 +621,56 @@ def _bad_fit_stats():
 
 
 # -----------------------------------------------------------------------------
+# Sliding Window Helpers
+# -----------------------------------------------------------------------------
+
+
+def _gaussian(t, amplitude, center, sigma):
+    """Symmetric Gaussian bell-shaped curve."""
+    sigma = np.maximum(sigma, 1e-12)
+    return amplitude * np.exp(-((t - center) ** 2) / (2 * sigma**2))
+
+
+def _fit_gaussian_to_derivative(t, dy, t_dense):
+    """
+    Fit a symmetric Gaussian to first-derivative data and evaluate on t_dense.
+
+    Returns:
+        Array of fitted Gaussian values evaluated at t_dense.
+    """
+    t = np.asarray(t, dtype=float)
+    dy = np.asarray(dy, dtype=float)
+    t_dense = np.asarray(t_dense, dtype=float)
+
+    mask = np.isfinite(t) & np.isfinite(dy)
+    t_fit = t[mask]
+    dy_fit = dy[mask]
+
+    if len(t_fit) < 3 or np.ptp(t_fit) <= 0 or np.max(dy_fit) <= 0:
+        if len(t_fit) == 0:
+            return np.zeros_like(t_dense)
+        return np.interp(t_dense, t_fit, dy_fit, left=0.0, right=0.0)
+
+    amplitude_init = float(np.max(dy_fit))
+    center_init = float(t_fit[np.argmax(dy_fit)])
+    weights = np.maximum(dy_fit, 0)
+    if np.sum(weights) > 0:
+        sigma_init = float(np.sqrt(np.sum(weights * (t_fit - center_init) ** 2) / np.sum(weights)))
+    else:
+        sigma_init = float(np.ptp(t_fit) / 6.0)
+    sigma_init = max(sigma_init, np.ptp(t_fit) / 20.0)
+
+    p0 = [amplitude_init, center_init, sigma_init]
+    bounds = ([0.0, float(t_fit.min()), 1e-6], [np.inf, float(t_fit.max()), np.ptp(t_fit)])
+
+    try:
+        params, _ = curve_fit(_gaussian, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000)
+        return _gaussian(t_dense, *params)
+    except Exception:
+        return np.interp(t_dense, t_fit, dy_fit, left=0.0, right=0.0)
+
+
+# -----------------------------------------------------------------------------
 # Main API Functions
 # -----------------------------------------------------------------------------
 
@@ -571,9 +749,6 @@ def sliding_window_fit(
     # Log-transform for growth rate calculation
     y_log = np.log(y_raw)
 
-    # Smooth the log-transformed data for phase boundary detection
-    y_log_smooth = _smooth(y_log, sg_window, sg_poly)
-
     # Maximum OD from raw data
     max_od = float(np.max(y_raw))
 
@@ -631,8 +806,17 @@ def sliding_window_fit(
     y_log_pred = slope * t_win + intercept
     rmse = _compute_rmse(y_log_win, y_log_pred)
 
-    # Calculate phase boundaries using derivative of smoothed log data
-    lag_end, exp_end = _calculate_phase_ends(t, y_log_smooth, lag_frac, exp_frac)
+    # Calculate phase boundaries by fitting a symmetric Gaussian to the first derivative
+    # First, compute the smoothed first derivative of raw data
+    y_smooth = _smooth(y_raw, sg_window, sg_poly)
+    dy_data = np.gradient(y_smooth, t)
+    dy_data = np.maximum(dy_data, 0)  # Only consider positive growth
+
+    # Fit idealized symmetric Gaussian to the derivative data
+    t_dense = np.linspace(t.min(), t.max(), 500)
+    dy_idealized = _fit_gaussian_to_derivative(t, dy_data, t_dense)
+
+    lag_end, exp_end = _calculate_phase_ends(t_dense, dy_idealized, lag_frac, exp_frac)
 
     # Doubling time: t_d = ln(2) / mu
     doubling_time = np.log(2) / best_slope if best_slope > 0 else np.nan
@@ -652,18 +836,24 @@ def sliding_window_fit(
     }
 
 
-def _calculate_phase_ends(t, y_smooth, lag_frac=0.15, exp_frac=0.15):
+def _calculate_phase_ends(t, dy, lag_frac=0.15, exp_frac=0.15):
     """
-    Calculate lag and exponential phase end times from smoothed data.
+    Calculate lag and exponential phase end times from a first derivative curve.
 
-    Uses derivative analysis to identify phase transitions.
+    Parameters:
+        t: Time array
+        dy: First derivative values (should be from fitted/idealized curve)
+        lag_frac: Fraction of peak derivative for lag phase end detection
+        exp_frac: Fraction of peak derivative for exponential phase end detection
+
+    Returns:
+        Tuple of (lag_end, exp_end) times.
     """
     if len(t) < 5 or np.ptp(t) <= 0:
         return float(t[0]) if len(t) > 0 else np.nan, (
             float(t[-1]) if len(t) > 0 else np.nan
         )
 
-    dy = np.gradient(y_smooth, t)
     dy = np.maximum(dy, 0)  # Only consider positive growth
 
     peak_idx = np.argmax(dy)
@@ -675,10 +865,30 @@ def _calculate_phase_ends(t, y_smooth, lag_frac=0.15, exp_frac=0.15):
     lag_threshold = lag_frac * peak_val
     exp_threshold = exp_frac * peak_val
 
-    lag_idx = np.where(dy >= lag_threshold)[0]
-    lag_end = float(t[lag_idx[0]]) if len(lag_idx) > 0 else float(t[0])
+    lag_end = float(t[0])
+    above_lag = dy >= lag_threshold
+    if np.any(above_lag):
+        first_idx = int(np.argmax(above_lag))
+        if first_idx > 0:
+            t0, t1 = t[first_idx - 1], t[first_idx]
+            y0, y1 = dy[first_idx - 1], dy[first_idx]
+            frac = 0.0 if y1 == y0 else (lag_threshold - y0) / (y1 - y0)
+            lag_end = float(t0 + frac * (t1 - t0))
+        else:
+            lag_end = float(t[first_idx])
 
-    exp_idx = np.where((dy <= exp_threshold) & (np.arange(len(t)) > peak_idx))[0]
-    exp_end = float(t[exp_idx[0]]) if len(exp_idx) > 0 else float(t[-1])
+    exp_end = float(t[-1])
+    after_peak = np.arange(len(t)) > peak_idx
+    below_exp = dy <= exp_threshold
+    exp_candidates = np.where(after_peak & below_exp)[0]
+    if len(exp_candidates) > 0:
+        idx = int(exp_candidates[0])
+        if idx > 0:
+            t0, t1 = t[idx - 1], t[idx]
+            y0, y1 = dy[idx - 1], dy[idx]
+            frac = 0.0 if y1 == y0 else (exp_threshold - y0) / (y1 - y0)
+            exp_end = float(t0 + frac * (t1 - t0))
+        else:
+            exp_end = float(t[idx])
 
     return lag_end, max(exp_end, lag_end)

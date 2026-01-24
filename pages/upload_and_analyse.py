@@ -15,7 +15,7 @@ BLUE = "🟦"
 GRAY = "⬜"
 
 DEFAULT_PARAMS = dict(
-    read_interval_min=12,
+    time_unit="hours",  # "seconds", "minutes", or "hours"
     pathlength_cm_=0.42,
     clip_time_series=(0.0, 72.0),
     remove_wells=False,
@@ -152,13 +152,15 @@ with u1:
             with st.popover("Help", width="stretch"):
                 st.markdown("**Required Data File Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with time series data")
-                st.warning(
-                    "Do not include a time column. The app will generate time points using 'Read interval' below."
+                st.info(
+                    "Your data file must include a **Time** column with numeric values (integers or decimals). "
+                    "Select the time unit (seconds, minutes, or hours) in Step 3."
                 )
 
                 # Create example data table
                 example_data = pd.DataFrame(
                     {
+                        "Time": [0, 12, 24, 36],
                         "A1": [0.05, 0.08, 0.15, 0.28],
                         "A2": [0.06, 0.09, 0.18, 0.32],
                         "B1": [0.05, 0.07, 0.14, 0.26],
@@ -273,12 +275,13 @@ with st.container(border=True):
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
         a, b = st.columns(2)
-        read_interval_min = a.number_input(
-            "Read interval (min)",
-            1,
-            120,
-            int(params0["read_interval_min"]),
-            help="Time interval between OD600 measurements (used to calculate time points if no Time column is provided)",
+        time_unit = a.selectbox(
+            "Time unit in data file",
+            options=["seconds", "minutes", "hours"],
+            index=["seconds", "minutes", "hours"].index(
+                params0.get("time_unit", "hours")
+            ),
+            help="Select the unit of time values in your data file's Time column",
         )
         pl_cm = b.number_input(
             "Pathlength (cm)",
@@ -819,7 +822,7 @@ Lower values detect transitions earlier; higher values require more pronounced r
     with acol:
 
         params = dict(
-            read_interval_min=int(read_interval_min),
+            time_unit=str(time_unit),
             pathlength_cm_=float(pl_cm),
             clip_time_series=clip_time_series,
             remove_wells=remove_wells,

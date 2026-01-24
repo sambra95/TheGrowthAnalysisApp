@@ -31,6 +31,8 @@ from python_package import (
     _smooth as pkg_smooth,
     _compute_rmse,
     _extract_stats_from_fit,
+    detect_no_growth,
+    is_no_growth,
 )
 
 ROWS = "ABCDEFGH"
@@ -184,17 +186,38 @@ def _plate_name_map(plate_bytes):
     return plate, {f"{r}{c}": plate.loc[r, c] for r in ROWS for c in COLS}
 
 
-def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
-    """Read plate time series data (rows=timepoints, cols=wells) with Time in hours."""
+def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:
+    """Read plate time series data (rows=timepoints, cols=wells) with Time in hours.
+
+    Args:
+        data_bytes: Excel file bytes
+        time_unit: Unit of time in the data file ("seconds", "minutes", or "hours")
+
+    Returns:
+        DataFrame with Time column in hours and well columns
+
+    Raises:
+        ValueError: If no Time column is found in the data file
+    """
     df = _read_excel_bytes(data_bytes, header=0)
     df = df.replace(",", ".", regex=True)
 
-    if "Time" in df.columns:
-        t = pd.to_numeric(df["Time"], errors="coerce")
-        df = df.drop(columns=["Time"])
-    else:
-        # assume each row is a timepoint, evenly spaced
-        t = pd.Series(np.arange(len(df)) * int(read_interval_min))
+    if "Time" not in df.columns:
+        raise ValueError(
+            "Data file must contain a 'Time' column. "
+            "Please add a Time column with numeric values."
+        )
+
+    t = pd.to_numeric(df["Time"], errors="coerce")
+    df = df.drop(columns=["Time"])
+
+    # Convert time to hours based on selected unit
+    if time_unit == "seconds":
+        t_hours = t / 3600.0
+    elif time_unit == "minutes":
+        t_hours = t / 60.0
+    else:  # hours
+        t_hours = t
 
     # keep only well-like columns (A1..H12) if extras exist
     valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}
@@ -202,7 +225,7 @@ def _read_table(data_bytes: bytes, read_interval_min: int) -> pd.DataFrame:
     df = df[well_cols].copy()
     df.columns = [str(c).strip().upper() for c in df.columns]
 
-    df.insert(0, "Time", t / 60.0)  # hours
+    df.insert(0, "Time", t_hours)
     for c in df.columns[1:]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
@@ -229,7 +252,7 @@ def analyse_plate(record: dict):
     p = (record or {}).get("params") or {}
 
     plate_map, name_map = _plate_name_map(u["plate_bytes"])
-    df = _read_table(u["data_bytes"], p["read_interval_min"])
+    df = _read_table(u["data_bytes"], p.get("time_unit", "hours"))
 
     long = df.melt(id_vars="Time", var_name="well", value_name="value")
     long["well"] = long["well"].astype(str).str.upper()
@@ -282,6 +305,10 @@ def analyse_plate(record: dict):
     plate["baseline"] = baseline
     plate["plate_map"] = plate_map
 
+    # Get no-growth detection thresholds from params
+    min_data_points = int(p.get("min_data_points", 5))
+    min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
+
     for well, g in long.groupby("well", sort=False):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
@@ -312,6 +339,19 @@ def analyse_plate(record: dict):
                     lag_frac=lag_frac,
                     exp_frac=exp_frac,
                 )
+
+            # Check for no growth using consolidated detection function
+            no_growth_result = detect_no_growth(
+                t_arr,
+                y_arr,
+                growth_stats=fit,
+                min_data_points=min_data_points,
+                min_signal_to_noise=min_signal_to_noise,
+            )
+            if no_growth_result["is_no_growth"]:
+                fit = BAD_FIT.copy()
+                fit["no_growth_reason"] = no_growth_result["reason"]
+
         except Exception:
             fit = BAD_FIT.copy()
 
