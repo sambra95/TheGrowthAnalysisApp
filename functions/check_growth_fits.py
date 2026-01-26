@@ -106,6 +106,11 @@ def update_growth_stats_from_lasso(
     import time
     gs["_lasso_update_time"] = time.time()
 
+    # Store the actual selected time values for visualization (red vs grey points)
+    # Sort by time to ensure consistent ordering
+    sort_idx = np.argsort(xs)
+    gs["_used_fit_times"] = xs[sort_idx].tolist()
+
     # Check which method was used
     fit_method = gs.get("fit_method", "sliding_window")
     is_model_fit = fit_method and "model_fitting" in str(fit_method)
@@ -135,19 +140,20 @@ def update_growth_stats_from_lasso(
         if refit_t.size < 5:
             # Not enough points for model fitting, fall back to linear fit of selected points
             # But preserve phase boundaries from original fit - don't set them to selection bounds
-            m, b = np.polyfit(xs, ys, deg=1)
-            t_mu = float(xs.mean())
+            # Use refit_t and refit_y (original non-transformed values) not xs/ys from graph
+            m, b = np.polyfit(refit_t, refit_y, deg=1)
+            t_mu = float(refit_t.mean())
             y_mu = float(m * t_mu + b)
 
             # Calculate RMSE for the linear fit on selected points
-            y_pred_linear = m * xs + b
-            rmse = calculate_rmse(ys, y_pred_linear)
+            y_pred_linear = m * refit_t + b
+            rmse = calculate_rmse(refit_y, y_pred_linear)
 
             gs["specific_growth_rate"] = float(m)
             gs["time_at_umax"] = t_mu
             gs["od_at_umax"] = y_mu
-            gs["t_window_start"] = float(xs.min())
-            gs["t_window_end"] = float(xs.max())
+            gs["t_window_start"] = float(refit_t.min())
+            gs["t_window_end"] = float(refit_t.max())
             # For max_od, use max from entire curve, not just selected points
             gs["max_od"] = float(all_y.max())
             gs["model_rmse"] = rmse
@@ -186,19 +192,20 @@ def update_growth_stats_from_lasso(
         except Exception:
             # If model fitting fails, fall back to linear fit
             # But preserve phase boundaries from original fit - don't set them to selection bounds
-            m, b = np.polyfit(xs, ys, deg=1)
-            t_mu = float(xs.mean())
+            # Use refit_t and refit_y (original non-transformed values) not xs/ys from graph
+            m, b = np.polyfit(refit_t, refit_y, deg=1)
+            t_mu = float(refit_t.mean())
             y_mu = float(m * t_mu + b)
 
             # Calculate RMSE for the linear fit on selected points
-            y_pred_linear = m * xs + b
-            rmse = calculate_rmse(ys, y_pred_linear)
+            y_pred_linear = m * refit_t + b
+            rmse = calculate_rmse(refit_y, y_pred_linear)
 
             gs["specific_growth_rate"] = float(m)
             gs["time_at_umax"] = t_mu
             gs["od_at_umax"] = y_mu
-            gs["t_window_start"] = float(xs.min())
-            gs["t_window_end"] = float(xs.max())
+            gs["t_window_start"] = float(refit_t.min())
+            gs["t_window_end"] = float(refit_t.max())
             # For max_od, use max from entire curve, not just selected points
             gs["max_od"] = float(all_y.max())
             gs["model_rmse"] = rmse
@@ -206,10 +213,33 @@ def update_growth_stats_from_lasso(
             # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
     else:
         # Sliding Window method: re-run sliding window on the exact lasso-selected points
-        # Sort selected points by time (lasso selection may not be in order)
+        # Get the original (non-transformed) y-values from processed data
+        # This is important because the graph may be showing log-transformed values
+        processed = plate.get("processed_data", {}).get(well)
+        if processed is None or processed.empty:
+            return
+
+        all_t = processed["Time"].to_numpy(float)
+        all_y = processed["baseline_corrected"].to_numpy(float)
+
+        # Match selected time points to original data points
         sort_idx = np.argsort(xs)
-        refit_t = xs[sort_idx]
-        refit_y = ys[sort_idx]
+        selected_times = xs[sort_idx]
+
+        # Find the original y-values for each selected time point
+        time_tolerance = 0.01  # Small tolerance for floating point matching
+        refit_indices = []
+        for sel_t in selected_times:
+            matches = np.where(np.abs(all_t - sel_t) < time_tolerance)[0]
+            if len(matches) > 0:
+                refit_indices.append(matches[0])
+
+        if len(refit_indices) < 2:
+            return
+
+        refit_indices = np.array(refit_indices)
+        refit_t = all_t[refit_indices]
+        refit_y = all_y[refit_indices]  # Use original non-transformed values
 
         # Get sliding window parameters from plate (use exact same parameters)
         params = plate.get("params", {})
@@ -233,6 +263,7 @@ def update_growth_stats_from_lasso(
             gs["t_window_start"] = float(refit_t.min())
             gs["t_window_end"] = float(refit_t.max())
             gs["model_rmse"] = rmse
+            gs["max_od"] = float(refit_y.max())
             return
 
         # Re-run sliding window fit on selected points
@@ -257,7 +288,7 @@ def update_growth_stats_from_lasso(
         gs["exp_phase_start"] = fit["exp_phase_start"]
         gs["exp_phase_end"] = fit["exp_phase_end"]
         gs["window_points"] = window_points  # Store for visualization
-        # max_od is preserved from original analysis
+        gs["max_od"] = float(refit_y.max())  # Calculate from selected points
 
 
 # ---------------- Data helpers ----------------
@@ -436,6 +467,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     def _on_no_growth():
         """Mark the well as no-growth and reset widgets."""
         growth_stats.update(BAD_FIT.copy())
+        # Clear lasso-specific keys
+        growth_stats.pop("_used_fit_times", None)
+        growth_stats.pop("_lasso_update_time", None)
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
@@ -443,6 +477,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         plate["growth_stats"][well] = analyse_well(plate, well)
         # refresh local ref + sync widget state
         growth_stats.update(plate["growth_stats"][well])
+        # Clear lasso-specific keys so all points show as red (original behavior)
+        growth_stats.pop("_used_fit_times", None)
+        growth_stats.pop("_lasso_update_time", None)
         _sync_widgets_from_growth_stats()
 
     def _on_delete():
@@ -645,9 +682,9 @@ def ui_window_fits_well_editor(plates: dict):
     # Only show derivative plots for sliding window method
     if not is_model_fit:
         fig_d1 = plot_window_single_d1(
-            plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20
+            plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20, gs=gs
         )
-        fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p)
+        fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p, gs=gs)
         st.plotly_chart(fig_d1, width='stretch')
         st.plotly_chart(fig_d2, width='stretch')
     else:

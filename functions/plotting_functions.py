@@ -1207,23 +1207,67 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
     tmin_display = convert_hours_to_unit(tmin, time_unit)
     tmax_display = convert_hours_to_unit(tmax, time_unit)
 
-    # Add the main data scatter trace
+    # Determine which points were used in fitting calculations
     y_label = "ln(OD)" if log_transform else "OD"
-    fig.add_trace(
-        go.Scatter(
-            x=t_display,
-            y=y,
-            mode="markers",
-            marker=dict(size=5, color="red"),
-            hovertemplate=(
-                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-            ),
-            showlegend=False,
+    gs = gs or {}
+
+    # Check if specific points used in fitting are stored (from lasso selection)
+    used_times = gs.get("_used_fit_times")
+
+    if used_times is not None and len(used_times) > 0:
+        # Match points by their time values (with tolerance for floating point comparison)
+        used_times_arr = np.asarray(used_times)
+        time_tolerance = 0.01  # Small tolerance for floating point matching
+        used_mask = np.zeros(len(t), dtype=bool)
+        for ut in used_times_arr:
+            used_mask |= np.abs(t - ut) < time_tolerance
+
+        # Add unused points first (grey)
+        unused_mask = ~used_mask
+        if np.any(unused_mask):
+            fig.add_trace(
+                go.Scatter(
+                    x=t_display[unused_mask],
+                    y=y[unused_mask],
+                    mode="markers",
+                    marker=dict(size=5, color="grey"),
+                    hovertemplate=(
+                        f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+                    ),
+                    showlegend=False,
+                )
+            )
+
+        # Add used points (red) on top
+        if np.any(used_mask):
+            fig.add_trace(
+                go.Scatter(
+                    x=t_display[used_mask],
+                    y=y[used_mask],
+                    mode="markers",
+                    marker=dict(size=5, color="red"),
+                    hovertemplate=(
+                        f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+                    ),
+                    showlegend=False,
+                )
+            )
+    else:
+        # No specific points tracked - show all points as red (original behavior)
+        fig.add_trace(
+            go.Scatter(
+                x=t_display,
+                y=y,
+                mode="markers",
+                marker=dict(size=5, color="red"),
+                hovertemplate=(
+                    f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+                ),
+                showlegend=False,
+            )
         )
-    )
 
     # --- shading + fit line from growth stats ---
-    gs = gs or {}
     if gs and not is_bad_fit(gs):
         lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
         exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
@@ -1238,9 +1282,6 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
         lag_end_display = convert_hours_to_unit(lag_end, time_unit)
         exp_end_display = convert_hours_to_unit(exp_end, time_unit)
 
-        # add line for lag end
-        fig.add_vline(x=lag_end_display, line_dash="dot")
-
         # colour code exponential phase
         fig.add_vrect(
             x0=lag_end_display,
@@ -1250,12 +1291,9 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
             layer="below",
         )
 
-        # add line for exp end
-        fig.add_vline(x=exp_end_display, line_dash="dot")
-
         # add line for max OD600
         if not log_transform or max_od > 0:
-            fig.add_hline(y=max_od, line_dash="dot")
+            fig.add_hline(y=max_od, line=dict(color="rgba(100, 149, 237, 0.6)", width=2))
 
         # add point at Umax (time_at_umax, od_at_umax)
         t_umax = gs.get("time_at_umax")
@@ -1369,47 +1407,6 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
                                 showlegend=False,
                             )
                         )
-        else:
-            # Highlight window points for sliding window method with green markers
-            t_win_start = gs.get("t_window_start")
-            window_points = gs.get("window_points")
-
-            if (
-                t_win_start is not None
-                and np.isfinite(t_win_start)
-            ):
-                # Find first data point at or after t_window_start
-                start_idx = np.searchsorted(t, float(t_win_start))
-
-                # Determine how many points to highlight
-                if window_points is not None and window_points > 0:
-                    # Use exact window_points count
-                    end_idx = min(start_idx + int(window_points), len(t))
-                else:
-                    # Fallback: use t_window_end if window_points not available
-                    t_win_end = gs.get("t_window_end")
-                    if t_win_end is not None and np.isfinite(t_win_end):
-                        end_idx = np.searchsorted(t, float(t_win_end), side='right')
-                    else:
-                        end_idx = start_idx
-
-                t_win_points = t_display[start_idx:end_idx]
-                y_win_points = y[start_idx:end_idx]
-
-                if len(t_win_points) > 0:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=t_win_points,
-                            y=y_win_points,
-                            mode="markers",
-                            marker=dict(size=8, color="#4CAF50"),
-                            hovertemplate=(
-                                f"Umax window<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                            ),
-                            showlegend=False,
-                        )
-                    )
-
     # Constrain axes to the actual data range (prevents infinite lines from extending axes)
     # Add small margin for y-axis for better visualization
     if len(y) > 0:
@@ -1774,6 +1771,7 @@ def plot_window_single_d1(
     frac_peak=0.15,
     add_fit=True,
     time_unit: str = "hours",
+    gs: dict | None = None,
 ):
     """Plot the first derivative of a well's smoothed curve.
 
@@ -1785,13 +1783,37 @@ def plot_window_single_d1(
         frac_peak: Fraction of peak for threshold
         add_fit: Whether to add fitted curve
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+        gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
+            only the lasso-selected data points will be used for derivative calculation.
     """
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
 
-    t = d["Time"].to_numpy(float)
-    y = d["baseline_corrected"].to_numpy(float)
+    t_full = d["Time"].to_numpy(float)
+    y_full = d["baseline_corrected"].to_numpy(float)
+
+    # Store full time range for x-axis before any filtering
+    t_full_display = convert_hours_to_unit(t_full, time_unit)
+    x_range = [float(t_full_display.min()), float(t_full_display.max())]
+
+    t = t_full.copy()
+    y = y_full.copy()
+
+    # Filter to lasso-selected points if available
+    gs = gs or {}
+    used_times = gs.get("_used_fit_times")
+    if used_times is not None and len(used_times) > 0:
+        used_times_arr = np.asarray(used_times)
+        time_tolerance = 0.01  # Small tolerance for floating point matching
+        used_mask = np.zeros(len(t), dtype=bool)
+        for ut in used_times_arr:
+            used_mask |= np.abs(t - ut) < time_tolerance
+        t = t[used_mask]
+        y = y[used_mask]
+
+    if len(t) < 3:
+        return go.Figure()
 
     # Apply smoothing before computing derivative
     y_s = smooth(y, sg_window, sg_poly)
@@ -1852,13 +1874,14 @@ def plot_window_single_d1(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit))
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
     fig.update_yaxes(showgrid=False, title="d(OD)/dt")
     return fig
 
 
 def plot_window_single_d2(
-    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True, time_unit: str = "hours"
+    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True, time_unit: str = "hours",
+    gs: dict | None = None,
 ):
     """Plot the second derivative of a well's smoothed curve.
 
@@ -1869,13 +1892,37 @@ def plot_window_single_d2(
         sg_poly: Savitzky-Golay polynomial order
         add_fit: Whether to add fitted curve
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+        gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
+            only the lasso-selected data points will be used for derivative calculation.
     """
     d = (plate.get("processed_data") or {}).get(well)
     if d is None or d.empty:
         return go.Figure()
 
-    t = d["Time"].to_numpy(float)
-    y = d["baseline_corrected"].to_numpy(float)
+    t_full = d["Time"].to_numpy(float)
+    y_full = d["baseline_corrected"].to_numpy(float)
+
+    # Store full time range for x-axis before any filtering
+    t_full_display = convert_hours_to_unit(t_full, time_unit)
+    x_range = [float(t_full_display.min()), float(t_full_display.max())]
+
+    t = t_full.copy()
+    y = y_full.copy()
+
+    # Filter to lasso-selected points if available
+    gs = gs or {}
+    used_times = gs.get("_used_fit_times")
+    if used_times is not None and len(used_times) > 0:
+        used_times_arr = np.asarray(used_times)
+        time_tolerance = 0.01  # Small tolerance for floating point matching
+        used_mask = np.zeros(len(t), dtype=bool)
+        for ut in used_times_arr:
+            used_mask |= np.abs(t - ut) < time_tolerance
+        t = t[used_mask]
+        y = y[used_mask]
+
+    if len(t) < 3:
+        return go.Figure()
 
     # Apply smoothing before computing derivative
     y_s = smooth(y, sg_window, sg_poly)
@@ -1927,7 +1974,7 @@ def plot_window_single_d2(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit))
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
     fig.update_yaxes(showgrid=False, title="d²(OD)/dt²")
     return fig
 

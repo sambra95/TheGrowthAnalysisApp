@@ -15,7 +15,7 @@ BLUE = "🟦"
 GRAY = "⬜"
 
 DEFAULT_PARAMS = dict(
-    time_unit="hours",  # "seconds", "minutes", or "hours"
+    time_unit="minutes",  # "seconds", "minutes", or "hours"
     pathlength_cm_=0.42,
     clip_time_series=(0.0, 72.0),
     remove_wells=False,
@@ -276,7 +276,7 @@ with st.container(border=True):
         plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
-        a, b = st.columns(2)
+        a, b, c = st.columns(3, vertical_alignment="center")
         time_unit = a.selectbox(
             "Time unit in data file",
             options=["seconds", "minutes", "hours"],
@@ -291,6 +291,11 @@ with st.container(border=True):
             step=0.01,
             format="%.3f",
             help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
+        )
+        blank = c.checkbox(
+            "Blank subtraction (label 'BLANK')",
+            bool(params0["blank"]),
+            help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
         )
 
         a, b = st.columns(2)
@@ -315,12 +320,6 @@ with st.container(border=True):
                     help="Ending time for analysis (later time points will be excluded)",
                 )
             ),
-        )
-
-        blank = a.checkbox(
-            "Blank subtraction (label 'BLANK')",
-            bool(params0["blank"]),
-            help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
         )
 
         # Get default excluded wells from params0
@@ -382,6 +381,7 @@ with st.container(border=True):
                     blank=preview_params["blank"],
                 )
 
+                st.subheader(plate_id)
                 st.caption(
                     "· 🟩 sample · 🟦 blank · 🟥 excluded by user · 🟧 not in data file · ⬜ not in plate map"
                 )
@@ -612,30 +612,6 @@ with st.container(border=True):
                 )
                 st.plotly_chart(fig_ric, width="stretch", config={"staticPlot": True})
 
-                # Spline
-                st.markdown("**Spline**")
-                st.caption(
-                    "Non-parametric smoothing spline. Use when data doesn't follow standard growth patterns (e.g., diauxic growth)."
-                )
-                y_spline = 1.0 / (1 + np.exp(-0.15 * (t - 24))) + 0.05 * np.sin(t / 3)
-                fig_spl = go.Figure()
-                fig_spl.add_trace(
-                    go.Scatter(
-                        x=t,
-                        y=y_spline,
-                        mode="lines",
-                        line=dict(color="purple", width=2),
-                    )
-                )
-                fig_spl.update_layout(
-                    height=150,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="OD600",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_spl, width="stretch", config={"staticPlot": True})
-
             # Phase Boundary Detection Expander
             with st.expander("Phase Boundary Detection", expanded=False):
                 st.markdown(
@@ -800,11 +776,11 @@ Lower values detect transitions earlier; higher values require more pronounced r
             # Model Fitting selected
             model_type = st.selectbox(
                 "Growth model",
-                options=["logistic", "gompertz", "richards", "spline"],
-                index=["logistic", "gompertz", "richards", "spline"].index(
+                options=["logistic", "gompertz", "richards"],
+                index=["logistic", "gompertz", "richards"].index(
                     params0.get("model_type", "logistic")
                 ),
-                help="Parametric model to fit to the growth curve (logistic, gompertz, richards) or spline for non-parametric smoothing",
+                help="Parametric model to fit to the growth curve",
             )
             window_points = int(params0["window_points"])
 
@@ -837,8 +813,8 @@ Lower values detect transitions earlier; higher values require more pronounced r
     st.markdown("**'No Growth' Thresholds**")
     st.caption("Wells failing these criteria will be marked as no growth")
 
-    c, d = st.columns(2)
-    min_data_points = c.number_input(
+    col1, col2, col3 = st.columns(3)
+    min_data_points = col1.number_input(
         "Minimum data points",
         1,
         100,
@@ -846,7 +822,7 @@ Lower values detect transitions earlier; higher values require more pronounced r
         1,
         help="Minimum number of valid data points required for growth analysis",
     )
-    min_signal_to_noise = d.number_input(
+    min_signal_to_noise = col2.number_input(
         "Minimum signal-to-noise ratio",
         0.1,
         100.0,
@@ -854,7 +830,7 @@ Lower values detect transitions earlier; higher values require more pronounced r
         0.1,
         help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
     )
-    min_growth_rate = c.number_input(
+    min_growth_rate = col3.number_input(
         "Minimum growth rate (1/h)",
         0.0,
         1.0,
