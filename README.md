@@ -56,4 +56,44 @@ Crucially, the app is designed for human-in-the-loop analysis. Automated fits pr
 
    The app will automatically open in your default web browser at `http://localhost:8501`.
 
-- Ensure you're in the project directory when running `streamlit run app.py`
+   - Ensure you're in the project directory when running `streamlit run app.py`
+
+## How to use the app
+
+### 1) Prepare your input files
+
+- **Plate reader data**: a time-series table with time in the first column and OD measurements for each well in subsequent columns.
+- **Plate map**: a table that maps wells to sample metadata (strain, condition, replicate, etc.).
+
+Sample files are included in the repo:
+
+- `example_data.xlsx`
+- `example_plate_map.xls`
+
+### 2) Upload and configure
+
+1. Open the app in your browser.
+2. Go to the **Upload & Analyse** page.
+3. Upload the raw data file and the plate map.
+4. Configure analysis settings such as:
+   - time window (clip start/end)
+   - pathlength correction and baseline subtraction
+   - smoothing options
+   - fitting window or growth phase selection
+
+### 3) Review and curate fits
+
+- Inspect growth curves and fitted phases.
+- Adjust phase boundaries if needed.
+- Mark wells as excluded or no-growth.
+- Re-fit data based on selected points.
+
+### 4) Export results
+
+- Export the curated summary statistics (max OD, growth rate, lag time, etc.).
+- Export curated plots for reporting.
+
+## Tips
+
+- If uploads fail, confirm your files are Excel-compatible and have consistent well names.
+- Start with the example files to validate the workflow before using your own data.
