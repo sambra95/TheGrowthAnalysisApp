@@ -7,13 +7,10 @@ import streamlit as st
 
 from functions.data_processing import (
     BAD_FIT,
-    fit_model,
     pkg_fit_growth_model,
     pkg_sliding_window_fit,
-    _extract_stats_from_fit,
     detect_no_growth,
 )
-from python_package import _compute_rmse as calculate_rmse
 from functions.plotting_functions import (
     _vlines,
     is_bad_fit,
@@ -86,6 +83,100 @@ def _get_selected_points(event) -> tuple[np.ndarray, np.ndarray]:
     return xs, ys
 
 
+def _match_selected_times(
+    all_t: np.ndarray, selected_times: np.ndarray, *, time_tolerance: float = 0.01
+) -> np.ndarray:
+    """Return indices in all_t that match selected_times within tolerance."""
+    if all_t.size == 0 or selected_times.size == 0:
+        return np.array([], dtype=int)
+
+    refit_indices = []
+    seen = set()
+    for sel_t in selected_times:
+        matches = np.where(np.abs(all_t - sel_t) < time_tolerance)[0]
+        if len(matches) == 0:
+            continue
+        idx = int(matches[0])
+        if idx not in seen:
+            refit_indices.append(idx)
+            seen.add(idx)
+
+    return np.asarray(refit_indices, dtype=int)
+
+
+def _collect_lasso_series(
+    processed: pd.DataFrame, selected_times: np.ndarray, *, time_tolerance: float = 0.01
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (t, y) arrays for lasso-selected points from processed data."""
+    if processed is None or processed.empty:
+        return np.array([]), np.array([])
+
+    all_t = processed["Time"].to_numpy(float)
+    all_y = processed["baseline_corrected"].to_numpy(float)
+
+    refit_indices = _match_selected_times(all_t, selected_times, time_tolerance=time_tolerance)
+    if refit_indices.size < 2:
+        return np.array([]), np.array([])
+
+    refit_t = all_t[refit_indices]
+    refit_y = all_y[refit_indices]
+
+    sort_idx = np.argsort(refit_t)
+    return refit_t[sort_idx], refit_y[sort_idx]
+
+
+def _analyse_series_with_plate_params(
+    t_arr: np.ndarray, y_arr: np.ndarray, params: dict
+) -> dict:
+    """Run the same analysis pipeline as initial plate analysis."""
+    if t_arr.size < 2 or y_arr.size < 2:
+        return BAD_FIT.copy()
+
+    try:
+        growth_method = params.get("growth_method", "Sliding Window")
+        lag_frac = float(params.get("lag_cutoff", 0.15))
+        exp_frac = float(params.get("exp_cutoff", 0.15))
+
+        if growth_method == "Model Fitting":
+            fit = pkg_fit_growth_model(
+                t_arr,
+                y_arr,
+                model_type=params.get("model_type", "logistic"),
+                lag_frac=lag_frac,
+                exp_frac=exp_frac,
+            )
+        else:
+            fit = pkg_sliding_window_fit(
+                t_arr,
+                y_arr,
+                window_points=int(params.get("window_points", 15)),
+                sg_window=int(params.get("sg_window", 11)),
+                sg_poly=int(params.get("sg_poly", 1)),
+                lag_frac=lag_frac,
+                exp_frac=exp_frac,
+            )
+            fit["window_points"] = int(params.get("window_points", 15))
+
+        min_data_points = int(params.get("min_data_points", 5))
+        min_signal_to_noise = float(params.get("min_signal_to_noise", 5.0))
+        min_growth_rate = float(params.get("min_growth_rate", 0.001))
+        no_growth_result = detect_no_growth(
+            t_arr,
+            y_arr,
+            growth_stats=fit,
+            min_data_points=min_data_points,
+            min_signal_to_noise=min_signal_to_noise,
+            min_growth_rate=min_growth_rate,
+        )
+        if no_growth_result["is_no_growth"]:
+            fit = BAD_FIT.copy()
+            fit["no_growth_reason"] = no_growth_result["reason"]
+    except Exception:
+        fit = BAD_FIT.copy()
+
+    return fit
+
+
 def update_growth_stats_from_lasso(
     plates: dict, pid: str, well: str, chart_key: str
 ) -> None:
@@ -109,186 +200,24 @@ def update_growth_stats_from_lasso(
     # Store the actual selected time values for visualization (red vs grey points)
     # Sort by time to ensure consistent ordering
     sort_idx = np.argsort(xs)
-    gs["_used_fit_times"] = xs[sort_idx].tolist()
+    selected_times = xs[sort_idx]
 
-    # Check which method was used
-    fit_method = gs.get("fit_method", "sliding_window")
-    is_model_fit = fit_method and "model_fitting" in str(fit_method)
+    # Get all data points for the well (always stored internally in hours)
+    processed = plate.get("processed_data", {}).get(well)
+    if processed is None or processed.empty:
+        return
 
-    if is_model_fit:
-        # Extract model type from fit_method string
-        model_type = "logistic"  # default
-        if "(" in fit_method and ")" in fit_method:
-            model_type = fit_method.split("(")[1].split(")")[0]
+    # Build lasso-selected series and store for visualization
+    refit_t, refit_y = _collect_lasso_series(processed, selected_times)
+    if refit_t.size < 2:
+        return
 
-        # Get all data points for the well
-        processed = plate.get("processed_data", {}).get(well)
-        if processed is None or processed.empty:
-            return
+    gs["_used_fit_times"] = refit_t.tolist()
 
-        all_t = processed["Time"].to_numpy(float)
-        all_y = processed["baseline_corrected"].to_numpy(float)
-
-        # Filter to only the selected time range (with some tolerance)
-        selected_t_min, selected_t_max = xs.min(), xs.max()
-        time_tolerance = 0.1  # Allow 0.1 hour tolerance for point matching
-        mask = (all_t >= selected_t_min - time_tolerance) & (all_t <= selected_t_max + time_tolerance)
-
-        refit_t = all_t[mask]
-        refit_y = all_y[mask]
-
-        if refit_t.size < 5:
-            # Not enough points for model fitting, fall back to linear fit of selected points
-            # But preserve phase boundaries from original fit - don't set them to selection bounds
-            # Use refit_t and refit_y (original non-transformed values) not xs/ys from graph
-            m, b = np.polyfit(refit_t, refit_y, deg=1)
-            t_mu = float(refit_t.mean())
-            y_mu = float(m * t_mu + b)
-
-            # Calculate RMSE for the linear fit on selected points
-            y_pred_linear = m * refit_t + b
-            rmse = calculate_rmse(refit_y, y_pred_linear)
-
-            gs["specific_growth_rate"] = float(m)
-            gs["time_at_umax"] = t_mu
-            gs["od_at_umax"] = y_mu
-            gs["t_window_start"] = float(refit_t.min())
-            gs["t_window_end"] = float(refit_t.max())
-            # For max_od, use max from entire curve, not just selected points
-            gs["max_od"] = float(all_y.max())
-            gs["model_rmse"] = rmse
-            # Preserve original phase boundaries - don't overwrite with selection bounds
-            # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
-            return
-
-        # Get plate params for quality thresholds
-        params = plate.get("params", {})
-
-        # Refit the model to selected points only (using python_package)
-        try:
-            # Fit model to selected points
-            fit_result = fit_model(refit_t, refit_y, model_type=model_type)
-
-            if fit_result is None:
-                raise ValueError("Model fit failed")
-
-            # Extract growth descriptors from the fitted model
-            lag_frac = float(params.get("lag_frac", 0.15))
-            exp_frac = float(params.get("exp_frac", 0.15))
-            descriptors = _extract_stats_from_fit(fit_result, lag_frac=lag_frac, exp_frac=exp_frac)
-
-            # Update growth stats with refit results
-            gs["specific_growth_rate"] = descriptors["specific_growth_rate"]
-            gs["time_at_umax"] = descriptors["time_at_umax"]
-            gs["od_at_umax"] = descriptors["od_at_umax"]
-            gs["t_window_start"] = descriptors["t_window_start"]
-            gs["t_window_end"] = descriptors["t_window_end"]
-            gs["exp_phase_start"] = descriptors["exp_phase_start"]
-            gs["exp_phase_end"] = descriptors["exp_phase_end"]
-            gs["max_od"] = descriptors["max_od"]
-            gs["model_rmse"] = descriptors["model_rmse"]
-            # Keep the same fit_method
-
-        except Exception:
-            # If model fitting fails, fall back to linear fit
-            # But preserve phase boundaries from original fit - don't set them to selection bounds
-            # Use refit_t and refit_y (original non-transformed values) not xs/ys from graph
-            m, b = np.polyfit(refit_t, refit_y, deg=1)
-            t_mu = float(refit_t.mean())
-            y_mu = float(m * t_mu + b)
-
-            # Calculate RMSE for the linear fit on selected points
-            y_pred_linear = m * refit_t + b
-            rmse = calculate_rmse(refit_y, y_pred_linear)
-
-            gs["specific_growth_rate"] = float(m)
-            gs["time_at_umax"] = t_mu
-            gs["od_at_umax"] = y_mu
-            gs["t_window_start"] = float(refit_t.min())
-            gs["t_window_end"] = float(refit_t.max())
-            # For max_od, use max from entire curve, not just selected points
-            gs["max_od"] = float(all_y.max())
-            gs["model_rmse"] = rmse
-            # Preserve original phase boundaries - don't overwrite with selection bounds
-            # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
-    else:
-        # Sliding Window method: re-run sliding window on the exact lasso-selected points
-        # Get the original (non-transformed) y-values from processed data
-        # This is important because the graph may be showing log-transformed values
-        processed = plate.get("processed_data", {}).get(well)
-        if processed is None or processed.empty:
-            return
-
-        all_t = processed["Time"].to_numpy(float)
-        all_y = processed["baseline_corrected"].to_numpy(float)
-
-        # Match selected time points to original data points
-        sort_idx = np.argsort(xs)
-        selected_times = xs[sort_idx]
-
-        # Find the original y-values for each selected time point
-        time_tolerance = 0.01  # Small tolerance for floating point matching
-        refit_indices = []
-        for sel_t in selected_times:
-            matches = np.where(np.abs(all_t - sel_t) < time_tolerance)[0]
-            if len(matches) > 0:
-                refit_indices.append(matches[0])
-
-        if len(refit_indices) < 2:
-            return
-
-        refit_indices = np.array(refit_indices)
-        refit_t = all_t[refit_indices]
-        refit_y = all_y[refit_indices]  # Use original non-transformed values
-
-        # Get sliding window parameters from plate (use exact same parameters)
-        params = plate.get("params", {})
-        sg_window = int(params.get("sg_window", 11))
-        sg_poly = int(params.get("sg_poly", 1))
-        window_points = int(params.get("window_points", 15))
-        lag_frac = float(params.get("lag_frac", 0.15))
-        exp_frac = float(params.get("exp_frac", 0.15))
-
-        if refit_t.size < window_points:
-            # Not enough points for sliding window, fall back to simple linear fit
-            m, b = np.polyfit(refit_t, refit_y, deg=1)
-            t_mu = float(refit_t.mean())
-            y_mu = float(m * t_mu + b)
-            y_pred_linear = m * refit_t + b
-            rmse = calculate_rmse(refit_y, y_pred_linear)
-
-            gs["specific_growth_rate"] = float(m)
-            gs["time_at_umax"] = t_mu
-            gs["od_at_umax"] = y_mu
-            gs["t_window_start"] = float(refit_t.min())
-            gs["t_window_end"] = float(refit_t.max())
-            gs["model_rmse"] = rmse
-            gs["max_od"] = float(refit_y.max())
-            return
-
-        # Re-run sliding window fit on selected points
-        fit = pkg_sliding_window_fit(
-            refit_t,
-            refit_y,
-            window_points=window_points,
-            sg_window=sg_window,
-            sg_poly=sg_poly,
-            lag_frac=lag_frac,
-            exp_frac=exp_frac,
-        )
-
-        # Update growth stats with the refit results
-        gs["specific_growth_rate"] = fit["specific_growth_rate"]
-        gs["time_at_umax"] = fit["time_at_umax"]
-        gs["od_at_umax"] = fit["od_at_umax"]
-        gs["t_window_start"] = fit["t_window_start"]
-        gs["t_window_end"] = fit["t_window_end"]
-        gs["doubling_time"] = fit["doubling_time"]
-        gs["model_rmse"] = fit["model_rmse"]
-        gs["exp_phase_start"] = fit["exp_phase_start"]
-        gs["exp_phase_end"] = fit["exp_phase_end"]
-        gs["window_points"] = window_points  # Store for visualization
-        gs["max_od"] = float(refit_y.max())  # Calculate from selected points
+    # Run the identical analysis pipeline as initial plate analysis
+    params = plate.get("params", {})
+    fit = _analyse_series_with_plate_params(refit_t, refit_y, params)
+    gs.update(fit)
 
 
 # ---------------- Data helpers ----------------

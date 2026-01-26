@@ -540,16 +540,20 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     else:
         return _bad_fit_stats()
 
-    # Calculate dN/dt for phase boundary detection
-    dN_dt = np.gradient(y_dense, t_dense)
-
     # Maximum OD (carrying capacity from fit)
     max_od = float(params["K"])
 
-    # Find time of maximum growth rate
-    max_dN_idx = np.argmax(dN_dt)
-    time_at_umax = float(t_dense[max_dN_idx])
-    od_at_umax = float(y_dense[max_dN_idx])
+    # Calculate dN/dt for phase boundary detection (linear space)
+    dN_dt = np.gradient(y_dense, t_dense)
+
+    # Specific growth rate: mu = d(ln N)/dt
+    y_safe = np.maximum(y_dense, 1e-10)
+    mu_dense = np.gradient(np.log(y_safe), t_dense)
+
+    # Find time of maximum specific growth rate
+    max_mu_idx = int(np.argmax(mu_dense))
+    time_at_umax = float(t_dense[max_mu_idx])
+    od_at_umax = float(y_dense[max_mu_idx])
 
     if mu_max <= 0:
         stats = _bad_fit_stats()
@@ -557,7 +561,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
         stats["fit_method"] = f"model_fitting_{model_type}"
         return stats
 
-    # Phase boundaries based on derivative thresholds
+    # Phase boundaries based on derivative thresholds (linear space)
     max_dN = np.max(dN_dt)
     lag_threshold = lag_frac * max_dN
     exp_threshold = exp_frac * max_dN
@@ -568,7 +572,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     )
 
     exp_idx = np.where(
-        (dN_dt <= exp_threshold) & (np.arange(len(t_dense)) > max_dN_idx)
+        (dN_dt <= exp_threshold) & (np.arange(len(t_dense)) > max_mu_idx)
     )[0]
     exp_phase_end = (
         float(t_dense[exp_idx[0]]) if len(exp_idx) > 0 else float(t_dense[-1])
