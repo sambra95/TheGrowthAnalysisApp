@@ -228,26 +228,24 @@ def fit_logistic(t, y):
     p0 = [K_init, y0_init, r_init, t0_init]
     bounds = ([y0_init * 0.5, 0, 0.0001, t.min()], [np.inf, y0_init * 2, 10, t.max()])
 
-    try:
-        params, _ = curve_fit(logistic_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        y_fit = logistic_model(t, *params)
-        # Calculate true specific growth rate from fitted curve
-        mu_max = _calculate_specific_growth_rate(t, y_fit)
-        return {
-            "params": {
-                "K": params[0],
-                "y0": params[1],
-                "r": params[2],
-                "t0": params[3],
-            },
-            "y_fit": y_fit,
-            "y": y,
-            "t": t,
-            "model_type": "logistic",
-            "mu_max": mu_max,
-        }
-    except Exception:
-        return None
+    params, _ = curve_fit(logistic_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+    y_fit = logistic_model(t, *params)
+    # Calculate true specific growth rate from fitted curve
+    mu_max = _calculate_specific_growth_rate(t, y_fit)
+
+    return {
+        "params": {
+            "K": params[0],
+            "y0": params[1],
+            "r": params[2],
+            "t0": params[3],
+        },
+        "y_fit": y_fit,
+        "y": y,
+        "t": t,
+        "model_type": "logistic",
+        "mu_max": mu_max,
+    }
 
 
 def fit_gompertz(t, y):
@@ -278,26 +276,23 @@ def fit_gompertz(t, y):
     p0 = [K_init, y0_init, mu_max_init, lam_init]
     bounds = ([y0_init * 0.5, 0, 0.0001, 0], [np.inf, y0_init * 2, 10, t.max()])
 
-    try:
-        params, _ = curve_fit(gompertz_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        y_fit = gompertz_model(t, *params)
-        # Calculate true specific growth rate from fitted curve
-        mu_max = _calculate_specific_growth_rate(t, y_fit)
-        return {
-            "params": {
-                "K": params[0],
-                "y0": params[1],
-                "mu_max_param": params[2],
-                "lam": params[3],
-            },
-            "y_fit": y_fit,
-            "y": y,
-            "t": t,
-            "model_type": "gompertz",
-            "mu_max": mu_max,
-        }
-    except Exception:
-        return None
+    params, _ = curve_fit(gompertz_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+    y_fit = gompertz_model(t, *params)
+    # Calculate true specific growth rate from fitted curve
+    mu_max = _calculate_specific_growth_rate(t, y_fit)
+    return {
+        "params": {
+            "K": params[0],
+            "y0": params[1],
+            "mu_max_param": params[2],
+            "lam": params[3],
+        },
+        "y_fit": y_fit,
+        "y": y,
+        "t": t,
+        "model_type": "gompertz",
+        "mu_max": mu_max,
+    }
 
 
 def fit_richards(t, y):
@@ -329,27 +324,25 @@ def fit_richards(t, y):
         [np.inf, y0_init * 2, 10, t.max(), 100],
     )
 
-    try:
-        params, _ = curve_fit(richards_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
-        y_fit = richards_model(t, *params)
-        # Calculate true specific growth rate from fitted curve
-        mu_max = _calculate_specific_growth_rate(t, y_fit)
-        return {
-            "params": {
-                "K": params[0],
-                "y0": params[1],
-                "r": params[2],
-                "t0": params[3],
-                "nu": params[4],
-            },
-            "y_fit": y_fit,
-            "y": y,
-            "t": t,
-            "model_type": "richards",
-            "mu_max": mu_max,
-        }
-    except Exception:
-        return None
+    params, _ = curve_fit(richards_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
+    y_fit = richards_model(t, *params)
+    # Calculate true specific growth rate from fitted curve
+    mu_max = _calculate_specific_growth_rate(t, y_fit)
+
+    return {
+        "params": {
+            "K": params[0],
+            "y0": params[1],
+            "r": params[2],
+            "t0": params[3],
+            "nu": params[4],
+        },
+        "y_fit": y_fit,
+        "y": y,
+        "t": t,
+        "model_type": "richards",
+        "mu_max": mu_max,
+    }
 
 
 def fit_model(t, y, model_type="logistic"):
@@ -370,8 +363,7 @@ def fit_model(t, y, model_type="logistic"):
         "richards": fit_richards,
     }
     fit_func = fit_funcs.get(model_type)
-    if fit_func is None:
-        raise ValueError(f"Unknown model type: {model_type}")
+
     return fit_func(t, y)
 
 
@@ -655,16 +647,23 @@ def _fit_gaussian_to_derivative(t, dy, t_dense):
     center_init = float(t_fit[np.argmax(dy_fit)])
     weights = np.maximum(dy_fit, 0)
     if np.sum(weights) > 0:
-        sigma_init = float(np.sqrt(np.sum(weights * (t_fit - center_init) ** 2) / np.sum(weights)))
+        sigma_init = float(
+            np.sqrt(np.sum(weights * (t_fit - center_init) ** 2) / np.sum(weights))
+        )
     else:
         sigma_init = float(np.ptp(t_fit) / 6.0)
     sigma_init = max(sigma_init, np.ptp(t_fit) / 20.0)
 
     p0 = [amplitude_init, center_init, sigma_init]
-    bounds = ([0.0, float(t_fit.min()), 1e-6], [np.inf, float(t_fit.max()), np.ptp(t_fit)])
+    bounds = (
+        [0.0, float(t_fit.min()), 1e-6],
+        [np.inf, float(t_fit.max()), np.ptp(t_fit)],
+    )
 
     try:
-        params, _ = curve_fit(_gaussian, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000)
+        params, _ = curve_fit(
+            _gaussian, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000
+        )
         return _gaussian(t_dense, *params)
     except Exception:
         return np.interp(t_dense, t_fit, dy_fit, left=0.0, right=0.0)
@@ -743,7 +742,7 @@ def sliding_window_fit(
     mask = np.isfinite(t) & np.isfinite(y) & (y > 0)
     t, y_raw = t[mask], y[mask]
 
-    if len(t) < max(10, window_points) or np.ptp(t) <= 0:
+    if len(t) < window_points or np.ptp(t) <= 0:
         return _bad_fit_stats()
 
     # Log-transform for growth rate calculation
@@ -753,7 +752,8 @@ def sliding_window_fit(
     max_od = float(np.max(y_raw))
 
     # Find window with maximum slope on log-transformed data
-    w = min(window_points, len(t))
+    # Use exact window_points (the check above ensures len(t) >= window_points)
+    w = window_points
     best_slope = -np.inf
     best_result = (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 0, w)
 

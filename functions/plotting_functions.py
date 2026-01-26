@@ -931,23 +931,23 @@ def add_window_well(
             model_type = _model_type_from_fit_method(str(fit_method))
             if model_type:
 
-                # Check if lasso selection was used to subset the data
-                lasso_t_min = gs.get("lasso_t_min")
-                lasso_t_max = gs.get("lasso_t_max")
+                # Use t_window_start and t_window_end to determine fitting range
+                t_win_start = gs.get("t_window_start")
+                t_win_end = gs.get("t_window_end")
 
                 # Start with all data, then apply filters
                 fit_t = t.copy()
                 fit_y = y.copy()
 
-                # Apply lasso selection if used
-                if lasso_t_min is not None and lasso_t_max is not None:
-                    # Use only the lasso-selected time range
+                # Apply window selection if available
+                if t_win_start is not None and t_win_end is not None:
+                    # Use only the selected time range
                     time_tolerance = 0.1
-                    lasso_mask = (fit_t >= lasso_t_min - time_tolerance) & (
-                        fit_t <= lasso_t_max + time_tolerance
+                    win_mask = (fit_t >= t_win_start - time_tolerance) & (
+                        fit_t <= t_win_end + time_tolerance
                     )
-                    fit_t = fit_t[lasso_mask]
-                    fit_y = fit_y[lasso_mask]
+                    fit_t = fit_t[win_mask]
+                    fit_y = fit_y[win_mask]
 
                 # Refit the model to get the fitted curve (using python_package)
                 fit_result = fit_model(fit_t, fit_y, model_type=model_type)
@@ -1161,7 +1161,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     return fig
 
 
-def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str = "hours"):
+def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str = "hours", log_transform: bool = False):
     """Add phase shading, phase lines, and fit line/curve annotations to a figure.
 
     Args:
@@ -1171,23 +1171,56 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
         *xs: Additional x positions for vertical lines
         gs: Growth statistics dictionary
         time_unit: Unit for time display ("seconds", "minutes", or "hours")
+        log_transform: If True, apply ln transformation to all y-values
     """
     # always start clean (important when reusing/copying figures)
-    fig.update_layout(shapes=[])
+    fig.update_layout(shapes=[], annotations=[])
+    # Clear existing traces and rebuild with transformed data
+    fig.data = []
 
     # compute range from the real data (NOT from fig.data which may be typed-array dicts)
     d = (processed_data or {}).get(well)
     if d is None or d.empty:
         return fig
 
-    t, y = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
+    t_raw, y_raw = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
+    if t_raw.size == 0:
+        return fig
+
+    # Keep raw data for model fitting, apply ln transformation for plotting if requested
+    if log_transform:
+        # Only keep positive values for log transform
+        mask = y_raw > 0
+        t = t_raw[mask]
+        y = np.log(y_raw[mask])
+    else:
+        t = t_raw
+        y = y_raw
+
     if t.size == 0:
         return fig
 
     # Convert time to display unit
     t_display = convert_hours_to_unit(t, time_unit)
-    tmin, tmax = float(t[0]), float(t[-1])
-    tmin_display, tmax_display = float(t_display[0]), float(t_display[-1])
+    # Use raw time range for boundaries (before any filtering for log transform)
+    tmin, tmax = float(t_raw[0]), float(t_raw[-1])
+    tmin_display = convert_hours_to_unit(tmin, time_unit)
+    tmax_display = convert_hours_to_unit(tmax, time_unit)
+
+    # Add the main data scatter trace
+    y_label = "ln(OD)" if log_transform else "OD"
+    fig.add_trace(
+        go.Scatter(
+            x=t_display,
+            y=y,
+            mode="markers",
+            marker=dict(size=5, color="red"),
+            hovertemplate=(
+                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
 
     # --- shading + fit line from growth stats ---
     gs = gs or {}
@@ -1196,6 +1229,10 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
         exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
         exp_end = max(exp_end, lag_end)
         max_od = float(gs.get("max_od", 0.0) or 0.0)
+
+        # Transform max_od if log scale
+        if log_transform and max_od > 0:
+            max_od = np.log(max_od)
 
         # Convert to display unit
         lag_end_display = convert_hours_to_unit(lag_end, time_unit)
@@ -1217,7 +1254,8 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
         fig.add_vline(x=exp_end_display, line_dash="dot")
 
         # add line for max OD600
-        fig.add_hline(y=max_od, line_dash="dot")
+        if not log_transform or max_od > 0:
+            fig.add_hline(y=max_od, line_dash="dot")
 
         # add point at Umax (time_at_umax, od_at_umax)
         t_umax = gs.get("time_at_umax")
@@ -1228,19 +1266,27 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
             and np.isfinite(t_umax)
             and np.isfinite(y_umax)
         ):
-            t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
-            fig.add_trace(
-                go.Scatter(
-                    x=[t_umax_display],
-                    y=[float(y_umax)],
-                    mode="markers",
-                    marker=dict(size=12, color="#4CAF50"),
-                    hovertemplate=(
-                        f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
-                    ),
-                    showlegend=False,
+            y_umax_val = float(y_umax)
+            if log_transform:
+                if y_umax_val > 0:
+                    y_umax_val = np.log(y_umax_val)
+                else:
+                    y_umax_val = None  # Skip if not positive
+
+            if y_umax_val is not None:
+                t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
+                fig.add_trace(
+                    go.Scatter(
+                        x=[t_umax_display],
+                        y=[y_umax_val],
+                        mode="markers",
+                        marker=dict(size=12, color="#4CAF50"),
+                        hovertemplate=(
+                            f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+                        ),
+                        showlegend=False,
+                    )
                 )
-            )
 
         # Check which fitting method was used
         fit_method = gs.get("fit_method", "sliding_window")
@@ -1251,23 +1297,23 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
             model_type = _model_type_from_fit_method(str(fit_method))
             if model_type:
 
-                # Check if lasso selection was used to subset the data
-                lasso_t_min = gs.get("lasso_t_min")
-                lasso_t_max = gs.get("lasso_t_max")
+                # Use t_window_start and t_window_end to determine fitting range
+                t_win_start = gs.get("t_window_start")
+                t_win_end = gs.get("t_window_end")
 
-                # Start with all data, then apply filters
-                fit_t = t.copy()
-                fit_y = y.copy()
+                # Use raw (non-transformed) data for model fitting
+                fit_t = t_raw.copy()
+                fit_y = y_raw.copy()
 
-                # Apply lasso selection if used
-                if lasso_t_min is not None and lasso_t_max is not None:
-                    # Use only the lasso-selected time range
+                # Apply window selection if available
+                if t_win_start is not None and t_win_end is not None:
+                    # Use only the selected time range
                     time_tolerance = 0.1
-                    lasso_mask = (fit_t >= lasso_t_min - time_tolerance) & (
-                        fit_t <= lasso_t_max + time_tolerance
+                    win_mask = (fit_t >= t_win_start - time_tolerance) & (
+                        fit_t <= t_win_end + time_tolerance
                     )
-                    fit_t = fit_t[lasso_mask]
-                    fit_y = fit_y[lasso_mask]
+                    fit_t = fit_t[win_mask]
+                    fit_y = fit_y[win_mask]
 
                 # Refit the model to get the fitted curve (using python_package)
                 fit_result = fit_model(fit_t, fit_y, model_type=model_type)
@@ -1302,67 +1348,79 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
                             t_dense, params["K"], params["y0"], params["r"], params["t0"]
                         )
 
+                    # Apply ln transformation if requested (transform predictions for display)
+                    if log_transform:
+                        mask = y_fit > 0
+                        t_dense_display = t_dense_display[mask]
+                        y_fit = np.log(y_fit[mask])
+
                     # Add the fitted curve as a trace
+                    if len(y_fit) > 0:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=t_dense_display,
+                                y=y_fit,
+                                mode="lines",
+                                line=dict(width=2, color="blue"),
+                                hovertemplate=(
+                                    f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
+                                    f"Fitted {y_label}=%{{y:.4f}}<extra></extra>"
+                                ),
+                                showlegend=False,
+                            )
+                        )
+        else:
+            # Highlight window points for sliding window method with green markers
+            t_win_start = gs.get("t_window_start")
+            window_points = gs.get("window_points")
+
+            if (
+                t_win_start is not None
+                and np.isfinite(t_win_start)
+            ):
+                # Find first data point at or after t_window_start
+                start_idx = np.searchsorted(t, float(t_win_start))
+
+                # Determine how many points to highlight
+                if window_points is not None and window_points > 0:
+                    # Use exact window_points count
+                    end_idx = min(start_idx + int(window_points), len(t))
+                else:
+                    # Fallback: use t_window_end if window_points not available
+                    t_win_end = gs.get("t_window_end")
+                    if t_win_end is not None and np.isfinite(t_win_end):
+                        end_idx = np.searchsorted(t, float(t_win_end), side='right')
+                    else:
+                        end_idx = start_idx
+
+                t_win_points = t_display[start_idx:end_idx]
+                y_win_points = y[start_idx:end_idx]
+
+                if len(t_win_points) > 0:
                     fig.add_trace(
                         go.Scatter(
-                            x=t_dense_display,
-                            y=y_fit,
-                            mode="lines",
-                            line=dict(width=2, color="blue"),
+                            x=t_win_points,
+                            y=y_win_points,
+                            mode="markers",
+                            marker=dict(size=8, color="#4CAF50"),
                             hovertemplate=(
-                                f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
-                                f"Fitted OD=%{{y:.4f}}<extra></extra>"
+                                f"Umax window<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
                             ),
                             showlegend=False,
                         )
                     )
-        else:
-            # Draw straight line for sliding window method
-            m = float(gs.get("specific_growth_rate", 0.0) or 0.0)
-            t0 = gs.get("time_at_umax")
-            y0 = gs.get("od_at_umax")
-            t_win_start = gs.get("t_window_start")
-            t_win_end = gs.get("t_window_end")
-
-            if (
-                t0 is not None
-                and y0 is not None
-                and t_win_start is not None
-                and t_win_end is not None
-                and np.isfinite(m)
-                and np.isfinite(t0)
-                and np.isfinite(y0)
-                and np.isfinite(t_win_start)
-                and np.isfinite(t_win_end)
-            ):
-                t0 = float(t0)
-                y0 = float(y0)
-                # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
-                b0 = y0 - m * t0
-
-                # Use the actual window boundaries
-                x0 = max(tmin, float(t_win_start))
-                x1 = min(tmax, float(t_win_end))
-                # Convert to display unit
-                x0_display = convert_hours_to_unit(x0, time_unit)
-                x1_display = convert_hours_to_unit(x1, time_unit)
-
-                fig.add_shape(
-                    type="line",
-                    xref="x",
-                    yref="y",
-                    x0=x0_display,
-                    y0=m * x0 + b0,
-                    x1=x1_display,
-                    y1=m * x1 + b0,
-                    line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
-                )
 
     # Constrain axes to the actual data range (prevents infinite lines from extending axes)
     # Add small margin for y-axis for better visualization
-    y_range = y.max() - y.min()
+    if len(y) > 0:
+        y_range = y.max() - y.min()
+        y_min = y.min() - 0.05 * y_range
+        y_max = y.max() + 0.05 * y_range
+    else:
+        y_min, y_max = 0, 1
+
     fig.update_xaxes(range=[tmin_display, tmax_display])
-    fig.update_yaxes(range=[y.min() - 0.05 * y_range, y.max() + 0.05 * y_range])
+    fig.update_yaxes(range=[y_min, y_max])
 
     return fig
 

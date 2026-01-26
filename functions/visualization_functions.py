@@ -4,13 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit_sortables import sort_items
-
-try:
-    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-except Exception:
-    AgGrid = None
-    GridOptionsBuilder = None
-    GridUpdateMode = None
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 from functions.plotting_functions import (
     plot_growth_stats,
@@ -251,7 +245,8 @@ def ui_growth_summaries(plates: dict):
         st.header("Step 1. Select Samples for Visualization")
 
         # Add custom CSS to increase font size in data editor
-        st.markdown("""
+        st.markdown(
+            """
             <style>
                 div[data-testid="stDataFrame"] table {
                     font-size: 16px !important;
@@ -268,7 +263,9 @@ def ui_growth_summaries(plates: dict):
                     font-weight: bold !important;
                 }
             </style>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         # Prepare dataframe for display with selection column
         if has_split:
@@ -278,74 +275,50 @@ def ui_growth_summaries(plates: dict):
 
         display_df = opt[display_cols + ["_id"]].copy()
 
-        if AgGrid is None:
-            st.info("Install `streamlit-aggrid` to enable multi-select with checkboxes.")
-            display_df["Select"] = display_df.index.map(
-                lambda i: sel.get(opt.iloc[i]["_id"], False)
+        gb = GridOptionsBuilder.from_dataframe(display_df)
+        gb.configure_selection(
+            "multiple",
+            use_checkbox=True,
+            rowMultiSelectWithClick=True,
+        )
+        gb.configure_column("_id", hide=True)
+        gb.configure_columns(display_cols, editable=False)
+        if display_cols:
+            gb.configure_column(
+                display_cols[0],
+                headerCheckboxSelection=True,
+                checkboxSelection=True,
             )
-            edited_df = st.data_editor(
-                display_df.drop(columns=["_id"]),
-                column_config={
-                    "Select": st.column_config.CheckboxColumn(
-                        "Select",
-                        help="Select samples for visualization",
-                        default=False,
-                    )
-                },
-                disabled=display_cols,  # Make all columns except Select read-only
-                hide_index=True,
-                width="stretch",
-                height=400,
-                key="sample_selection_table",
+        grid_options = gb.build()
+        pre_selected_rows = [idx for idx, sid in enumerate(ids) if sel.get(sid, False)]
+        grid_response = AgGrid(
+            display_df,
+            gridOptions=grid_options,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            pre_selected_rows=pre_selected_rows,
+            fit_columns_on_grid_load=True,
+            height=400,
+            width="100%",
+            key=f"sample_selection_grid_{st.session_state[grid_ver_key]}",
+        )
+        selected_rows = grid_response.get("selected_rows")
+        if selected_rows is None:
+            selected_ids = set()
+        elif isinstance(selected_rows, pd.DataFrame):
+            selected_ids = set(
+                selected_rows.get("_id", pd.Series([], dtype=str)).tolist()
             )
-            for idx, row in edited_df.iterrows():
-                sid = opt.iloc[idx]["_id"]
-                sel[sid] = row["Select"]
-        else:
-            gb = GridOptionsBuilder.from_dataframe(display_df)
-            gb.configure_selection(
-                "multiple",
-                use_checkbox=True,
-                rowMultiSelectWithClick=True,
-            )
-            gb.configure_column("_id", hide=True)
-            gb.configure_columns(display_cols, editable=False)
-            if display_cols:
-                gb.configure_column(
-                    display_cols[0],
-                    headerCheckboxSelection=True,
-                    checkboxSelection=True,
-                )
-            grid_options = gb.build()
-            pre_selected_rows = [
-                idx for idx, sid in enumerate(ids) if sel.get(sid, False)
-            ]
-            grid_response = AgGrid(
-                display_df,
-                gridOptions=grid_options,
-                update_mode=GridUpdateMode.SELECTION_CHANGED,
-                pre_selected_rows=pre_selected_rows,
-                fit_columns_on_grid_load=True,
-                height=400,
-                width="100%",
-                key=f"sample_selection_grid_{st.session_state[grid_ver_key]}",
-            )
-            selected_rows = grid_response.get("selected_rows")
-            if selected_rows is None:
-                selected_ids = set()
-            elif isinstance(selected_rows, pd.DataFrame):
-                selected_ids = set(selected_rows.get("_id", pd.Series([], dtype=str)).tolist())
-            elif isinstance(selected_rows, list):
-                if selected_rows and isinstance(selected_rows[0], dict):
-                    selected_ids = {
-                        row.get("_id") for row in selected_rows if row.get("_id")
-                    }
-                else:
-                    selected_ids = {row for row in selected_rows if isinstance(row, str)}
+        elif isinstance(selected_rows, list):
+            if selected_rows and isinstance(selected_rows[0], dict):
+                selected_ids = {
+                    row.get("_id") for row in selected_rows if row.get("_id")
+                }
             else:
-                selected_ids = set()
-            for sid in ids:
-                sel[sid] = sid in selected_ids
+                selected_ids = {row for row in selected_rows if isinstance(row, str)}
+        else:
+            selected_ids = set()
+        for sid in ids:
+            sel[sid] = sid in selected_ids
 
         sel_ids = _selected_ids()
         sel_opt = _selected_opt_rows(sel_ids)
@@ -445,7 +418,7 @@ def ui_growth_summaries(plates: dict):
             apply_stats = st.form_submit_button(
                 "Generate growth stats plot",
                 type="primary",
-                width='stretch',
+                width="stretch",
             )
 
         # ============================================================
@@ -497,12 +470,12 @@ def ui_growth_summaries(plates: dict):
             apply_mean = b1.form_submit_button(
                 "Generate mean growth plot",
                 type="primary",
-                width='stretch',
+                width="stretch",
             )
             apply_reps = b2.form_submit_button(
                 "Generate replicates plot",
                 type="primary",
-                width='stretch',
+                width="stretch",
             )
 
     # -----------------------------
@@ -546,7 +519,7 @@ def ui_growth_summaries(plates: dict):
                     x_order=x_ordered,
                     legend_order=legend_ordered,
                 )
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, width="stretch")
 
     # Build the shared curves DF only if needed
     if apply_mean or apply_reps:
@@ -557,7 +530,7 @@ def ui_growth_summaries(plates: dict):
             plot_mean_growth(
                 curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
             ),
-            width='stretch',
+            width="stretch",
         )
 
     if apply_reps:
@@ -568,5 +541,5 @@ def ui_growth_summaries(plates: dict):
             plot_replicates_scatter(
                 curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
             ),
-            width='stretch',
+            width="stretch",
         )

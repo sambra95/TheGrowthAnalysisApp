@@ -65,6 +65,9 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
             "Sample Name",
             df["well"].map(lambda w: (nm_by_well.get(w) or "").strip()),
         )
+        # Remove internal columns not meant for export
+        internal_cols = ["_lasso_update_time", "lasso_t_min", "lasso_t_max"]
+        df = df.drop(columns=[c for c in internal_cols if c in df.columns], errors="ignore")
     return df
 
 

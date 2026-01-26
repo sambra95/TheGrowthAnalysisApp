@@ -7,8 +7,6 @@ import streamlit as st
 
 from functions.data_processing import (
     BAD_FIT,
-    _plate_name_map,
-    _read_table,
     fit_model,
     pkg_fit_growth_model,
     pkg_sliding_window_fit,
@@ -94,7 +92,7 @@ def update_growth_stats_from_lasso(
     """
     Update growth stats based on lasso-selected points.
 
-    For Sliding Window: Fit y = m x + b to selected points
+    For Sliding Window: Re-run sliding window analysis on selected points only
     For Model Fitting: Refit the selected model to selected points only
     """
     xs, ys = _get_selected_points(st.session_state.get(chart_key))
@@ -155,9 +153,6 @@ def update_growth_stats_from_lasso(
             gs["model_rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
             # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
-            # Store the selected time range even for linear fallback
-            gs["lasso_t_min"] = float(selected_t_min)
-            gs["lasso_t_max"] = float(selected_t_max)
             return
 
         # Get plate params for quality thresholds
@@ -186,9 +181,6 @@ def update_growth_stats_from_lasso(
             gs["exp_phase_end"] = descriptors["exp_phase_end"]
             gs["max_od"] = descriptors["max_od"]
             gs["model_rmse"] = descriptors["model_rmse"]
-            # Store the selected time range for plotting the refitted model curve
-            gs["lasso_t_min"] = float(selected_t_min)
-            gs["lasso_t_max"] = float(selected_t_max)
             # Keep the same fit_method
 
         except Exception:
@@ -212,28 +204,60 @@ def update_growth_stats_from_lasso(
             gs["model_rmse"] = rmse
             # Preserve original phase boundaries - don't overwrite with selection bounds
             # gs["exp_phase_start"] and gs["exp_phase_end"] are left unchanged
-            # Store the selected time range even for linear fallback
-            gs["lasso_t_min"] = float(selected_t_min)
-            gs["lasso_t_max"] = float(selected_t_max)
     else:
-        # Sliding Window method: use linear fit
-        m, b = np.polyfit(xs, ys, deg=1)
-        t_mu = float(xs.mean())
-        y_mu = float(m * t_mu + b)
+        # Sliding Window method: re-run sliding window on the exact lasso-selected points
+        # Sort selected points by time (lasso selection may not be in order)
+        sort_idx = np.argsort(xs)
+        refit_t = xs[sort_idx]
+        refit_y = ys[sort_idx]
 
-        # Calculate RMSE for the linear fit on selected points
-        y_pred_linear = m * xs + b
-        rmse = calculate_rmse(ys, y_pred_linear)
+        # Get sliding window parameters from plate (use exact same parameters)
+        params = plate.get("params", {})
+        sg_window = int(params.get("sg_window", 11))
+        sg_poly = int(params.get("sg_poly", 1))
+        window_points = int(params.get("window_points", 15))
+        lag_frac = float(params.get("lag_frac", 0.15))
+        exp_frac = float(params.get("exp_frac", 0.15))
 
-        gs["specific_growth_rate"] = float(m)
-        gs["time_at_umax"] = t_mu
-        gs["od_at_umax"] = y_mu
-        gs["t_window_start"] = float(xs.min())
-        gs["t_window_end"] = float(xs.max())
-        gs["model_rmse"] = rmse
-        # Note: max_od, exp_phase_start, and exp_phase_end are preserved
-        # from the original analysis as they are not recalculated from lasso selection
-        # in sliding window mode (only the growth rate window is updated)
+        if refit_t.size < window_points:
+            # Not enough points for sliding window, fall back to simple linear fit
+            m, b = np.polyfit(refit_t, refit_y, deg=1)
+            t_mu = float(refit_t.mean())
+            y_mu = float(m * t_mu + b)
+            y_pred_linear = m * refit_t + b
+            rmse = calculate_rmse(refit_y, y_pred_linear)
+
+            gs["specific_growth_rate"] = float(m)
+            gs["time_at_umax"] = t_mu
+            gs["od_at_umax"] = y_mu
+            gs["t_window_start"] = float(refit_t.min())
+            gs["t_window_end"] = float(refit_t.max())
+            gs["model_rmse"] = rmse
+            return
+
+        # Re-run sliding window fit on selected points
+        fit = pkg_sliding_window_fit(
+            refit_t,
+            refit_y,
+            window_points=window_points,
+            sg_window=sg_window,
+            sg_poly=sg_poly,
+            lag_frac=lag_frac,
+            exp_frac=exp_frac,
+        )
+
+        # Update growth stats with the refit results
+        gs["specific_growth_rate"] = fit["specific_growth_rate"]
+        gs["time_at_umax"] = fit["time_at_umax"]
+        gs["od_at_umax"] = fit["od_at_umax"]
+        gs["t_window_start"] = fit["t_window_start"]
+        gs["t_window_end"] = fit["t_window_end"]
+        gs["doubling_time"] = fit["doubling_time"]
+        gs["model_rmse"] = fit["model_rmse"]
+        gs["exp_phase_start"] = fit["exp_phase_start"]
+        gs["exp_phase_end"] = fit["exp_phase_end"]
+        gs["window_points"] = window_points  # Store for visualization
+        # max_od is preserved from original analysis
 
 
 # ---------------- Data helpers ----------------
@@ -247,56 +271,17 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     )
 
 
-def analyse_well(record: dict, well: str) -> dict:
-    """Recompute a single well fit from uploads and params."""
-    u = (record or {}).get("uploads") or {}
-    p = (record or {}).get("params") or {}
+def analyse_well(plate: dict, well: str) -> dict:
+    """Recompute growth statistics for a single well using existing processed data."""
+    p = (plate or {}).get("params") or {}
+    processed_data = (plate or {}).get("processed_data") or {}
 
     well = str(well).upper()
 
-    _, name_map = _plate_name_map(u["plate_bytes"])
-    df = _read_table(u["data_bytes"], p["read_interval_min"])
-
-    long = df.melt(id_vars="Time", var_name="well", value_name="value")
-    long["well"] = long["well"].astype(str).str.upper()
-    long["name"] = long["well"].map(name_map).fillna("False")
-    long = long[long["name"] != "False"].copy()
-
-    long["value"] = pd.to_numeric(long["value"], errors="coerce")
-
-    clip = p.get("clip_time_series", False)
-    if clip:
-        a, b = clip
-        long = long.query("@a <= Time <= @b").copy()
-
-    rm = p.get("remove_wells", False)
-    if rm:
-        long = long[~long["well"].isin([w.upper() for w in rm])].copy()
-
-    # If the requested well was removed or doesn't exist after filtering:
-    if well not in set(long["well"].unique()):
+    # Get the already-processed data for this well
+    processed = processed_data.get(well)
+    if processed is None or processed.empty:
         return BAD_FIT.copy()
-
-    long["od_1cm"] = long["value"] / float(p["pathlength_cm_"])
-
-    baseline = pd.DataFrame()
-    if p.get("blank", True):
-        baseline = (
-            long.query("name == 'BLANK'")
-            .groupby("Time", as_index=True)["od_1cm"]
-            .mean()
-            .to_frame()
-        )
-        long = long.query("name != 'BLANK'").copy()
-
-    if not baseline.empty:
-        base = baseline["od_1cm"].to_dict()
-        long["baseline_corrected"] = long["od_1cm"] - long["Time"].map(base).fillna(0.0)
-    else:
-        long["baseline_corrected"] = long["od_1cm"]
-
-    g = long[long["well"] == well].copy()
-    processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
     try:
         # Check which method to use
@@ -319,22 +304,25 @@ def analyse_well(record: dict, well: str) -> dict:
             fit = pkg_sliding_window_fit(
                 t_arr,
                 y_arr,
-                window_points=int(p["window_points"]),
+                window_points=int(p.get("window_points", 15)),
                 sg_window=int(p.get("sg_window", 11)),
                 sg_poly=int(p.get("sg_poly", 1)),
                 lag_frac=lag_frac,
                 exp_frac=exp_frac,
             )
+            fit["window_points"] = int(p.get("window_points", 15))
 
         # Check for no growth using consolidated detection function
         min_data_points = int(p.get("min_data_points", 5))
         min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
+        min_growth_rate = float(p.get("min_growth_rate", 0.001))
         no_growth_result = detect_no_growth(
             t_arr,
             y_arr,
             growth_stats=fit,
             min_data_points=min_data_points,
             min_signal_to_noise=min_signal_to_noise,
+            min_growth_rate=min_growth_rate,
         )
         if no_growth_result["is_no_growth"]:
             fit = BAD_FIT.copy()
@@ -615,6 +603,9 @@ def ui_window_fits_well_editor(plates: dict):
 
     st.divider()
 
+    # Add toggle for linear/log scale (persistent across well changes)
+    log_scale = st.toggle("Log scale (y-axis)", value=st.session_state.get("log_scale_toggle", False), key="log_scale_toggle")
+
     # Check which fitting method was used
     fit_method = gs.get("fit_method", "sliding_window")
     is_model_fit = fit_method and "model_fitting" in str(fit_method)
@@ -626,14 +617,20 @@ def ui_window_fits_well_editor(plates: dict):
     # Use a version key based on critical growth stats to bust cache when they change
     if is_model_fit:
         # Create a version string from the growth stats to trigger cache updates
-        version_key = f"{gs.get('specific_growth_rate', 0)}_{gs.get('time_at_umax', 0)}_{gs.get('od_at_umax', 0)}_{gs.get('lasso_t_min', '')}_{gs.get('lasso_t_max', '')}"
+        version_key = f"{gs.get('specific_growth_rate', 0)}_{gs.get('time_at_umax', 0)}_{gs.get('od_at_umax', 0)}_{gs.get('t_window_start', '')}_{gs.get('t_window_end', '')}"
         fig_main = go.Figure(_cached_model_fit_single(processed, growth_stats, well, version_key))
     else:
         fig_main = go.Figure(_cached_window_single(processed, well))
 
     fig_main = _vlines(
-        fig_main, processed, well, lag_end, exp_end, gs=gs
+        fig_main, processed, well, lag_end, exp_end, gs=gs, log_transform=log_scale
     )
+
+    # Update y-axis title based on scale
+    if log_scale:
+        fig_main.update_yaxes(title="ln(OD600)")
+    else:
+        fig_main.update_yaxes(title="OD600 (baseline-corrected)")
 
     st.plotly_chart(
         fig_main,
