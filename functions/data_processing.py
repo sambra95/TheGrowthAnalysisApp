@@ -19,20 +19,7 @@ if str(_src_path) not in sys.path:
 from python_package import (
     fit_growth_model as pkg_fit_growth_model,
     sliding_window_fit as pkg_sliding_window_fit,
-    fit_model,
-    fit_logistic,
-    fit_gompertz,
-    fit_richards,
-    logistic_model,
-    gompertz_model,
-    richards_model,
-    first_derivative,
-    second_derivative,
-    _smooth as pkg_smooth,
-    _compute_rmse,
-    _extract_stats_from_fit,
     detect_no_growth,
-    is_no_growth,
 )
 
 ROWS = "ABCDEFGH"
@@ -411,8 +398,16 @@ def compute_window_fits(
                         if np.isfinite(fit["exp_phase_end"])
                         else np.nan
                     ),
-                    "time_at_umax": float(fit["time_at_umax"]) if np.isfinite(fit["time_at_umax"]) else np.nan,
-                    "od_at_umax": float(fit["od_at_umax"]) if np.isfinite(fit["od_at_umax"]) else np.nan,
+                    "time_at_umax": (
+                        float(fit["time_at_umax"])
+                        if np.isfinite(fit["time_at_umax"])
+                        else np.nan
+                    ),
+                    "od_at_umax": (
+                        float(fit["od_at_umax"])
+                        if np.isfinite(fit["od_at_umax"])
+                        else np.nan
+                    ),
                     "t_window_start": (
                         float(fit["t_window_start"])
                         if np.isfinite(fit["t_window_start"])

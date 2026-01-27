@@ -7,7 +7,6 @@ from streamlit_sortables import sort_items
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 from functions.plotting_functions import (
-    plot_growth_stats,
     plot_single_growth_stat,
     plot_mean_growth,
     plot_replicates_scatter,
