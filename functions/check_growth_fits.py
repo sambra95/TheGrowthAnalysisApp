@@ -382,7 +382,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         exp0 = float(exp0) if pd.notna(exp0) else t_min
         st.session_state[ss_key] = (lag0, exp0)
 
-        st.session_state[maxod_key] = float(growth_stats.get("max_od", 0.0))
+        # Clamp max_od to the actual max in the processed data to avoid slider errors
+        actual_max_od = float(max(processed["baseline_corrected"]))
+        stored_max_od = float(growth_stats.get("max_od", 0.0))
+        st.session_state[maxod_key] = min(stored_max_od, actual_max_od)
 
         # Track the last lasso update time we've synced
         st.session_state[lasso_time_key] = growth_stats.get("_lasso_update_time")
