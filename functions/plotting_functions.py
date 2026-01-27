@@ -14,7 +14,7 @@ from functions.data_processing import (
     compute_second_derivative,
     smooth,
 )
-from src.python_package import (
+from growthcurves.models import (
     fit_model,
     gompertz_model,
     is_no_growth,

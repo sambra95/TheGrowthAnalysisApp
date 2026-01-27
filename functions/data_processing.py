@@ -9,7 +9,7 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
 # Import all growth fitting functions from python_package
-from src.python_package import (
+from growthcurves.models import (
     no_fit_dictionary,
     fit_growth_model,
     sliding_window_fit,

@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.python_package import no_fit_dictionary
+from growthcurves.models import no_fit_dictionary
 from functions.data_processing import (
     fit_growth_model,
     sliding_window_fit,
@@ -402,7 +402,6 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             "Set phase boundaries (hours)",
             t_min,
             t_max,
-            st.session_state[ss_key],
             step=step,
             key=ss_key,
         )
@@ -412,7 +411,6 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             "Set maximum OD",
             0.0,
             max(processed["baseline_corrected"]),
-            growth_stats.get("max_od", 0.0),
             step=max(processed["baseline_corrected"]) / 120,
             key=maxod_key,
         )
