@@ -1,12 +1,20 @@
 """Interactive well-by-well growth fit inspection and editing UI."""
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+# Add src directory to path for importing python_package
+_src_path = Path(__file__).parent.parent / "src"
+if str(_src_path) not in sys.path:
+    sys.path.insert(0, str(_src_path))
+
+from python_package import no_fit_dictionary
 from functions.data_processing import (
-    BAD_FIT,
     pkg_fit_growth_model,
     pkg_sliding_window_fit,
     detect_no_growth,
@@ -114,7 +122,9 @@ def _collect_lasso_series(
     all_t = processed["Time"].to_numpy(float)
     all_y = processed["baseline_corrected"].to_numpy(float)
 
-    refit_indices = _match_selected_times(all_t, selected_times, time_tolerance=time_tolerance)
+    refit_indices = _match_selected_times(
+        all_t, selected_times, time_tolerance=time_tolerance
+    )
     if refit_indices.size < 2:
         return np.array([]), np.array([])
 
@@ -130,7 +140,7 @@ def _analyse_series_with_plate_params(
 ) -> dict:
     """Run the same analysis pipeline as initial plate analysis."""
     if t_arr.size < 2 or y_arr.size < 2:
-        return BAD_FIT.copy()
+        return no_fit_dictionary.copy()
 
     try:
         growth_method = params.get("growth_method", "Sliding Window")
@@ -169,10 +179,10 @@ def _analyse_series_with_plate_params(
             min_growth_rate=min_growth_rate,
         )
         if no_growth_result["is_no_growth"]:
-            fit = BAD_FIT.copy()
+            fit = no_fit_dictionary.copy()
             fit["no_growth_reason"] = no_growth_result["reason"]
     except Exception:
-        fit = BAD_FIT.copy()
+        fit = no_fit_dictionary.copy()
 
     return fit
 
@@ -195,6 +205,7 @@ def update_growth_stats_from_lasso(
 
     # Store a timestamp to force UI update
     import time
+
     gs["_lasso_update_time"] = time.time()
 
     # Store the actual selected time values for visualization (red vs grey points)
@@ -241,7 +252,7 @@ def analyse_well(plate: dict, well: str) -> dict:
     # Get the already-processed data for this well
     processed = processed_data.get(well)
     if processed is None or processed.empty:
-        return BAD_FIT.copy()
+        return no_fit_dictionary.copy()
 
     try:
         # Check which method to use
@@ -285,11 +296,11 @@ def analyse_well(plate: dict, well: str) -> dict:
             min_growth_rate=min_growth_rate,
         )
         if no_growth_result["is_no_growth"]:
-            fit = BAD_FIT.copy()
+            fit = no_fit_dictionary.copy()
             fit["no_growth_reason"] = no_growth_result["reason"]
 
     except Exception:
-        fit = BAD_FIT.copy()
+        fit = no_fit_dictionary.copy()
 
     return fit
 
@@ -305,13 +316,41 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
         ("fit_method", "Fit Method", lambda x: str(x) if x else "sliding_window"),
         ("model_rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
         ("max_od", "Maximum OD", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("specific_growth_rate", "Maximum Growth Rate (1/h)", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("time_at_umax", "Time at Max Growth (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("od_at_umax", "OD at Max Growth", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
-        ("exp_phase_start", "Lag Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("exp_phase_end", "Exponential Phase End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("t_window_start", "Analysis Window Start (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
-        ("t_window_end", "Analysis Window End (h)", lambda x: f"{float(x):.2f}" if pd.notna(x) else "--"),
+        (
+            "specific_growth_rate",
+            "Maximum Growth Rate (1/h)",
+            lambda x: f"{float(x):.4f}" if pd.notna(x) else "--",
+        ),
+        (
+            "time_at_umax",
+            "Time at Max Growth (h)",
+            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
+        ),
+        (
+            "od_at_umax",
+            "OD at Max Growth",
+            lambda x: f"{float(x):.4f}" if pd.notna(x) else "--",
+        ),
+        (
+            "exp_phase_start",
+            "Lag Phase End (h)",
+            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
+        ),
+        (
+            "exp_phase_end",
+            "Exponential Phase End (h)",
+            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
+        ),
+        (
+            "t_window_start",
+            "Analysis Window Start (h)",
+            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
+        ),
+        (
+            "t_window_end",
+            "Analysis Window End (h)",
+            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
+        ),
     ]
 
     rows = []
@@ -395,7 +434,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     def _on_no_growth():
         """Mark the well as no-growth and reset widgets."""
-        growth_stats.update(BAD_FIT.copy())
+        growth_stats.update(no_fit_dictionary.copy())
         # Clear lasso-specific keys
         growth_stats.pop("_used_fit_times", None)
         growth_stats.pop("_lasso_update_time", None)
@@ -429,7 +468,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     with c1:
         no_growth = st.button(
             "No Growth",
-            width='stretch',
+            width="stretch",
             type="primary",
             key=f"nogrowth__{key}",
             on_click=_on_no_growth,  # <-- changed
@@ -439,14 +478,14 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         reanalyse_well = st.button(
             "Re-analyse",
             type="primary",
-            width='stretch',
+            width="stretch",
             on_click=_on_reanalyse,  # <-- changed
         )
 
     with c3:
         delete_well = st.button(
             "Exclude from analysis",
-            width='stretch',
+            width="stretch",
             type="tertiary",
             key=f"deletewell__{key}",
             on_click=_on_delete,  # <-- changed
@@ -465,7 +504,9 @@ def _cached_window_single(processed_data: dict, well: str):
 
 
 @st.cache_data(show_spinner=False)
-def _cached_model_fit_single(processed_data: dict, growth_stats: dict, well: str, version_key: str = ""):
+def _cached_model_fit_single(
+    processed_data: dict, growth_stats: dict, well: str, version_key: str = ""
+):
     """Cache the model fit plot to avoid recomputation on reruns. version_key busts cache when growth stats change."""
     return plot_model_fit_single(processed_data, growth_stats, well)
 
@@ -512,7 +553,7 @@ def ui_window_fits_well_editor(plates: dict):
             with prev:
                 st.button(
                     "",
-                    width='stretch',
+                    width="stretch",
                     on_click=_move_well,
                     args=(-1,),
                     key="well_prev",
@@ -529,7 +570,7 @@ def ui_window_fits_well_editor(plates: dict):
             with next_:
                 st.button(
                     "",
-                    width='stretch',
+                    width="stretch",
                     on_click=_move_well,
                     args=(+1,),
                     key="well_next",
@@ -570,7 +611,11 @@ def ui_window_fits_well_editor(plates: dict):
     st.divider()
 
     # Add toggle for linear/log scale (persistent across well changes)
-    log_scale = st.toggle("Log scale (y-axis)", value=st.session_state.get("log_scale_toggle", False), key="log_scale_toggle")
+    log_scale = st.toggle(
+        "Log scale (y-axis)",
+        value=st.session_state.get("log_scale_toggle", False),
+        key="log_scale_toggle",
+    )
 
     # Check which fitting method was used
     fit_method = gs.get("fit_method", "sliding_window")
@@ -584,7 +629,9 @@ def ui_window_fits_well_editor(plates: dict):
     if is_model_fit:
         # Create a version string from the growth stats to trigger cache updates
         version_key = f"{gs.get('specific_growth_rate', 0)}_{gs.get('time_at_umax', 0)}_{gs.get('od_at_umax', 0)}_{gs.get('t_window_start', '')}_{gs.get('t_window_end', '')}"
-        fig_main = go.Figure(_cached_model_fit_single(processed, growth_stats, well, version_key))
+        fig_main = go.Figure(
+            _cached_model_fit_single(processed, growth_stats, well, version_key)
+        )
     else:
         fig_main = go.Figure(_cached_window_single(processed, well))
 
@@ -605,7 +652,7 @@ def ui_window_fits_well_editor(plates: dict):
         on_select=lambda: update_growth_stats_from_lasso(
             plates, plate_id, well, chart_key
         ),
-        width='stretch',
+        width="stretch",
     )
 
     # Only show derivative plots for sliding window method
@@ -614,7 +661,9 @@ def ui_window_fits_well_editor(plates: dict):
             plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20, gs=gs
         )
         fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p, gs=gs)
-        st.plotly_chart(fig_d1, width='stretch')
-        st.plotly_chart(fig_d2, width='stretch')
+        st.plotly_chart(fig_d1, width="stretch")
+        st.plotly_chart(fig_d2, width="stretch")
     else:
-        st.info(f"Growth descriptors calculated using {fit_method}. Derivative plots are only available for Sliding Window method.")
+        st.info(
+            f"Growth descriptors calculated using {fit_method}. Derivative plots are only available for Sliding Window method."
+        )

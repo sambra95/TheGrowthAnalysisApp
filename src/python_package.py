@@ -12,6 +12,25 @@ from scipy.signal import savgol_filter
 
 
 # -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+
+no_fit_dictionary = {
+    "max_od": 0.0,
+    "specific_growth_rate": 0.0,
+    "doubling_time": np.nan,
+    "exp_phase_start": np.nan,
+    "exp_phase_end": np.nan,
+    "time_at_umax": np.nan,
+    "od_at_umax": np.nan,
+    "t_window_start": np.nan,
+    "t_window_end": np.nan,
+    "fit_method": None,
+    "model_rmse": np.nan,
+}
+
+
+# -----------------------------------------------------------------------------
 # Growth Models (operate on linear OD data)
 # -----------------------------------------------------------------------------
 
@@ -601,19 +620,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
 
 def _bad_fit_stats():
     """Return default stats for failed fits."""
-    return {
-        "max_od": 0.0,
-        "specific_growth_rate": 0.0,
-        "doubling_time": np.nan,
-        "exp_phase_start": np.nan,
-        "exp_phase_end": np.nan,
-        "time_at_umax": np.nan,
-        "od_at_umax": np.nan,
-        "t_window_start": np.nan,
-        "t_window_end": np.nan,
-        "fit_method": None,
-        "model_rmse": np.nan,
-    }
+    return no_fit_dictionary.copy()
 
 
 # -----------------------------------------------------------------------------

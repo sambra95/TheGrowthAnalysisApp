@@ -17,6 +17,7 @@ if str(_src_path) not in sys.path:
 
 # Import all growth fitting functions from python_package
 from python_package import (
+    no_fit_dictionary,
     fit_growth_model as pkg_fit_growth_model,
     sliding_window_fit as pkg_sliding_window_fit,
     detect_no_growth,
@@ -25,22 +26,6 @@ from python_package import (
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
-
-
-# Keys match python_package._bad_fit_stats()
-BAD_FIT = {
-    "max_od": 0.0,
-    "specific_growth_rate": 0.0,
-    "doubling_time": np.nan,
-    "exp_phase_start": np.nan,
-    "exp_phase_end": np.nan,
-    "time_at_umax": np.nan,
-    "od_at_umax": np.nan,
-    "t_window_start": np.nan,
-    "t_window_end": np.nan,
-    "fit_method": None,
-    "model_rmse": np.nan,
-}
 
 
 # ---------- small utilities ----------
@@ -339,11 +324,11 @@ def analyse_plate(record: dict):
                 min_growth_rate=min_growth_rate,
             )
             if no_growth_result["is_no_growth"]:
-                fit = BAD_FIT.copy()
+                fit = no_fit_dictionary.copy()
                 fit["no_growth_reason"] = no_growth_result["reason"]
 
         except Exception:
-            fit = BAD_FIT.copy()
+            fit = no_fit_dictionary.copy()
 
         plate["name"][well] = str(g["name"].iloc[0])
         plate["raw_data"][well] = g[["Time", "value", "od_1cm"]].reset_index(drop=True)
