@@ -26,14 +26,6 @@ TheGrowthAnalysisApp is a Streamlit-based application for analyzing microbial gr
    conda env create -f environment.yaml
    ```
 
-   This will create an environment named `growth_curves_app_env` with Python 3.11 and all necessary packages including:
-
-   - Streamlit (web app framework)
-   - NumPy, Pandas, SciPy (data processing and analysis)
-   - Plotly (interactive visualizations)
-   - openpyxl and xlrd (Excel file support)
-   - Additional Streamlit components (plotly-events, sortables)
-
 3. **Activate the environment**
 
    ```bash
