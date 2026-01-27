@@ -1,8 +1,5 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -11,18 +8,13 @@ import streamlit as st
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-# Add src directory to path for importing python_package directly
-_src_path = Path(__file__).parent.parent / "src"
-if str(_src_path) not in sys.path:
-    sys.path.insert(0, str(_src_path))
-
 from functions.data_processing import (
     ALL_WELLS,
     compute_first_derivative,
     compute_second_derivative,
     smooth,
 )
-from python_package import (
+from src.python_package import (
     fit_model,
     gompertz_model,
     is_no_growth,
@@ -880,12 +872,8 @@ def add_window_well(
     # ---- Phase shading (needs correct xref/yref for each subplot) ----
     bad = is_bad_fit(gs)
     if add_phase_shading and (not bad):
-        lag_end = float(
-            np.clip(gs.get("exp_phase_start", tmin), tmin, tmax)
-        )
-        exp_end = float(
-            np.clip(gs.get("exp_phase_end", tmax), tmin, tmax)
-        )
+        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
+        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
         if exp_end < lag_end:
             exp_end = lag_end
 
@@ -989,7 +977,11 @@ def add_window_well(
                     else:
                         # Logistic model
                         y_fit = logistic_model(
-                            t_dense, params["K"], params["y0"], params["r"], params["t0"]
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["r"],
+                            params["t0"],
                         )
 
                     # Add the fitted curve as a trace
@@ -1171,7 +1163,15 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     return fig
 
 
-def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str = "hours", log_transform: bool = False):
+def _vlines(
+    fig,
+    processed_data: dict,
+    well: str,
+    *xs,
+    gs=None,
+    time_unit: str = "hours",
+    log_transform: bool = False,
+):
     """Add phase shading, phase lines, and fit line/curve annotations to a figure.
 
     Args:
@@ -1193,7 +1193,9 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
     if d is None or d.empty:
         return fig
 
-    t_raw, y_raw = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
+    t_raw, y_raw = _finite_sorted_xy(
+        d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
+    )
     if t_raw.size == 0:
         return fig
 
@@ -1303,7 +1305,9 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
 
         # add line for max OD600
         if not log_transform or max_od > 0:
-            fig.add_hline(y=max_od, line=dict(color="rgba(100, 149, 237, 0.6)", width=2))
+            fig.add_hline(
+                y=max_od, line=dict(color="rgba(100, 149, 237, 0.6)", width=2)
+            )
 
         # add point at Umax (time_at_umax, od_at_umax)
         t_umax = gs.get("time_at_umax")
@@ -1393,7 +1397,11 @@ def _vlines(fig, processed_data: dict, well: str, *xs, gs=None, time_unit: str =
                     else:
                         # Logistic model
                         y_fit = logistic_model(
-                            t_dense, params["K"], params["y0"], params["r"], params["t0"]
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["r"],
+                            params["t0"],
                         )
 
                     # Apply ln transformation if requested (transform predictions for display)
@@ -1489,12 +1497,8 @@ def add_model_fit_well(
     # ---- Phase shading ----
     bad = is_bad_fit(gs)
     if add_phase_shading and (not bad):
-        lag_end = float(
-            np.clip(gs.get("exp_phase_start", tmin), tmin, tmax)
-        )
-        exp_end = float(
-            np.clip(gs.get("exp_phase_end", tmax), tmin, tmax)
-        )
+        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
+        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
         if exp_end < lag_end:
             exp_end = lag_end
 
@@ -1890,7 +1894,12 @@ def plot_window_single_d1(
 
 
 def plot_window_single_d2(
-    plate: dict, well: str, sg_window=11, sg_poly=2, add_fit=True, time_unit: str = "hours",
+    plate: dict,
+    well: str,
+    sg_window=11,
+    sg_poly=2,
+    add_fit=True,
+    time_unit: str = "hours",
     gs: dict | None = None,
 ):
     """Plot the second derivative of a well's smoothed curve.
@@ -2052,9 +2061,9 @@ def plot_rmse_heatmap(plate: dict):
             x=[str(c) for c in cols],
             y=list(rows),
             colorscale=[
-                [0.0, "rgb(68, 170, 153)"],   # Teal/cyan at 0 (good fit)
+                [0.0, "rgb(68, 170, 153)"],  # Teal/cyan at 0 (good fit)
                 [0.5, "rgb(238, 238, 238)"],  # Light gray at midpoint
-                [1.0, "rgb(221, 132, 82)"],   # Orange at max (poor fit)
+                [1.0, "rgb(221, 132, 82)"],  # Orange at max (poor fit)
             ],
             zmid=0,  # Center the color scale at 0
             zmin=0,

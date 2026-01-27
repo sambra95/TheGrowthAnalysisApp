@@ -1,8 +1,6 @@
 """Data loading, preprocessing, and growth-curve fitting utilities."""
 
 import io
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,13 +8,8 @@ import streamlit as st
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
-# Add src directory to path for importing python_package
-_src_path = Path(__file__).parent.parent / "src"
-if str(_src_path) not in sys.path:
-    sys.path.insert(0, str(_src_path))
-
 # Import all growth fitting functions from python_package
-from python_package import (
+from src.python_package import (
     no_fit_dictionary,
     fit_growth_model,
     sliding_window_fit,

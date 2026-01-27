@@ -1,19 +1,11 @@
 """Interactive well-by-well growth fit inspection and editing UI."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Add src directory to path for importing python_package
-_src_path = Path(__file__).parent.parent / "src"
-if str(_src_path) not in sys.path:
-    sys.path.insert(0, str(_src_path))
-
-from python_package import no_fit_dictionary
+from src.python_package import no_fit_dictionary
 from functions.data_processing import (
     fit_growth_model,
     sliding_window_fit,
