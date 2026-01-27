@@ -71,12 +71,12 @@ Sample files are included in the repo:
 
 - Inspect growth curves and fitted phases.
 - Adjust phase boundaries if needed.
-- Mark wells as excluded or no-growth.
-- Re-fit data based on selected points.
+- Mark wells as excluded or as showing no growth.
+- Re-fit data based on selected points in an interactive graph.
 
 ### 4) Export results
 
-- Export the curated summary statistics (max OD, growth rate, lag time, etc.).
+- Export the curated summary statistics (max OD, maximum specific growth rate, lag time, etc.).
 - Export curated plots for reporting.
 
 ## Tips
