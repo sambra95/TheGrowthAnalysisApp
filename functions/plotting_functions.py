@@ -1,5 +1,8 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -8,16 +11,23 @@ import streamlit as st
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
+# Add src directory to path for importing python_package directly
+_src_path = Path(__file__).parent.parent / "src"
+if str(_src_path) not in sys.path:
+    sys.path.insert(0, str(_src_path))
+
 from functions.data_processing import (
     ALL_WELLS,
     compute_first_derivative,
     compute_second_derivative,
-    fit_model,
-    logistic_model,
-    gompertz_model,
-    richards_model,
     smooth,
+)
+from python_package import (
+    fit_model,
+    gompertz_model,
     is_no_growth,
+    logistic_model,
+    richards_model,
 )
 
 

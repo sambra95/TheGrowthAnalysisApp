@@ -18,8 +18,8 @@ if str(_src_path) not in sys.path:
 # Import all growth fitting functions from python_package
 from python_package import (
     no_fit_dictionary,
-    fit_growth_model as pkg_fit_growth_model,
-    sliding_window_fit as pkg_sliding_window_fit,
+    fit_growth_model,
+    sliding_window_fit,
     detect_no_growth,
 )
 
@@ -295,7 +295,7 @@ def analyse_plate(record: dict):
             exp_frac = float(p.get("exp_cutoff", 0.15))
 
             if growth_method == "Model Fitting":
-                fit = pkg_fit_growth_model(
+                fit = fit_growth_model(
                     t_arr,
                     y_arr,
                     model_type=p.get("model_type", "logistic"),
@@ -303,7 +303,7 @@ def analyse_plate(record: dict):
                     exp_frac=exp_frac,
                 )
             else:
-                fit = pkg_sliding_window_fit(
+                fit = sliding_window_fit(
                     t_arr,
                     y_arr,
                     window_points=int(p["window_points"]),
@@ -359,7 +359,7 @@ def compute_window_fits(
         for well, wdict in plate["processed_data"].items():
             d = wdict["processed_values"]
             # Use python_package sliding_window_fit function
-            fit = pkg_sliding_window_fit(
+            fit = sliding_window_fit(
                 d["Time"].to_numpy(float),
                 d["baseline_corrected"].to_numpy(float),
                 window_points=int(window_points),

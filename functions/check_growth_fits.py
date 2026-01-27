@@ -15,8 +15,8 @@ if str(_src_path) not in sys.path:
 
 from python_package import no_fit_dictionary
 from functions.data_processing import (
-    pkg_fit_growth_model,
-    pkg_sliding_window_fit,
+    fit_growth_model,
+    sliding_window_fit,
     detect_no_growth,
 )
 from functions.plotting_functions import (
@@ -148,7 +148,7 @@ def _analyse_series_with_plate_params(
         exp_frac = float(params.get("exp_cutoff", 0.15))
 
         if growth_method == "Model Fitting":
-            fit = pkg_fit_growth_model(
+            fit = fit_growth_model(
                 t_arr,
                 y_arr,
                 model_type=params.get("model_type", "logistic"),
@@ -156,7 +156,7 @@ def _analyse_series_with_plate_params(
                 exp_frac=exp_frac,
             )
         else:
-            fit = pkg_sliding_window_fit(
+            fit = sliding_window_fit(
                 t_arr,
                 y_arr,
                 window_points=int(params.get("window_points", 15)),
@@ -264,7 +264,7 @@ def analyse_well(plate: dict, well: str) -> dict:
         exp_frac = float(p.get("exp_cutoff", 0.15))
 
         if growth_method == "Model Fitting":
-            fit = pkg_fit_growth_model(
+            fit = fit_growth_model(
                 t_arr,
                 y_arr,
                 model_type=p.get("model_type", "logistic"),
@@ -272,7 +272,7 @@ def analyse_well(plate: dict, well: str) -> dict:
                 exp_frac=exp_frac,
             )
         else:
-            fit = pkg_sliding_window_fit(
+            fit = sliding_window_fit(
                 t_arr,
                 y_arr,
                 window_points=int(p.get("window_points", 15)),
