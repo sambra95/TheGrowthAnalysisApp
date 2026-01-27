@@ -56,6 +56,21 @@ Sample files are included in the repo:
 - `example_data.xlsx`
 - `example_plate_map.xls`
 
+Required header formats:
+
+Plate reader data (first column must be `Time`, remaining columns must be wells like `A1`...`H12`):
+
+```text
+Time | A1 | A2 | A3 | ... | H12
+```
+
+Plate map (first column must be `rows`, remaining columns must be numeric `1`...`12`):
+
+```text
+rows | 1 | 2 | 3 | ... | 12
+A    |   |   |   |     |
+```
+
 ### 2) Upload and configure
 
 1. Open the app in your browser.
