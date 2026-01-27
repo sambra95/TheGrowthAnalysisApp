@@ -293,7 +293,7 @@ with st.container(border=True):
             help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
         )
         blank = c.checkbox(
-            "Blank subtraction (label 'BLANK')",
+            "Blank subtraction",
             bool(params0["blank"]),
             help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
         )

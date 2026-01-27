@@ -109,7 +109,7 @@ def richards_model(t, K, y0, r, t0, nu):
 # -----------------------------------------------------------------------------
 
 
-def _validate_data(t, y, min_points=10):
+def validate_data(t, y, min_points=10):
     """
     Validate and clean input data.
 
@@ -128,7 +128,7 @@ def _validate_data(t, y, min_points=10):
     return t, y
 
 
-def _compute_rmse(y_observed, y_predicted):
+def compute_rmse(y_observed, y_predicted):
     """Calculate root mean square error between observed and predicted values."""
     mask = np.isfinite(y_observed) & np.isfinite(y_predicted)
     if mask.sum() == 0:
@@ -137,7 +137,7 @@ def _compute_rmse(y_observed, y_predicted):
     return float(np.sqrt(np.mean(residuals**2)))
 
 
-def _calculate_specific_growth_rate(t, y_fit):
+def calculate_specific_growth_rate(t, y_fit):
     """
     Calculate the maximum specific growth rate from a fitted curve.
 
@@ -165,7 +165,7 @@ def _calculate_specific_growth_rate(t, y_fit):
     return float(np.max(mu))
 
 
-def _smooth(y, window=11, poly=1, passes=2):
+def smooth(y, window=11, poly=1, passes=2):
     """Apply Savitzky-Golay smoothing filter."""
     n = len(y)
     if n < 7:
@@ -232,7 +232,7 @@ def fit_logistic(t, y):
     Returns:
         Dict with 'params', 'y_fit', 't' or None if fitting fails.
     """
-    t, y = _validate_data(t, y)
+    t, y = validate_data(t, y)
     if t is None:
         return None
 
@@ -249,8 +249,6 @@ def fit_logistic(t, y):
 
     params, _ = curve_fit(logistic_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
     y_fit = logistic_model(t, *params)
-    # Calculate true specific growth rate from fitted curve
-    mu_max = _calculate_specific_growth_rate(t, y_fit)
 
     return {
         "params": {
@@ -263,7 +261,6 @@ def fit_logistic(t, y):
         "y": y,
         "t": t,
         "model_type": "logistic",
-        "mu_max": mu_max,
     }
 
 
@@ -278,7 +275,7 @@ def fit_gompertz(t, y):
     Returns:
         Dict with 'params', 'y_fit', 't' or None if fitting fails.
     """
-    t, y = _validate_data(t, y)
+    t, y = validate_data(t, y)
     if t is None:
         return None
 
@@ -297,8 +294,6 @@ def fit_gompertz(t, y):
 
     params, _ = curve_fit(gompertz_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
     y_fit = gompertz_model(t, *params)
-    # Calculate true specific growth rate from fitted curve
-    mu_max = _calculate_specific_growth_rate(t, y_fit)
     return {
         "params": {
             "K": params[0],
@@ -310,7 +305,6 @@ def fit_gompertz(t, y):
         "y": y,
         "t": t,
         "model_type": "gompertz",
-        "mu_max": mu_max,
     }
 
 
@@ -325,7 +319,7 @@ def fit_richards(t, y):
     Returns:
         Dict with 'params', 'y_fit', 't' or None if fitting fails.
     """
-    t, y = _validate_data(t, y)
+    t, y = validate_data(t, y)
     if t is None:
         return None
 
@@ -345,8 +339,6 @@ def fit_richards(t, y):
 
     params, _ = curve_fit(richards_model, t, y, p0=p0, bounds=bounds, maxfev=20000)
     y_fit = richards_model(t, *params)
-    # Calculate true specific growth rate from fitted curve
-    mu_max = _calculate_specific_growth_rate(t, y_fit)
 
     return {
         "params": {
@@ -360,7 +352,6 @@ def fit_richards(t, y):
         "y": y,
         "t": t,
         "model_type": "richards",
-        "mu_max": mu_max,
     }
 
 
@@ -519,7 +510,7 @@ def is_no_growth(growth_stats):
 # -----------------------------------------------------------------------------
 
 
-def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
+def extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     """
     Extract growth statistics from a model fit result.
 
@@ -532,14 +523,15 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
         Growth statistics dictionary.
     """
     if fit_result is None:
-        return _bad_fit_stats()
+        return bad_fit_stats()
 
     t = fit_result["t"]
     y = fit_result["y"]
     y_fit = fit_result["y_fit"]
     model_type = fit_result["model_type"]
     params = fit_result["params"]
-    mu_max = fit_result["mu_max"]
+    # Calculate true specific growth rate from fitted curve
+    mu_max = calculate_specific_growth_rate(t, y_fit)
 
     # Generate dense predictions for derivative calculation
     t_dense = np.linspace(t.min(), t.max(), 500)
@@ -557,7 +549,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
             t_dense, params["K"], params["y0"], params["r"], params["t0"], params["nu"]
         )
     else:
-        return _bad_fit_stats()
+        return bad_fit_stats()
 
     # Maximum OD (carrying capacity from fit)
     max_od = float(params["K"])
@@ -575,7 +567,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     od_at_umax = float(y_dense[max_mu_idx])
 
     if mu_max <= 0:
-        stats = _bad_fit_stats()
+        stats = bad_fit_stats()
         stats["max_od"] = max_od
         stats["fit_method"] = f"model_fitting_{model_type}"
         return stats
@@ -601,7 +593,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     doubling_time = np.log(2) / mu_max if mu_max > 0 else np.nan
 
     # RMSE in linear space
-    rmse = _compute_rmse(y, y_fit)
+    rmse = compute_rmse(y, y_fit)
 
     return {
         "max_od": max_od,
@@ -618,7 +610,7 @@ def _extract_stats_from_fit(fit_result, lag_frac=0.15, exp_frac=0.15):
     }
 
 
-def _bad_fit_stats():
+def bad_fit_stats():
     """Return default stats for failed fits."""
     return no_fit_dictionary.copy()
 
@@ -628,13 +620,13 @@ def _bad_fit_stats():
 # -----------------------------------------------------------------------------
 
 
-def _gaussian(t, amplitude, center, sigma):
+def gaussian(t, amplitude, center, sigma):
     """Symmetric Gaussian bell-shaped curve."""
     sigma = np.maximum(sigma, 1e-12)
     return amplitude * np.exp(-((t - center) ** 2) / (2 * sigma**2))
 
 
-def _fit_gaussian_to_derivative(t, dy, t_dense):
+def fit_gaussian_to_derivative(t, dy, t_dense):
     """
     Fit a symmetric Gaussian to first-derivative data and evaluate on t_dense.
 
@@ -673,9 +665,9 @@ def _fit_gaussian_to_derivative(t, dy, t_dense):
 
     try:
         params, _ = curve_fit(
-            _gaussian, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000
+            gaussian, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000
         )
-        return _gaussian(t_dense, *params)
+        return gaussian(t_dense, *params)
     except Exception:
         return np.interp(t_dense, t_fit, dy_fit, left=0.0, right=0.0)
 
@@ -709,7 +701,7 @@ def fit_growth_model(t, y, model_type="logistic", lag_frac=0.15, exp_frac=0.15):
             - model_rmse: Root mean square error of fit
     """
     fit_result = fit_model(t, y, model_type=model_type)
-    return _extract_stats_from_fit(fit_result, lag_frac=lag_frac, exp_frac=exp_frac)
+    return extract_stats_from_fit(fit_result, lag_frac=lag_frac, exp_frac=exp_frac)
 
 
 def sliding_window_fit(
@@ -754,7 +746,7 @@ def sliding_window_fit(
     t, y_raw = t[mask], y[mask]
 
     if len(t) < window_points or np.ptp(t) <= 0:
-        return _bad_fit_stats()
+        return bad_fit_stats()
 
     # Log-transform for growth rate calculation
     y_log = np.log(y_raw)
@@ -804,7 +796,7 @@ def sliding_window_fit(
     ) = best_result
 
     if not np.isfinite(best_slope) or best_slope <= 0:
-        stats = _bad_fit_stats()
+        stats = bad_fit_stats()
         stats["max_od"] = max_od
         return stats
 
@@ -815,19 +807,19 @@ def sliding_window_fit(
     t_win = t[win_start:win_end]
     y_log_win = y_log[win_start:win_end]
     y_log_pred = slope * t_win + intercept
-    rmse = _compute_rmse(y_log_win, y_log_pred)
+    rmse = compute_rmse(y_log_win, y_log_pred)
 
     # Calculate phase boundaries by fitting a symmetric Gaussian to the first derivative
     # First, compute the smoothed first derivative of raw data
-    y_smooth = _smooth(y_raw, sg_window, sg_poly)
+    y_smooth = smooth(y_raw, sg_window, sg_poly)
     dy_data = np.gradient(y_smooth, t)
     dy_data = np.maximum(dy_data, 0)  # Only consider positive growth
 
     # Fit idealized symmetric Gaussian to the derivative data
     t_dense = np.linspace(t.min(), t.max(), 500)
-    dy_idealized = _fit_gaussian_to_derivative(t, dy_data, t_dense)
+    dy_idealized = fit_gaussian_to_derivative(t, dy_data, t_dense)
 
-    lag_end, exp_end = _calculate_phase_ends(t_dense, dy_idealized, lag_frac, exp_frac)
+    lag_end, exp_end = calculate_phase_ends(t_dense, dy_idealized, lag_frac, exp_frac)
 
     # Doubling time: t_d = ln(2) / mu
     doubling_time = np.log(2) / best_slope if best_slope > 0 else np.nan
@@ -847,7 +839,7 @@ def sliding_window_fit(
     }
 
 
-def _calculate_phase_ends(t, dy, lag_frac=0.15, exp_frac=0.15):
+def calculate_phase_ends(t, dy, lag_frac=0.15, exp_frac=0.15):
     """
     Calculate lag and exponential phase end times from a first derivative curve.
 
