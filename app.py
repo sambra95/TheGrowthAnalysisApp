@@ -3,7 +3,7 @@ import streamlit as st
 st.set_page_config(page_title="TheGrowthAnalysisApp", layout="wide", page_icon="logo.svg")
 
 # Display logo (will stay visible even when sidebar is collapsed)
-st.logo("logo.svg")
+st.logo("logo.svg", link="https://github.com/sambra95/TheGrowthAnalysisApp")
 
 nav = st.navigation(
     [
