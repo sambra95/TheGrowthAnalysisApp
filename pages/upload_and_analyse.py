@@ -404,6 +404,24 @@ with st.container(border=True):
 
             st.markdown("### Growth Descriptor Calculation Methods")
 
+            st.markdown(
+                """
+Both methods output the same set of growth descriptors:
+
+| Metric | Description |
+|---|---|
+| **μ_max** | Maximum specific growth rate (h⁻¹) |
+| **Doubling time** | ln(2) / μ_max (h) |
+| **Lag time** | Time at end of lag phase (h) |
+| **Exp. phase end** | Time at end of exponential phase (h) |
+| **Time at μ_max** | Time at which μ_max occurs (h) |
+| **OD at μ_max** | OD value at the time of μ_max |
+| **Max OD** | Maximum OD reached (carrying capacity) |
+| **Fit window** | Start and end times of the fitting window (h) |
+| **RMSE** | Root mean square error of the fit |
+"""
+            )
+
             # Sliding Window Expander
             with st.expander("Sliding Window Method", expanded=False):
                 # Generate data points (scatter)
@@ -509,13 +527,8 @@ with st.container(border=True):
 **How it works:**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
-3. The slope of each fit represents the growth rate (μ) at that window
+3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The **maximum slope** across all windows is reported as **μ_max**
-
-**Output metrics:**
-- **μ_max**: Maximum specific growth rate (h⁻¹)
-- **Doubling time**: ln(2) / μ_max
-- **Lag time**: Time at end of lag phase
                     """
                 )
 
@@ -526,7 +539,7 @@ with st.container(border=True):
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
-3. **μ_max** is the maximum of the derivative (occurs at the inflection point)
+3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
 
 **Available models:**
                     """
@@ -560,10 +573,12 @@ with st.container(border=True):
                 st.plotly_chart(fig_log, width="stretch", config={"staticPlot": True})
 
                 # Gompertz model
-                st.markdown("**Gompertz**")
-                st.latex(r"y(t) = A \cdot e^{-e^{-\mu(t - \lambda)}}")
+                st.markdown("**Modified Gompertz**")
+                st.latex(
+                    r"y(t) = y_0 + A \cdot \exp\!\left[-\exp\!\left(\frac{\mu_{\max}\, e}{A}(\lambda - t) + 1\right)\right]"
+                )
                 st.caption(
-                    "Asymmetric S-curve with slower approach to stationary phase. Often fits bacterial growth better than logistic."
+                    "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
                 )
                 y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
                 fig_gom = go.Figure()

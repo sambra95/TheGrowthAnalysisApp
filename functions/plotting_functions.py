@@ -1002,43 +1002,53 @@ def add_window_well(
                         **trace_kwargs,
                     )
         else:
-            # Draw straight line for sliding window method
-            m = float(gs.get("specific_growth_rate", 0.0) or 0.0)
-            t0 = gs.get("time_at_umax")
-            y0 = gs.get("od_at_umax")
+            # Sliding window: highlight points within the μ_max window in blue
             t_win_start = gs.get("t_window_start")
             t_win_end = gs.get("t_window_end")
+            if t_win_start is not None and t_win_end is not None:
+                win_mask = (t >= float(t_win_start)) & (t <= float(t_win_end))
+                if np.any(win_mask):
+                    t_win_display = convert_hours_to_unit(t[win_mask], time_unit)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t_win_display,
+                            y=y[win_mask],
+                            mode="markers",
+                            marker=dict(size=marker_size + 2, color="blue"),
+                            hovertemplate=(
+                                f"μ_max window<br>Time=%{{x:.2f}} {time_unit}<br>"
+                                f"OD=%{{y:.4f}}<extra></extra>"
+                            ),
+                            showlegend=False,
+                        ),
+                        **trace_kwargs,
+                    )
 
-            if (
-                t0 is not None
-                and y0 is not None
-                and t_win_start is not None
-                and t_win_end is not None
-                and np.isfinite(m)
-                and np.isfinite(t0)
-                and np.isfinite(y0)
-                and np.isfinite(t_win_start)
-                and np.isfinite(t_win_end)
-            ):
-                t0 = float(t0)
-                y0 = float(y0)
-                # Compute b from the point (t0, y0) and slope m: y = mx + b -> b = y - mx
-                b0 = y0 - m * t0
-                # Use the actual window boundaries and convert to display unit
-                x0, x1 = float(t_win_start), float(t_win_end)
-                x0_display = convert_hours_to_unit(x0, time_unit)
-                x1_display = convert_hours_to_unit(x1, time_unit)
-                fig.add_trace(
-                    go.Scatter(
-                        x=[x0_display, x1_display],
-                        y=[m * x0 + b0, m * x1 + b0],
-                        mode="lines",
-                        line=dict(width=2, color=line_color),
-                        hoverinfo="skip",
-                        showlegend=False,
+    # ---- μ_max point on top ----
+    if not is_bad_fit(gs):
+        t_umax = gs.get("time_at_umax")
+        y_umax = gs.get("od_at_umax")
+        if (
+            t_umax is not None
+            and y_umax is not None
+            and np.isfinite(t_umax)
+            and np.isfinite(y_umax)
+        ):
+            t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
+            fig.add_trace(
+                go.Scatter(
+                    x=[t_umax_display],
+                    y=[float(y_umax)],
+                    mode="markers",
+                    marker=dict(size=marker_size + 7, color="#4CAF50"),
+                    hovertemplate=(
+                        f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>"
+                        f"OD=%{{y:.4f}}<extra></extra>"
                     ),
-                    **trace_kwargs,
-                )
+                    showlegend=False,
+                ),
+                **trace_kwargs,
+            )
 
 
 @st.cache_data(show_spinner=False)
@@ -1311,37 +1321,6 @@ def _vlines(
                 y=max_od, line=dict(color="rgba(100, 149, 237, 0.6)", width=2)
             )
 
-        # add point at Umax (time_at_umax, od_at_umax)
-        t_umax = gs.get("time_at_umax")
-        y_umax = gs.get("od_at_umax")
-        if (
-            t_umax is not None
-            and y_umax is not None
-            and np.isfinite(t_umax)
-            and np.isfinite(y_umax)
-        ):
-            y_umax_val = float(y_umax)
-            if log_transform:
-                if y_umax_val > 0:
-                    y_umax_val = np.log(y_umax_val)
-                else:
-                    y_umax_val = None  # Skip if not positive
-
-            if y_umax_val is not None:
-                t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
-                fig.add_trace(
-                    go.Scatter(
-                        x=[t_umax_display],
-                        y=[y_umax_val],
-                        mode="markers",
-                        marker=dict(size=12, color="#4CAF50"),
-                        hovertemplate=(
-                            f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                        ),
-                        showlegend=False,
-                    )
-                )
-
         # Check which fitting method was used
         fit_method = gs.get("fit_method", "sliding_window")
         is_model_fit = fit_method and "model_fitting" in str(fit_method)
@@ -1427,6 +1406,58 @@ def _vlines(
                                 showlegend=False,
                             )
                         )
+        else:
+            # Sliding window: highlight points within the μ_max window in blue
+            t_win_start = gs.get("t_window_start")
+            t_win_end = gs.get("t_window_end")
+            if t_win_start is not None and t_win_end is not None:
+                win_mask = (t >= float(t_win_start)) & (t <= float(t_win_end))
+                if np.any(win_mask):
+                    t_win_display = convert_hours_to_unit(t[win_mask], time_unit)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t_win_display,
+                            y=y[win_mask],
+                            mode="markers",
+                            marker=dict(size=7, color="blue"),
+                            hovertemplate=(
+                                f"μ_max window<br>Time=%{{x:.2f}} {time_unit}<br>"
+                                f"{y_label}=%{{y:.4f}}<extra></extra>"
+                            ),
+                            showlegend=False,
+                        )
+                    )
+
+        # add point at Umax on top of all other traces
+        t_umax = gs.get("time_at_umax")
+        y_umax = gs.get("od_at_umax")
+        if (
+            t_umax is not None
+            and y_umax is not None
+            and np.isfinite(t_umax)
+            and np.isfinite(y_umax)
+        ):
+            y_umax_val = float(y_umax)
+            if log_transform:
+                if y_umax_val > 0:
+                    y_umax_val = np.log(y_umax_val)
+                else:
+                    y_umax_val = None  # Skip if not positive
+
+            if y_umax_val is not None:
+                t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
+                fig.add_trace(
+                    go.Scatter(
+                        x=[t_umax_display],
+                        y=[y_umax_val],
+                        mode="markers",
+                        marker=dict(size=12, color="#4CAF50"),
+                        hovertemplate=(
+                            f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
+                        ),
+                        showlegend=False,
+                    )
+                )
     # Constrain axes to the actual data range (prevents infinite lines from extending axes)
     # Add small margin for y-axis for better visualization
     if len(y) > 0:
