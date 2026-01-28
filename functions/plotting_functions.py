@@ -1690,7 +1690,7 @@ def plot_model_fit_single_annotated(
         fig.add_vrect(
             x0=lag_end_display,
             x1=exp_end_display,
-            fillcolor="rgba(100,149,237,0.16)",
+            fillcolor="rgba(76, 175, 80, 0.16)",
             line_width=0,
             layer="below",
         )
@@ -2086,17 +2086,17 @@ def plot_rmse_heatmap(plate: dict):
     else:
         max_rmse = np.max(np.abs(finite_rmse))
 
-    # Create the heatmap with colorblind-friendly colors
-    # Using a teal-white-orange scale that's accessible to most types of colorblindness
+    # Create the heatmap with app theme colors
+    # Using green-white-red scale matching the app's color scheme
     fig = go.Figure(
         data=go.Heatmap(
             z=rmse_matrix,
             x=[str(c) for c in cols],
             y=list(rows),
             colorscale=[
-                [0.0, "rgb(68, 170, 153)"],  # Teal/cyan at 0 (good fit)
-                [0.5, "rgb(238, 238, 238)"],  # Light gray at midpoint
-                [1.0, "rgb(221, 132, 82)"],  # Orange at max (poor fit)
+                [0.0, "rgb(76, 175, 80)"],  # Green (#4CAF50) at 0 (good fit)
+                [0.5, "rgb(245, 247, 250)"],  # Light gray (#F5F7FA) at midpoint
+                [1.0, "rgb(211, 47, 47)"],  # Red (#d32f2f) at max (poor fit)
             ],
             zmid=0,  # Center the color scale at 0
             zmin=0,

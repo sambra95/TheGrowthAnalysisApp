@@ -1,6 +1,21 @@
 import streamlit as st
 
 
+# adds a green gradient background at the top of the page
+def green_gradient():
+    return st.markdown(
+        """
+        <style>
+        /* Green gradient at the top */
+        .stMainBlockContainer {
+            background: linear-gradient(to bottom, #4CAF50 0%, #FFFFFF 200px);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # hacky solution to make all the tertiary buttons red
 def red_buttons():
 

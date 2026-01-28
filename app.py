@@ -1,6 +1,9 @@
 import streamlit as st
 
-st.set_page_config(page_title="TheGrowthAnalysisApp", layout="wide", page_icon="🦠")
+st.set_page_config(page_title="TheGrowthAnalysisApp", layout="wide", page_icon="logo.svg")
+
+# Display logo (will stay visible even when sidebar is collapsed)
+st.logo("logo.svg")
 
 nav = st.navigation(
     [
@@ -14,8 +17,9 @@ nav = st.navigation(
 )
 
 # styles delete buttons in the app
-from styling import red_buttons
+from styling import red_buttons, green_gradient
 
 red_buttons()
+green_gradient()
 
 nav.run()
