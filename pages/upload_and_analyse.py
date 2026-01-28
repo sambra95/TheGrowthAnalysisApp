@@ -700,7 +700,7 @@ Both methods output the same set of growth descriptors:
                 fig_deriv.add_vline(
                     x=t_lag_end,
                     line_dash="solid",
-                    line_color="#4CAF50",
+                    line_color="#66BB6A",
                     line_width=2,
                 )
                 fig_deriv.add_vline(

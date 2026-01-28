@@ -1040,7 +1040,7 @@ def add_window_well(
                     x=[t_umax_display],
                     y=[float(y_umax)],
                     mode="markers",
-                    marker=dict(size=marker_size + 7, color="#4CAF50"),
+                    marker=dict(size=marker_size + 7, color="#66BB6A"),
                     hovertemplate=(
                         f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>"
                         f"OD=%{{y:.4f}}<extra></extra>"
@@ -1451,7 +1451,7 @@ def _vlines(
                         x=[t_umax_display],
                         y=[y_umax_val],
                         mode="markers",
-                        marker=dict(size=12, color="#4CAF50"),
+                        marker=dict(size=12, color="#66BB6A"),
                         hovertemplate=(
                             f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
                         ),
@@ -2094,7 +2094,7 @@ def plot_rmse_heatmap(plate: dict):
             x=[str(c) for c in cols],
             y=list(rows),
             colorscale=[
-                [0.0, "rgb(76, 175, 80)"],  # Green (#4CAF50) at 0 (good fit)
+                [0.0, "rgb(76, 175, 80)"],  # Green (#66BB6A) at 0 (good fit)
                 [0.5, "rgb(245, 247, 250)"],  # Light gray (#F5F7FA) at midpoint
                 [1.0, "rgb(211, 47, 47)"],  # Red (#d32f2f) at max (poor fit)
             ],

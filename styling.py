@@ -11,7 +11,7 @@ def green_navbar():
             background-color: rgba(76, 175, 80, 0.25) !important;
             color: #2e7d32 !important;
             font-weight: 600 !important;
-            border-bottom: 2px solid #4CAF50 !important;
+            border-bottom: 2px solid #66BB6A !important;
         }
 
         /* Top navigation - hover effect */
@@ -31,7 +31,7 @@ def green_navbar():
             background-color: rgba(76, 175, 80, 0.25) !important;
             color: #2e7d32 !important;
             font-weight: 600 !important;
-            border-bottom: 2px solid #4CAF50 !important;
+            border-bottom: 2px solid #66BB6A !important;
         }
 
         /* Navigation link active state */
@@ -54,7 +54,7 @@ def green_gradient():
         <style>
         /* Green gradient at the top */
         .stMainBlockContainer {
-            background: linear-gradient(to bottom, #4CAF50 0%, #FFFFFF 200px);
+            background: linear-gradient(to bottom, #66BB6A 0%, #FFFFFF 200px);
         }
         </style>
         """,
@@ -70,27 +70,27 @@ def red_buttons():
         <style>
         /* Destructive tertiary buttons */
         button[kind="tertiary"] {
-            background-color: #d32f2f !important;
+            background-color: #ef5350 !important;
             color: white !important;
-            border: 1px solid #d32f2f !important;
+            border: 1px solid #ef5350 !important;
             border-radius: 0.5rem;
             font-weight: 600;
         }
 
         button[kind="tertiary"]:hover {
-            background-color: #b71c1c !important;
-            border-color: #b71c1c !important;
+            background-color: #d32f2f !important;
+            border-color: #d32f2f !important;
             color: white !important;
         }
 
         button[kind="tertiary"]:focus {
-            box-shadow: 0 0 0 0.2rem rgba(211, 47, 47, 0.4);
+            box-shadow: 0 0 0 0.2rem rgba(239, 83, 80, 0.3);
             outline: none;
         }
 
         button[kind="tertiary"]:active {
-            background-color: #8e0000 !important;
-            border-color: #8e0000 !important;
+            background-color: #c62828 !important;
+            border-color: #c62828 !important;
             color: white !important;
         }
         </style>
