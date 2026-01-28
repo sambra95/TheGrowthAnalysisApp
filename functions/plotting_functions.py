@@ -15,11 +15,13 @@ from functions.data_processing import (
     smooth,
 )
 from growthcurves.models import (
-    fit_model,
     gompertz_model,
-    is_no_growth,
     logistic_model,
     richards_model,
+)
+from growthcurves.fitting_functions import (
+    fit_model,
+    is_no_growth,
 )
 
 

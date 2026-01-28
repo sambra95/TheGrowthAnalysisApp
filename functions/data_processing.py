@@ -9,9 +9,10 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
 # Import all growth fitting functions from python_package
-from growthcurves.models import (
+from growthcurves.fitting_functions import (
     no_fit_dictionary,
-    fit_growth_model,
+    fit_model,
+    extract_stats_from_fit,
     sliding_window_fit,
     detect_no_growth,
 )
@@ -288,10 +289,13 @@ def analyse_plate(record: dict):
             exp_frac = float(p.get("exp_cutoff", 0.15))
 
             if growth_method == "Model Fitting":
-                fit = fit_growth_model(
+                fit_result = fit_model(
                     t_arr,
                     y_arr,
                     model_type=p.get("model_type", "logistic"),
+                )
+                fit = extract_stats_from_fit(
+                    fit_result,
                     lag_frac=lag_frac,
                     exp_frac=exp_frac,
                 )
