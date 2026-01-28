@@ -151,6 +151,9 @@ def _analyse_series_with_plate_params(
                 lag_frac=lag_frac,
                 exp_frac=exp_frac,
             )
+            if fit_result is not None:
+                for param_name, param_val in fit_result["params"].items():
+                    fit[f"fit_param_{param_name}"] = float(param_val)
         else:
             fit = sliding_window_fit(
                 t_arr,

@@ -67,7 +67,9 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
         )
         # Remove internal columns not meant for export
         internal_cols = ["_lasso_update_time", "lasso_t_min", "lasso_t_max"]
-        df = df.drop(columns=[c for c in internal_cols if c in df.columns], errors="ignore")
+        df = df.drop(
+            columns=[c for c in internal_cols if c in df.columns], errors="ignore"
+        )
     return df
 
 
@@ -145,12 +147,15 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
 def build_export_zip(
     plates: dict,
     *,
-    include_tables: bool,
+    include_baseline_corrected: bool,
+    include_stats_per_well: bool,
+    include_stats_per_sample: bool,
     include_params: bool,
     include_plate_view: bool,
     include_baseline_plots: bool,
+    include_replicates: bool,
     include_well_plots: bool,
-    well_graphs: list[str] | None = None,  # e.g. ["raw", "d1", "d2"]
+    well_graphs: list[str] | None = None,  # e.g. ["OD", "1st Derivative", "2nd Derivative"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
@@ -174,8 +179,8 @@ def build_export_zip(
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
 
         # ---- Tables (GLOBAL) ----
-        if include_tables:
-            for pid, p in plates.items():
+        for pid, p in plates.items():
+            if include_baseline_corrected:
                 wide = _processed_wide_for_plate(p, value_col="baseline_corrected")
                 if not wide.empty:
                     zf.writestr(
@@ -183,6 +188,7 @@ def build_export_zip(
                         wide.to_csv(index=False),
                     )
 
+            if include_stats_per_well:
                 per_well_df = _growth_stats_per_well_df(p)
                 if not per_well_df.empty:
                     zf.writestr(
@@ -190,6 +196,7 @@ def build_export_zip(
                         per_well_df.to_csv(index=False),
                     )
 
+            if include_stats_per_sample:
                 mean_df = _growth_stats_mean_for_sample_df(p)
                 if not mean_df.empty:
                     zf.writestr(
@@ -221,9 +228,8 @@ def build_export_zip(
                         _png(baseline_fig, baseline_width, baseline_height),
                     )
 
-        # ---- Plate-view plots ----
-        if include_plate_view:
-            # replicates is global, so keep it outside plate folders
+        # ---- Replicates plot (GLOBAL) ----
+        if include_replicates:
             rep_fig = plot_replicates_by_sample(plates)
             if rep_fig is not None:
                 zf.writestr(
@@ -231,6 +237,8 @@ def build_export_zip(
                     _png(rep_fig, plate_width, plate_height),
                 )
 
+        # ---- Plate-view plots ----
+        if include_plate_view:
             for pid, p in plates.items():
                 fig = plot_window_plate(p)
                 if fig is not None:
@@ -263,7 +271,7 @@ def build_export_zip(
 
                     plate_dir = f"plots/{pid}/wells"
 
-                    if "raw" in well_graphs:
+                    if "OD" in well_graphs:
                         all_growth_stats = p.get("growth_stats") or {}
                         growth_stats = all_growth_stats.get(well) or {}
                         lag_end = growth_stats.get("exp_phase_start")
@@ -273,7 +281,9 @@ def build_export_zip(
 
                         # Use appropriate plot based on fit method
                         if is_model_fit:
-                            fig = plot_model_fit_single(processed, all_growth_stats, well)
+                            fig = plot_model_fit_single(
+                                processed, all_growth_stats, well
+                            )
                         else:
                             fig = plot_window_single(processed, well)
 
@@ -294,13 +304,13 @@ def build_export_zip(
                             )
 
                     # Only export derivative plots for sliding window method
-                    if "d1" in well_graphs or "d2" in well_graphs:
+                    if "1st Derivative" in well_graphs or "2nd Derivative" in well_graphs:
                         gs = (p.get("growth_stats") or {}).get(well) or {}
                         fit_method = gs.get("fit_method", "sliding_window")
                         is_model_fit = fit_method and "model_fitting" in str(fit_method)
 
                         if not is_model_fit:
-                            if "d1" in well_graphs:
+                            if "1st Derivative" in well_graphs:
                                 fig = plot_window_single_d1(
                                     p,
                                     well,
@@ -315,7 +325,7 @@ def build_export_zip(
                                         _png(fig, well_width, well_height),
                                     )
 
-                            if "d2" in well_graphs:
+                            if "2nd Derivative" in well_graphs:
                                 fig = plot_window_single_d2(
                                     p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
                                 )
@@ -342,37 +352,71 @@ def ui_export(plates: dict):
     # ---- Plot Options in 2x2 Grid ----
     row1_col1, row1_col2 = st.columns(2)
 
-    # Tables Info
+    # Tables
     with row1_col1:
         with st.container(border=True):
-            st.header("Tables Included in Export")
-            st.markdown(
-                """
-                The following tables are always included:
-                - **Processed baseline-corrected data**: Time series OD600 values for each well
-                - **Growth stats per well**: Maximum growth rate, lag time, max OD, and phase boundaries
-                - **Growth stats mean per sample**: Averaged statistics across replicates
-                - **Analysis parameters**: All analysis settings (read interval, pathlength, time clip, etc.)
-                """
-            )
+            st.header("Tabulated Data")
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_baseline_corrected = st.checkbox(
+                    "Baseline-corrected", value=True, key="table_baseline_corrected"
+                )
+            with desc_col:
+                st.caption("Time series OD600 values for each well")
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_stats_per_well = st.checkbox(
+                    "Stats per well", value=True, key="table_stats_per_well"
+                )
+            with desc_col:
+                st.caption(
+                    "Max growth rate, lag time, max OD, and phase boundaries per well"
+                )
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_stats_per_sample = st.checkbox(
+                    "Stats per sample", value=True, key="table_stats_per_sample"
+                )
+            with desc_col:
+                st.caption("Statistics averaged across replicates")
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_params = st.checkbox(
+                    "Analysis parameters", value=True, key="table_params"
+                )
+            with desc_col:
+                st.caption(
+                    "All analysis settings used (read interval, pathlength, etc.)"
+                )
 
     # Well Level Plots
     with row1_col2:
         with st.container(border=True):
             st.header("Well Level Plots")
-            st.caption(
-                "Individual well growth curves with annotations and derivative plots"
-            )
-            c_well = st.checkbox(
-                "Include well level plots", value=False, key="well_checkbox"
-            )
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_well = st.checkbox(
+                    "Include well plots", value=False, key="well_checkbox"
+                )
+            with desc_col:
+                st.caption(
+                    "Individual well growth curves with annotations and derivative plots"
+                )
 
             if c_well:
-                c_add_annotations = st.checkbox(
-                    "Add annotations to well plots",
-                    value=True,
-                    key="annotations_checkbox",
-                )
+                cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+                with cb_col:
+                    c_add_annotations = st.checkbox(
+                        "Annotations",
+                        value=True,
+                        key="annotations_checkbox",
+                    )
+                with desc_col:
+                    st.caption("Draw phase boundary lines on well plots")
 
                 col_w, col_h = st.columns(2)
                 well_width = col_w.number_input(
@@ -394,9 +438,8 @@ def ui_export(plates: dict):
 
                 well_graphs = st.multiselect(
                     "Well graph types",
-                    options=["raw", "d1", "d2"],
-                    default=["raw", "d1", "d2"],
-                    help="raw = annotated window plot; d1/d2 = derivative plots",
+                    options=["OD", "1st Derivative", "2nd Derivative"],
+                    default=["OD", "1st Derivative", "2nd Derivative"],
                     key="well_graphs",
                 )
 
@@ -411,8 +454,6 @@ def ui_export(plates: dict):
                 wells_by_plate: dict[str, list[str]] = {}
 
                 if selected_plate_ids:
-                    st.markdown("---")
-                    st.header("Well Selection")
 
                     include_all_wells = st.checkbox(
                         "Include all wells for all plates",
@@ -422,7 +463,9 @@ def ui_export(plates: dict):
 
                     if not include_all_wells:
                         for pid in selected_plate_ids:
-                            processed = (plates.get(pid) or {}).get("processed_data") or {}
+                            processed = (plates.get(pid) or {}).get(
+                                "processed_data"
+                            ) or {}
                             available_wells = sorted(processed.keys())
 
                             wells_by_plate[pid] = st.multiselect(
@@ -443,87 +486,73 @@ def ui_export(plates: dict):
                 selected_plate_ids = []
                 wells_by_plate = {}
 
-    # Plate View Plots
+    # Global Plots
     with row1_col1:
         with st.container(border=True):
-            st.header("Plate View Plots")
-            st.caption(
-                "96-well plate overview showing all wells with fitted growth curves"
-            )
-            c_plate = st.checkbox(
-                "Include plate-view plots", value=True, key="plate_checkbox"
-            )
+            st.header("Global Plots")
 
-            if c_plate:
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_base = st.checkbox("Baseline", value=True, key="baseline_checkbox")
+            with desc_col:
+                st.caption("Blank well OD measurements and mean baseline over time")
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_plate = st.checkbox("Plate view", value=True, key="plate_checkbox")
+            with desc_col:
+                st.caption(
+                    "96-well plate overview showing all wells with fitted growth curves"
+                )
+
+            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            with cb_col:
+                c_replicates = st.checkbox(
+                    "Replicates", value=True, key="replicates_checkbox"
+                )
+            with desc_col:
+                st.caption("Replicate growth curves grouped by sample name")
+
+            if c_base or c_plate or c_replicates:
                 col_w, col_h = st.columns(2)
-                plate_width = col_w.number_input(
+                global_width = col_w.number_input(
                     "Width (px)",
                     min_value=400,
                     max_value=3000,
                     value=1200,
                     step=100,
-                    key="plate_width",
+                    key="global_plot_width",
                 )
-                plate_height = col_h.number_input(
+                global_height = col_h.number_input(
                     "Height (px)",
                     min_value=300,
                     max_value=2500,
                     value=800,
                     step=100,
-                    key="plate_height",
+                    key="global_plot_height",
                 )
             else:
-                # Set defaults when plate view plots are not included
-                plate_width = 1200
-                plate_height = 800
-
-    # Baseline Plots
-    with row1_col1:
-        with st.container(border=True):
-            st.header("Baseline Plots")
-            st.caption("Blank well measurements and mean baseline over time")
-            c_base = st.checkbox(
-                "Include baseline plots", value=True, key="baseline_checkbox"
-            )
-
-            if c_base:
-                col_w, col_h = st.columns(2)
-                baseline_width = col_w.number_input(
-                    "Width (px)",
-                    min_value=400,
-                    max_value=3000,
-                    value=1200,
-                    step=100,
-                    key="baseline_width",
-                )
-                baseline_height = col_h.number_input(
-                    "Height (px)",
-                    min_value=300,
-                    max_value=2500,
-                    value=800,
-                    step=100,
-                    key="baseline_height",
-                )
-            else:
-                # Set defaults when baseline plots are not included
-                baseline_width = 1200
-                baseline_height = 800
+                global_width = 1200
+                global_height = 800
 
     # Lazy function that builds ZIP only when called by download button
     @st.cache_data(show_spinner="Building ZIP file...")
     def get_export_zip(
         _plates,
+        include_baseline_corrected,
+        include_stats_per_well,
+        include_stats_per_sample,
+        include_params,
         include_plate_view,
         include_baseline_plots,
+        include_replicates,
         include_well_plots,
         well_graphs_tuple,
         selected_plates_tuple,
         wells_tuple,
         add_annotations,
-        baseline_w,
-        baseline_h,
-        plate_w,
-        plate_h,
+        global_w,
+        global_h,
         well_w,
         well_h,
     ):
@@ -534,10 +563,13 @@ def ui_export(plates: dict):
 
         return build_export_zip(
             _plates,
-            include_tables=True,
-            include_params=True,
+            include_baseline_corrected=include_baseline_corrected,
+            include_stats_per_well=include_stats_per_well,
+            include_stats_per_sample=include_stats_per_sample,
+            include_params=include_params,
             include_plate_view=include_plate_view,
             include_baseline_plots=include_baseline_plots,
+            include_replicates=include_replicates,
             include_well_plots=include_well_plots,
             well_graphs=list(well_graphs_tuple) if well_graphs_tuple else [],
             selected_plate_ids=(
@@ -545,10 +577,10 @@ def ui_export(plates: dict):
             ),
             wells_by_plate=wells_dict,
             add_annotations=add_annotations,
-            baseline_width=baseline_w,
-            baseline_height=baseline_h,
-            plate_width=plate_w,
-            plate_height=plate_h,
+            baseline_width=global_w,
+            baseline_height=global_h,
+            plate_width=global_w,
+            plate_height=global_h,
             well_width=well_w,
             well_height=well_h,
         )
@@ -561,17 +593,20 @@ def ui_export(plates: dict):
         "Download Export ZIP",
         data=lambda: get_export_zip(
             plates,
+            c_baseline_corrected,
+            c_stats_per_well,
+            c_stats_per_sample,
+            c_params,
             c_plate,
             c_base,
+            c_replicates,
             c_well,
             tuple(well_graphs) if well_graphs else (),
             tuple(selected_plate_ids) if selected_plate_ids else (),
             wells_tuple,
             c_add_annotations,
-            baseline_width,
-            baseline_height,
-            plate_width,
-            plate_height,
+            global_width,
+            global_height,
             well_width,
             well_height,
         ),
