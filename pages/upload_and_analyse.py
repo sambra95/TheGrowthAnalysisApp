@@ -388,7 +388,7 @@ with st.container(border=True):
                 render_plate_table(grid)
 
         else:
-            st.warning("Upload files to see plate preview.")
+            st.info("Upload files to see plate preview.")
 
 # Step 4: Select analysis parameters
 with st.container(border=True):

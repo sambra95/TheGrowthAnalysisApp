@@ -27,7 +27,7 @@ def require_plates() -> dict:
     """Return plates from session state, or stop with a warning."""
     plates = st.session_state.get("plates") or {}
     if not plates:
-        st.warning("No results yet. Run **Upload + Analyse** first.")
+        st.info("No results yet. Run **Upload + Analyse** first.")
         st.stop()
     return plates
 
@@ -372,7 +372,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     processed = (plate.get("processed_data") or {}).get(well)
     if processed is None or processed.empty:
-        st.warning(f"No data for {well}")
+        st.info(f"No data for {well}")
         return np.nan, np.nan, True
 
     t = processed["Time"]

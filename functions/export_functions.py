@@ -24,7 +24,7 @@ def require_plates() -> dict:
     """Return plates from session state, or stop with a warning."""
     plates = st.session_state.get("plates") or {}
     if not plates:
-        st.warning("No results yet. Run **Upload + Analyse** first.")
+        st.info("No results yet. Run **Upload + Analyse** first.")
         st.stop()
     return plates
 
