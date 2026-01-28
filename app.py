@@ -17,9 +17,10 @@ nav = st.navigation(
 )
 
 # styles delete buttons in the app
-from styling import red_buttons, green_gradient
+from styling import red_buttons, green_gradient, green_navbar
 
 red_buttons()
 green_gradient()
+green_navbar()
 
 nav.run()

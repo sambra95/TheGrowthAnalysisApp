@@ -1,6 +1,52 @@
 import streamlit as st
 
 
+# styles the selected navbar item with green background
+def green_navbar():
+    return st.markdown(
+        """
+        <style>
+        /* Top navigation - selected/active page */
+        button[data-testid="stPageLink-NavLink"][aria-current="page"] {
+            background-color: rgba(76, 175, 80, 0.25) !important;
+            color: #2e7d32 !important;
+            font-weight: 600 !important;
+            border-bottom: 2px solid #4CAF50 !important;
+        }
+
+        /* Top navigation - hover effect */
+        button[data-testid="stPageLink-NavLink"]:hover {
+            background-color: rgba(76, 175, 80, 0.12) !important;
+        }
+
+        /* Navigation container styling */
+        [data-testid="stSidebarNav"],
+        [data-testid="stNavigation"] {
+            background-color: transparent !important;
+        }
+
+        /* Alternative selectors for active navigation */
+        ul[role="tablist"] button[aria-selected="true"],
+        div[role="tab"][aria-selected="true"] {
+            background-color: rgba(76, 175, 80, 0.25) !important;
+            color: #2e7d32 !important;
+            font-weight: 600 !important;
+            border-bottom: 2px solid #4CAF50 !important;
+        }
+
+        /* Navigation link active state */
+        a[aria-current="page"],
+        a[data-active="true"] {
+            background-color: rgba(76, 175, 80, 0.25) !important;
+            color: #2e7d32 !important;
+            font-weight: 600 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # adds a green gradient background at the top of the page
 def green_gradient():
     return st.markdown(
