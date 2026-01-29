@@ -6,9 +6,9 @@ import zipfile
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import growthcurves.plot as gc_plot
 
 from functions.plotting_functions import (
-    _vlines,
     plot_baseline,
     plot_model_fit_single,
     plot_replicates_by_sample,
@@ -16,6 +16,8 @@ from functions.plotting_functions import (
     plot_window_single,
     plot_window_single_d1,
     plot_window_single_d2,
+    _finite_sorted_xy,
+    is_bad_fit,
 )
 
 
@@ -273,35 +275,70 @@ def build_export_zip(
 
                     if "OD" in well_graphs:
                         all_growth_stats = p.get("growth_stats") or {}
-                        growth_stats = all_growth_stats.get(well) or {}
-                        lag_end = growth_stats.get("exp_phase_start")
-                        exp_end = growth_stats.get("exp_phase_end")
-                        fit_method = growth_stats.get("fit_method", "sliding_window")
-                        is_model_fit = fit_method and "Model Fitting" in str(fit_method)
+                        gs = all_growth_stats.get(well) or {}
+                        fit_parameters = p.get("fit_parameters") or {}
 
-                        # Use appropriate plot based on fit method
-                        if is_model_fit:
-                            fig = plot_model_fit_single(
-                                processed, all_growth_stats, well
+                        # Get the processed data for this well
+                        d = processed.get(well)
+
+                        if d is not None and not d.empty:
+                            # Get time and OD data
+                            t_raw, y_raw = _finite_sorted_xy(
+                                d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
                             )
-                        else:
-                            fig = plot_window_single(processed, well)
 
-                        if fig is not None:
-                            fig = go.Figure(fig)
-                            if add_annotations:
-                                _vlines(
-                                    fig,
-                                    processed,
-                                    well,
-                                    lag_end,
-                                    exp_end,
-                                    gs=growth_stats,
+                            if t_raw.size > 0:
+                                # Convert time to display unit
+                                t_display = t_raw
+
+                                # Create base plot using growthcurves
+                                fig = gc_plot.create_base_plot(t_display, y_raw, scale="linear")
+
+                                # Annotate plot if requested
+                                if add_annotations and not is_bad_fit(gs) and gs:
+                                    # Get stats from dictionary
+                                    exp_phase_start = gs.get("exp_phase_start")
+                                    exp_phase_end = gs.get("exp_phase_end")
+                                    time_at_umax = gs.get("time_at_umax")
+                                    od_at_umax = gs.get("od_at_umax")
+                                    max_od = gs.get("max_od")
+
+                                    # Convert time values to display units
+                                    if exp_phase_start is not None:
+                                        exp_phase_start = exp_phase_start
+                                    if exp_phase_end is not None:
+                                        exp_phase_end = exp_phase_end
+                                    if time_at_umax is not None:
+                                        time_at_umax = time_at_umax
+
+                                    # Prepare umax point
+                                    umax_point = None
+                                    if time_at_umax is not None and od_at_umax is not None:
+                                        umax_point = (time_at_umax, od_at_umax)
+
+                                    fit_result = fit_parameters.get(well)
+
+                                    # Annotate plot
+                                    fig = gc_plot.annotate_plot(
+                                        fig,
+                                        phase_boundaries=(exp_phase_start, exp_phase_end) if exp_phase_start and exp_phase_end else None,
+                                        time_umax=time_at_umax,
+                                        od_umax=od_at_umax,
+                                        od_max=max_od,
+                                        umax_point=umax_point,
+                                        fitted_model=fit_result,
+                                        scale="linear",
+                                    )
+
+                                # Update axis labels
+                                time_label = "Time (hours)"
+                                fig.update_xaxes(title=time_label, showgrid=False)
+                                fig.update_yaxes(title="OD600 (baseline-corrected)", showgrid=False)
+
+                                zf.writestr(
+                                    f"{plate_dir}/growth_curves/{well}.png",
+                                    _png(fig, well_width, well_height),
                                 )
-                            zf.writestr(
-                                f"{plate_dir}/growth_curves/{well}.png",
-                                _png(fig, well_width, well_height),
-                            )
 
                     # Only export derivative plots for sliding window method
                     if "1st Derivative" in well_graphs or "2nd Derivative" in well_graphs:

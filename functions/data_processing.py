@@ -8,14 +8,10 @@ import streamlit as st
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
-# Import all growth fitting functions from python_package
-from growthcurves.fitting_functions import (
-    no_fit_dictionary,
-    fit_model,
-    extract_stats_from_fit,
-    sliding_window_fit,
-    detect_no_growth,
-)
+# Import all growth fitting functions from growthcurves package
+from growthcurves.parametric import fit_parametric
+from growthcurves.non_parametric import fit_non_parametric
+from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats_from_fit
 
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
@@ -199,7 +195,7 @@ def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:
 
 def _empty_plate():
     """Create an empty plate record structure."""
-    return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}}
+    return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}, "fit_parameters": {}}
 
 
 def load_plate(
@@ -279,9 +275,10 @@ def analyse_plate(record: dict):
     for well, g in long.groupby("well", sort=False):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
+        fit_result = None  # Initialize fit result
         try:
             # Choose method based on user selection
-            # Uses python_package functions for growth statistics calculation
+            # Uses growthcurves package functions for growth statistics calculation
             growth_method = p.get("growth_method", "Sliding Window")
             t_arr = processed["Time"].to_numpy(float)
             y_arr = processed["baseline_corrected"].to_numpy(float)
@@ -289,30 +286,71 @@ def analyse_plate(record: dict):
             exp_frac = float(p.get("exp_cutoff", 0.15))
 
             if growth_method == "Model Fitting":
-                fit_result = fit_model(
+                # Use parametric model fitting
+                fit_result = fit_parametric(
                     t_arr,
                     y_arr,
                     model_type=p.get("model_type", "logistic"),
                 )
-                fit = extract_stats_from_fit(
-                    fit_result,
-                    lag_frac=lag_frac,
-                    exp_frac=exp_frac,
-                )
                 if fit_result is not None:
+                    fit = extract_stats_from_fit(
+                        fit_result,
+                        t_arr,
+                        y_arr,
+                        lag_frac=lag_frac,
+                        exp_frac=exp_frac,
+                    )
+                    # Store model parameters
                     for param_name, param_val in fit_result["params"].items():
                         fit[f"fit_param_{param_name}"] = float(param_val)
-            else:
-                fit = sliding_window_fit(
+                else:
+                    fit = bad_fit_stats()
+            elif growth_method == "Spline":
+                # Use non-parametric spline method
+                fit_result = fit_non_parametric(
                     t_arr,
                     y_arr,
-                    window_points=int(p["window_points"]),
+                    umax_method="spline",
+                    spline_s=p.get("spline_s", None),
+                    exp_start=lag_frac,
+                    exp_end=exp_frac,
                     sg_window=int(p.get("sg_window", 11)),
                     sg_poly=int(p.get("sg_poly", 1)),
-                    lag_frac=lag_frac,
-                    exp_frac=exp_frac,
                 )
-                fit["window_points"] = int(p["window_points"])
+                if fit_result is not None:
+                    fit = extract_stats_from_fit(
+                        fit_result,
+                        t_arr,
+                        y_arr,
+                        lag_frac=lag_frac,
+                        exp_frac=exp_frac,
+                    )
+                    fit["spline_s"] = p.get("spline_s", None)
+                else:
+                    fit = bad_fit_stats()
+            else:
+                # Use non-parametric sliding window method
+                fit_result = fit_non_parametric(
+                    t_arr,
+                    y_arr,
+                    umax_method="sliding_window",
+                    window_points=int(p["window_points"]),
+                    exp_start=lag_frac,
+                    exp_end=exp_frac,
+                    sg_window=int(p.get("sg_window", 11)),
+                    sg_poly=int(p.get("sg_poly", 1)),
+                )
+                if fit_result is not None:
+                    fit = extract_stats_from_fit(
+                        fit_result,
+                        t_arr,
+                        y_arr,
+                        lag_frac=lag_frac,
+                        exp_frac=exp_frac,
+                    )
+                    fit["window_points"] = int(p["window_points"])
+                else:
+                    fit = bad_fit_stats()
 
             # Check for no growth using consolidated detection function
             no_growth_result = detect_no_growth(
@@ -324,16 +362,19 @@ def analyse_plate(record: dict):
                 min_growth_rate=min_growth_rate,
             )
             if no_growth_result["is_no_growth"]:
-                fit = no_fit_dictionary.copy()
+                fit = bad_fit_stats()
                 fit["no_growth_reason"] = no_growth_result["reason"]
+                fit_result = None  # Clear fit result for no-growth cases
 
         except Exception:
-            fit = no_fit_dictionary.copy()
+            fit = bad_fit_stats()
+            fit_result = None
 
         plate["name"][well] = str(g["name"].iloc[0])
         plate["raw_data"][well] = g[["Time", "value", "od_1cm"]].reset_index(drop=True)
         plate["processed_data"][well] = processed
         plate["growth_stats"][well] = fit
+        plate["fit_parameters"][well] = fit_result  # Store the fit result
 
     record.update(plate)
     return record
@@ -358,16 +399,31 @@ def compute_window_fits(
         plate_stats = {}
         for well, wdict in plate["processed_data"].items():
             d = wdict["processed_values"]
-            # Use python_package sliding_window_fit function
-            fit = sliding_window_fit(
-                d["Time"].to_numpy(float),
-                d["baseline_corrected"].to_numpy(float),
+            t_arr = d["Time"].to_numpy(float)
+            y_arr = d["baseline_corrected"].to_numpy(float)
+
+            # Use growthcurves non_parametric fit function
+            fit_result = fit_non_parametric(
+                t_arr,
+                y_arr,
+                umax_method="sliding_window",
                 window_points=int(window_points),
+                exp_start=float(lag_frac),
+                exp_end=float(exp_frac),
                 sg_window=int(sg_window),
                 sg_poly=int(sg_poly),
-                lag_frac=float(lag_frac),
-                exp_frac=float(exp_frac),
             )
+
+            if fit_result is not None:
+                fit = extract_stats_from_fit(
+                    fit_result,
+                    t_arr,
+                    y_arr,
+                    lag_frac=float(lag_frac),
+                    exp_frac=float(exp_frac),
+                )
+            else:
+                fit = bad_fit_stats()
 
             wdict.update(
                 {
@@ -394,13 +450,13 @@ def compute_window_fits(
                         else np.nan
                     ),
                     "t_window_start": (
-                        float(fit["t_window_start"])
-                        if np.isfinite(fit["t_window_start"])
+                        float(fit.get("fit_t_min", np.nan))
+                        if np.isfinite(fit.get("fit_t_min", np.nan))
                         else np.nan
                     ),
                     "t_window_end": (
-                        float(fit["t_window_end"])
-                        if np.isfinite(fit["t_window_end"])
+                        float(fit.get("fit_t_max", np.nan))
+                        if np.isfinite(fit.get("fit_t_max", np.nan))
                         else np.nan
                     ),
                     "window_points": int(window_points),

@@ -30,6 +30,7 @@ DEFAULT_PARAMS = dict(
     min_growth_rate=0.001,
     growth_method="Sliding Window",
     model_type="logistic",
+    spline_s=1.0,
 )
 
 
@@ -532,6 +533,28 @@ Both methods output the same set of growth descriptors:
                     """
                 )
 
+            # Spline Method Expander
+            with st.expander("Spline Method", expanded=False):
+                st.markdown(
+                    """
+**How it works:**
+1. Phase boundaries (lag and exponential phase end) are detected from the data
+2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
+3. The derivative of the spline gives the specific growth rate at each time point
+4. **μ_max** is the maximum derivative value from the spline fit
+
+**Advantages:**
+- More flexible than sliding window - adapts to curve shape
+- Smoother than sliding window - less sensitive to noise
+- Better for curves with irregular or non-uniform spacing
+
+**Smoothing factor:**
+- Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
+- Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
+- Can be set automatically based on data size
+                    """
+                )
+
             # Model Fitting Expander
             with st.expander("Model Fitting Method", expanded=False):
                 st.markdown(
@@ -765,16 +788,57 @@ Lower values detect transitions earlier; higher values require more pronounced r
 
     method_col, option_col = st.columns(2)
     with method_col:
-        growth_method = st.selectbox(
+        # Map display names to internal method names
+        method_options = [
+            "Sliding Window (non-parametric)",
+            "Spline (non-parametric)",
+            "Logistic (parametric)",
+            "Gompertz (parametric)",
+            "Richards (parametric)",
+        ]
+
+        # Determine current selection index from stored params
+        stored_method = params0.get("growth_method", "Sliding Window")
+        stored_model = params0.get("model_type", "logistic")
+
+        if stored_method == "Sliding Window":
+            default_index = 0
+        elif stored_method == "Spline":
+            default_index = 1
+        elif stored_method == "Model Fitting":
+            if stored_model == "logistic":
+                default_index = 2
+            elif stored_model == "gompertz":
+                default_index = 3
+            else:  # richards
+                default_index = 4
+        else:
+            default_index = 0
+
+        selected_method = st.selectbox(
             "Method",
-            options=["Sliding Window", "Model Fitting"],
-            index=(
-                0
-                if params0.get("growth_method", "Sliding Window") == "Sliding Window"
-                else 1
-            ),
-            help="Choose how to calculate growth descriptors: Sliding Window uses linear fits over a moving window, Model Fitting fits parametric growth curves",
+            options=method_options,
+            index=default_index,
+            help="Choose how to calculate growth descriptors: non-parametric methods use data-driven approaches, parametric methods fit theoretical growth models",
         )
+
+        # Parse selection to determine growth_method and model_type
+        if "Sliding Window" in selected_method:
+            growth_method = "Sliding Window"
+            model_type = "logistic"  # dummy value
+        elif "Spline" in selected_method:
+            growth_method = "Spline"
+            model_type = "logistic"  # dummy value
+        elif "Logistic" in selected_method:
+            growth_method = "Model Fitting"
+            model_type = "logistic"
+        elif "Gompertz" in selected_method:
+            growth_method = "Model Fitting"
+            model_type = "gompertz"
+        else:  # Richards
+            growth_method = "Model Fitting"
+            model_type = "richards"
+
     with option_col:
         # Method-specific options
         if growth_method == "Sliding Window":
@@ -786,20 +850,26 @@ Lower values detect transitions earlier; higher values require more pronounced r
                 1,
                 help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
             )
-            model_type = params0.get("model_type", "logistic")
-        else:
-            # Model Fitting selected
-            model_type = st.selectbox(
-                "Growth model",
-                options=["logistic", "gompertz", "richards"],
-                index=["logistic", "gompertz", "richards"].index(
-                    params0.get("model_type", "logistic")
-                ),
-                help="Parametric model to fit to the growth curve",
+            spline_s = None
+        elif growth_method == "Spline":
+            default_spline_s = params0.get("spline_s", 1.0)
+            if default_spline_s is None:
+                default_spline_s = 1.0
+            spline_s = st.number_input(
+                "Smoothing factor",
+                0.01,
+                100.0,
+                float(default_spline_s),
+                0.1,
+                help="Smoothing factor for spline fit (lower = more flexible, higher = smoother). Set to None for automatic smoothing based on data size.",
             )
             window_points = int(params0["window_points"])
+        else:
+            # Model Fitting - no additional parameters needed (model already selected)
+            window_points = int(params0["window_points"])
+            spline_s = None
 
-    # Phase boundary cutoffs - apply to both Sliding Window and Model Fitting methods
+    # Phase boundary cutoffs - apply to all methods
     st.write("")
     st.markdown("**Phase Boundary Detection**")
     lag_col, exp_col = st.columns(2)
@@ -872,6 +942,7 @@ params = dict(
     min_growth_rate=float(min_growth_rate),
     growth_method=str(growth_method),
     model_type=str(model_type),
+    spline_s=float(spline_s) if spline_s is not None else None,
 )
 
 # Step 5: Click analyse

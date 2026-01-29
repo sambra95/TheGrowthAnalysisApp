@@ -19,10 +19,9 @@ from growthcurves.models import (
     logistic_model,
     richards_model,
 )
-from growthcurves.fitting_functions import (
-    fit_model,
-    is_no_growth,
-)
+from growthcurves.parametric import fit_parametric
+from growthcurves.utils import is_no_growth
+import growthcurves.plot as gc_plot
 
 
 # --- time unit helpers --------------------------------------------------------
@@ -924,7 +923,10 @@ def add_window_well(
     if add_window_line:
         # Check which fitting method was used
         fit_method = gs.get("fit_method", "sliding_window")
-        is_model_fit = fit_method and "model_fitting" in str(fit_method)
+        # Only treat logistic, gompertz, and richards as parametric model fits
+        is_model_fit = fit_method and any(
+            model in str(fit_method) for model in ["logistic", "gompertz", "richards"]
+        )
 
         if is_model_fit:
             # Draw fitted model curve for model-based fits
@@ -950,7 +952,7 @@ def add_window_well(
                     fit_y = fit_y[win_mask]
 
                 # Refit the model to get the fitted curve (using python_package)
-                fit_result = fit_model(fit_t, fit_y, model_type=model_type)
+                fit_result = fit_parametric(fit_t, fit_y, model_type=model_type)
 
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
@@ -1175,304 +1177,6 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     return fig
 
 
-def _vlines(
-    fig,
-    processed_data: dict,
-    well: str,
-    *xs,
-    gs=None,
-    time_unit: str = "hours",
-    log_transform: bool = False,
-):
-    """Add phase shading, phase lines, and fit line/curve annotations to a figure.
-
-    Args:
-        fig: Plotly figure to annotate
-        processed_data: Dictionary of processed data by well
-        well: Well identifier
-        *xs: Additional x positions for vertical lines
-        gs: Growth statistics dictionary
-        time_unit: Unit for time display ("seconds", "minutes", or "hours")
-        log_transform: If True, apply ln transformation to all y-values
-    """
-    # always start clean (important when reusing/copying figures)
-    fig.update_layout(shapes=[], annotations=[])
-    # Clear existing traces and rebuild with transformed data
-    fig.data = []
-
-    # compute range from the real data (NOT from fig.data which may be typed-array dicts)
-    d = (processed_data or {}).get(well)
-    if d is None or d.empty:
-        return fig
-
-    t_raw, y_raw = _finite_sorted_xy(
-        d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
-    )
-    if t_raw.size == 0:
-        return fig
-
-    # Keep raw data for model fitting, apply ln transformation for plotting if requested
-    if log_transform:
-        # Only keep positive values for log transform
-        mask = y_raw > 0
-        t = t_raw[mask]
-        y = np.log(y_raw[mask])
-    else:
-        t = t_raw
-        y = y_raw
-
-    if t.size == 0:
-        return fig
-
-    # Convert time to display unit
-    t_display = convert_hours_to_unit(t, time_unit)
-    # Use raw time range for boundaries (before any filtering for log transform)
-    tmin, tmax = float(t_raw[0]), float(t_raw[-1])
-    tmin_display = convert_hours_to_unit(tmin, time_unit)
-    tmax_display = convert_hours_to_unit(tmax, time_unit)
-
-    # Determine which points were used in fitting calculations
-    y_label = "ln(OD)" if log_transform else "OD"
-    gs = gs or {}
-
-    # Check if specific points used in fitting are stored (from lasso selection)
-    used_times = gs.get("_used_fit_times")
-
-    if used_times is not None and len(used_times) > 0:
-        # Match points by their time values (with tolerance for floating point comparison)
-        used_times_arr = np.asarray(used_times)
-        time_tolerance = 0.01  # Small tolerance for floating point matching
-        used_mask = np.zeros(len(t), dtype=bool)
-        for ut in used_times_arr:
-            used_mask |= np.abs(t - ut) < time_tolerance
-
-        # Add unused points first (grey)
-        unused_mask = ~used_mask
-        if np.any(unused_mask):
-            fig.add_trace(
-                go.Scatter(
-                    x=t_display[unused_mask],
-                    y=y[unused_mask],
-                    mode="markers",
-                    marker=dict(size=5, color="grey"),
-                    hovertemplate=(
-                        f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                    ),
-                    showlegend=False,
-                )
-            )
-
-        # Add used points (red) on top
-        if np.any(used_mask):
-            fig.add_trace(
-                go.Scatter(
-                    x=t_display[used_mask],
-                    y=y[used_mask],
-                    mode="markers",
-                    marker=dict(size=5, color="red"),
-                    hovertemplate=(
-                        f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                    ),
-                    showlegend=False,
-                )
-            )
-    else:
-        # No specific points tracked - show all points as red (original behavior)
-        fig.add_trace(
-            go.Scatter(
-                x=t_display,
-                y=y,
-                mode="markers",
-                marker=dict(size=5, color="red"),
-                hovertemplate=(
-                    f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                ),
-                showlegend=False,
-            )
-        )
-
-    # --- shading + fit line from growth stats ---
-    if gs and not is_bad_fit(gs):
-        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
-        exp_end = max(exp_end, lag_end)
-        max_od = float(gs.get("max_od", 0.0) or 0.0)
-
-        # Transform max_od if log scale
-        if log_transform and max_od > 0:
-            max_od = np.log(max_od)
-
-        # Convert to display unit
-        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
-        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
-
-        # colour code exponential phase
-        fig.add_vrect(
-            x0=lag_end_display,
-            x1=exp_end_display,
-            fillcolor="rgba(76, 175, 80, 0.22)",
-            line_width=0,
-            layer="below",
-        )
-
-        # add line for max OD600
-        if not log_transform or max_od > 0:
-            fig.add_hline(
-                y=max_od, line=dict(color="rgba(100, 149, 237, 0.6)", width=2)
-            )
-
-        # Check which fitting method was used
-        fit_method = gs.get("fit_method", "sliding_window")
-        is_model_fit = fit_method and "model_fitting" in str(fit_method)
-
-        if is_model_fit:
-            # Draw fitted model curve for model-based fits
-            model_type = _model_type_from_fit_method(str(fit_method))
-            if model_type:
-
-                # Use t_window_start and t_window_end to determine fitting range
-                t_win_start = gs.get("t_window_start")
-                t_win_end = gs.get("t_window_end")
-
-                # Use raw (non-transformed) data for model fitting
-                fit_t = t_raw.copy()
-                fit_y = y_raw.copy()
-
-                # Apply window selection if available
-                if t_win_start is not None and t_win_end is not None:
-                    # Use only the selected time range
-                    time_tolerance = 0.1
-                    win_mask = (fit_t >= t_win_start - time_tolerance) & (
-                        fit_t <= t_win_end + time_tolerance
-                    )
-                    fit_t = fit_t[win_mask]
-                    fit_y = fit_y[win_mask]
-
-                # Refit the model to get the fitted curve (using python_package)
-                fit_result = fit_model(fit_t, fit_y, model_type=model_type)
-
-                if fit_result is not None:
-                    # Generate dense predictions for smooth curve
-                    t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
-                    t_dense_display = convert_hours_to_unit(t_dense, time_unit)
-                    params = fit_result["params"]
-
-                    # python_package models work in linear space directly
-                    if fit_result["model_type"] == "richards":
-                        y_fit = richards_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["r"],
-                            params["t0"],
-                            params["nu"],
-                        )
-                    elif fit_result["model_type"] == "gompertz":
-                        y_fit = gompertz_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["mu_max_param"],
-                            params["lam"],
-                        )
-                    else:
-                        # Logistic model
-                        y_fit = logistic_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["r"],
-                            params["t0"],
-                        )
-
-                    # Apply ln transformation if requested (transform predictions for display)
-                    if log_transform:
-                        mask = y_fit > 0
-                        t_dense_display = t_dense_display[mask]
-                        y_fit = np.log(y_fit[mask])
-
-                    # Add the fitted curve as a trace
-                    if len(y_fit) > 0:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=t_dense_display,
-                                y=y_fit,
-                                mode="lines",
-                                line=dict(width=2, color="blue"),
-                                hovertemplate=(
-                                    f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
-                                    f"Fitted {y_label}=%{{y:.4f}}<extra></extra>"
-                                ),
-                                showlegend=False,
-                            )
-                        )
-        else:
-            # Sliding window: highlight points within the μ_max window in blue
-            t_win_start = gs.get("t_window_start")
-            t_win_end = gs.get("t_window_end")
-            if t_win_start is not None and t_win_end is not None:
-                win_mask = (t >= float(t_win_start)) & (t <= float(t_win_end))
-                if np.any(win_mask):
-                    t_win_display = convert_hours_to_unit(t[win_mask], time_unit)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=t_win_display,
-                            y=y[win_mask],
-                            mode="markers",
-                            marker=dict(size=7, color="blue"),
-                            hovertemplate=(
-                                f"μ_max window<br>Time=%{{x:.2f}} {time_unit}<br>"
-                                f"{y_label}=%{{y:.4f}}<extra></extra>"
-                            ),
-                            showlegend=False,
-                        )
-                    )
-
-        # add point at Umax on top of all other traces
-        t_umax = gs.get("time_at_umax")
-        y_umax = gs.get("od_at_umax")
-        if (
-            t_umax is not None
-            and y_umax is not None
-            and np.isfinite(t_umax)
-            and np.isfinite(y_umax)
-        ):
-            y_umax_val = float(y_umax)
-            if log_transform:
-                if y_umax_val > 0:
-                    y_umax_val = np.log(y_umax_val)
-                else:
-                    y_umax_val = None  # Skip if not positive
-
-            if y_umax_val is not None:
-                t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
-                fig.add_trace(
-                    go.Scatter(
-                        x=[t_umax_display],
-                        y=[y_umax_val],
-                        mode="markers",
-                        marker=dict(size=12, color="#66BB6A"),
-                        hovertemplate=(
-                            f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>{y_label}=%{{y:.4f}}<extra></extra>"
-                        ),
-                        showlegend=False,
-                    )
-                )
-    # Constrain axes to the actual data range (prevents infinite lines from extending axes)
-    # Add small margin for y-axis for better visualization
-    if len(y) > 0:
-        y_range = y.max() - y.min()
-        y_min = y.min() - 0.05 * y_range
-        y_max = y.max() + 0.05 * y_range
-    else:
-        y_min, y_max = 0, 1
-
-    fig.update_xaxes(range=[tmin_display, tmax_display])
-    fig.update_yaxes(range=[y_min, y_max])
-
-    return fig
-
-
 # --- model-based fits ----------------------------------------------------------
 def add_model_fit_well(
     fig,
@@ -1575,9 +1279,6 @@ def add_model_fit_well(
         ),
         **trace_kwargs,
     )
-
-    # Note: Model fit curve overlay is now handled by _vlines() function
-    # to consolidate all growth line/curve drawing logic in one place
 
 
 @st.cache_data(show_spinner=False)
@@ -1703,12 +1404,15 @@ def plot_model_fit_single_annotated(
 
         # Add fitted model curve
         fit_method = gs.get("fit_method", "")
-        if fit_method and "model_fitting" in fit_method:
+        # Only process parametric model fits (not sliding_window or spline)
+        if fit_method and any(
+            model in fit_method for model in ["logistic", "gompertz", "richards"]
+        ):
             # Extract model type from fit_method string (e.g., "model_fitting_logistic")
             model_type = fit_method.replace("model_fitting_", "")
 
-            # Refit the model to get the fitted curve (using python_package)
-            fit_result = fit_model(t, y, model_type=model_type)
+            # Refit the model to get the fitted curve (using growthcurves package)
+            fit_result = fit_parametric(t, y, model_type=model_type)
 
             if fit_result is not None:
                 t_dense = np.linspace(float(t.min()), float(t.max()), 200)

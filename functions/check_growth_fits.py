@@ -5,20 +5,15 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from growthcurves.fitting_functions import no_fit_dictionary
-from growthcurves.fitting_functions import (
-    fit_model,
-    extract_stats_from_fit,
-    sliding_window_fit,
-    detect_no_growth,
-)
+from growthcurves.parametric import fit_parametric
+from growthcurves.non_parametric import fit_non_parametric
+from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats_from_fit
+import growthcurves.plot as gc_plot
 from functions.plotting_functions import (
-    _vlines,
     is_bad_fit,
-    plot_model_fit_single,
-    plot_window_single,
     plot_window_single_d1,
     plot_window_single_d2,
+    _finite_sorted_xy,
 )
 
 
@@ -128,43 +123,141 @@ def _collect_lasso_series(
     return refit_t[sort_idx], refit_y[sort_idx]
 
 
+def _add_lasso_selected_points(
+    fig: go.Figure,
+    t_arr: np.ndarray,
+    y_arr: np.ndarray,
+    selected_times: list[float] | None,
+    *,
+    scale: str,
+    time_tolerance: float = 0.01,
+    row: int | None = None,
+    col: int | None = None,
+) -> go.Figure:
+    """Overlay lasso-selected points in red on an existing figure."""
+    if not selected_times:
+        return fig
+
+    sel = np.asarray(selected_times, dtype=float)
+    sel = sel[np.isfinite(sel)]
+    if sel.size == 0:
+        return fig
+
+    refit_indices = _match_selected_times(
+        t_arr, sel, time_tolerance=time_tolerance
+    )
+    if refit_indices.size == 0:
+        return fig
+
+    t_sel = t_arr[refit_indices]
+    y_sel = y_arr[refit_indices]
+    if scale == "log":
+        valid = (y_sel > 0) & np.isfinite(y_sel)
+        t_sel = t_sel[valid]
+        y_sel = y_sel[valid]
+        if t_sel.size == 0:
+            return fig
+        y_plot = np.log(y_sel)
+    else:
+        valid = np.isfinite(y_sel)
+        t_sel = t_sel[valid]
+        y_plot = y_sel[valid]
+        if t_sel.size == 0:
+            return fig
+
+    fig.add_trace(
+        go.Scatter(
+            x=t_sel,
+            y=y_plot,
+            mode="markers",
+            marker=dict(size=8, color="#ef5350", symbol="circle"),
+            showlegend=False,
+        ),
+        row=row,
+        col=col,
+    )
+    return fig
+
+
 def _analyse_series_with_plate_params(
     t_arr: np.ndarray, y_arr: np.ndarray, params: dict
-) -> dict:
+) -> tuple[dict, dict | None]:
     """Run the same analysis pipeline as initial plate analysis."""
     if t_arr.size < 2 or y_arr.size < 2:
-        return no_fit_dictionary.copy()
+        return bad_fit_stats(), None
 
     try:
         growth_method = params.get("growth_method", "Sliding Window")
         lag_frac = float(params.get("lag_cutoff", 0.15))
         exp_frac = float(params.get("exp_cutoff", 0.15))
 
+        fit_result = None
         if growth_method == "Model Fitting":
-            fit_result = fit_model(
+            # Use parametric model fitting
+            fit_result = fit_parametric(
                 t_arr,
                 y_arr,
                 model_type=params.get("model_type", "logistic"),
             )
-            fit = extract_stats_from_fit(
-                fit_result,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
-            )
             if fit_result is not None:
+                fit = extract_stats_from_fit(
+                    fit_result,
+                    t_arr,
+                    y_arr,
+                    lag_frac=lag_frac,
+                    exp_frac=exp_frac,
+                )
+                # Store model parameters
                 for param_name, param_val in fit_result["params"].items():
                     fit[f"fit_param_{param_name}"] = float(param_val)
-        else:
-            fit = sliding_window_fit(
+            else:
+                fit = bad_fit_stats()
+        elif growth_method == "Spline":
+            # Use non-parametric spline method
+            fit_result = fit_non_parametric(
                 t_arr,
                 y_arr,
-                window_points=int(params.get("window_points", 15)),
+                umax_method="spline",
+                spline_s=params.get("spline_s", None),
+                exp_start=lag_frac,
+                exp_end=exp_frac,
                 sg_window=int(params.get("sg_window", 11)),
                 sg_poly=int(params.get("sg_poly", 1)),
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
             )
-            fit["window_points"] = int(params.get("window_points", 15))
+            if fit_result is not None:
+                fit = extract_stats_from_fit(
+                    fit_result,
+                    t_arr,
+                    y_arr,
+                    lag_frac=lag_frac,
+                    exp_frac=exp_frac,
+                )
+                fit["spline_s"] = params.get("spline_s", None)
+            else:
+                fit = bad_fit_stats()
+        else:
+            # Use non-parametric sliding window method
+            fit_result = fit_non_parametric(
+                t_arr,
+                y_arr,
+                umax_method="sliding_window",
+                window_points=int(params.get("window_points", 15)),
+                exp_start=lag_frac,
+                exp_end=exp_frac,
+                sg_window=int(params.get("sg_window", 11)),
+                sg_poly=int(params.get("sg_poly", 1)),
+            )
+            if fit_result is not None:
+                fit = extract_stats_from_fit(
+                    fit_result,
+                    t_arr,
+                    y_arr,
+                    lag_frac=lag_frac,
+                    exp_frac=exp_frac,
+                )
+                fit["window_points"] = int(params.get("window_points", 15))
+            else:
+                fit = bad_fit_stats()
 
         min_data_points = int(params.get("min_data_points", 5))
         min_signal_to_noise = float(params.get("min_signal_to_noise", 5.0))
@@ -178,12 +271,24 @@ def _analyse_series_with_plate_params(
             min_growth_rate=min_growth_rate,
         )
         if no_growth_result["is_no_growth"]:
-            fit = no_fit_dictionary.copy()
+            fit = bad_fit_stats()
             fit["no_growth_reason"] = no_growth_result["reason"]
+            fit_result = None
     except Exception:
-        fit = no_fit_dictionary.copy()
+        fit = bad_fit_stats()
+        fit_result = None
 
-    return fit
+    return fit, fit_result
+
+
+# ---------------- Plot helpers ----------------
+def _as_finite_float(value) -> float | None:
+    """Return a finite float or None."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if np.isfinite(num) else None
 
 
 def update_growth_stats_from_lasso(
@@ -201,6 +306,7 @@ def update_growth_stats_from_lasso(
 
     plate = plates.get(pid, {})
     gs = plates.setdefault(pid, {}).setdefault("growth_stats", {}).setdefault(well, {})
+    fit_parameters = plates.setdefault(pid, {}).setdefault("fit_parameters", {})
 
     # Store a timestamp to force UI update
     import time
@@ -226,8 +332,12 @@ def update_growth_stats_from_lasso(
 
     # Run the identical analysis pipeline as initial plate analysis
     params = plate.get("params", {})
-    fit = _analyse_series_with_plate_params(refit_t, refit_y, params)
+    fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
     gs.update(fit)
+    if fit_result is not None:
+        fit_parameters[well] = fit_result
+    else:
+        fit_parameters.pop(well, None)
 
 
 # ---------------- Data helpers ----------------
@@ -245,64 +355,28 @@ def analyse_well(plate: dict, well: str) -> dict:
     """Recompute growth statistics for a single well using existing processed data."""
     p = (plate or {}).get("params") or {}
     processed_data = (plate or {}).get("processed_data") or {}
+    fit_parameters = (plate or {}).setdefault("fit_parameters", {})
 
     well = str(well).upper()
 
     # Get the already-processed data for this well
     processed = processed_data.get(well)
     if processed is None or processed.empty:
-        return no_fit_dictionary.copy()
+        fit_parameters.pop(well, None)
+        return bad_fit_stats()
 
     try:
-        # Check which method to use
-        # Uses python_package functions for growth statistics calculation
-        growth_method = p.get("growth_method", "Sliding Window")
         t_arr = processed["Time"].to_numpy(float)
         y_arr = processed["baseline_corrected"].to_numpy(float)
-        lag_frac = float(p.get("lag_cutoff", 0.15))
-        exp_frac = float(p.get("exp_cutoff", 0.15))
-
-        if growth_method == "Model Fitting":
-            fit_result = fit_model(
-                t_arr,
-                y_arr,
-                model_type=p.get("model_type", "logistic"),
-            )
-            fit = extract_stats_from_fit(
-                fit_result,
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
-            )
+        fit, fit_result = _analyse_series_with_plate_params(t_arr, y_arr, p)
+        if fit_result is not None:
+            fit_parameters[well] = fit_result
         else:
-            fit = sliding_window_fit(
-                t_arr,
-                y_arr,
-                window_points=int(p.get("window_points", 15)),
-                sg_window=int(p.get("sg_window", 11)),
-                sg_poly=int(p.get("sg_poly", 1)),
-                lag_frac=lag_frac,
-                exp_frac=exp_frac,
-            )
-            fit["window_points"] = int(p.get("window_points", 15))
-
-        # Check for no growth using consolidated detection function
-        min_data_points = int(p.get("min_data_points", 5))
-        min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
-        min_growth_rate = float(p.get("min_growth_rate", 0.001))
-        no_growth_result = detect_no_growth(
-            t_arr,
-            y_arr,
-            growth_stats=fit,
-            min_data_points=min_data_points,
-            min_signal_to_noise=min_signal_to_noise,
-            min_growth_rate=min_growth_rate,
-        )
-        if no_growth_result["is_no_growth"]:
-            fit = no_fit_dictionary.copy()
-            fit["no_growth_reason"] = no_growth_result["reason"]
+            fit_parameters.pop(well, None)
 
     except Exception:
-        fit = no_fit_dictionary.copy()
+        fit = bad_fit_stats()
+        fit_parameters.pop(well, None)
 
     return fit
 
@@ -437,7 +511,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     def _on_no_growth():
         """Mark the well as no-growth and reset widgets."""
-        growth_stats.update(no_fit_dictionary.copy())
+        growth_stats.update(bad_fit_stats())
         # Clear lasso-specific keys
         growth_stats.pop("_used_fit_times", None)
         growth_stats.pop("_lasso_update_time", None)
@@ -499,21 +573,6 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     return float(lag_end), float(exp_end), False
 
 
-# ---------------- Window plot cache ----------------
-@st.cache_data(show_spinner=False)
-def _cached_window_single(processed_data: dict, well: str):
-    """Cache the main well plot to avoid recomputation on reruns."""
-    return plot_window_single(processed_data, well)
-
-
-@st.cache_data(show_spinner=False)
-def _cached_model_fit_single(
-    processed_data: dict, growth_stats: dict, well: str, version_key: str = ""
-):
-    """Cache the model fit plot to avoid recomputation on reruns. version_key busts cache when growth stats change."""
-    return plot_model_fit_single(processed_data, growth_stats, well)
-
-
 @st.fragment
 def ui_window_fits_well_editor(plates: dict):
     """Render the well editor UI for interactive window fit adjustments."""
@@ -551,7 +610,15 @@ def ui_window_fits_well_editor(plates: dict):
     col1, col2 = st.columns(2, gap="large")
     with col1:
         with st.container(border=True):
-            plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+            plate_col, toggle_col = st.columns([3, 1], vertical_alignment="bottom")
+            with plate_col:
+                plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+            with toggle_col:
+                log_scale = st.toggle(
+                    "Log scale",
+                    value=st.session_state.get("log_scale_toggle", False),
+                    key="log_scale_toggle",
+                )
             prev, mid, next_ = st.columns([2, 4, 2], vertical_alignment="bottom")
             with prev:
                 st.button(
@@ -593,6 +660,7 @@ def ui_window_fits_well_editor(plates: dict):
     sg_w, sg_p, _ = _sg_params_for_plate(plates, plate_id)
     processed = plate.get("processed_data") or {}
     growth_stats = plate.get("growth_stats") or {}
+    fit_parameters = plate.get("fit_parameters") or {}
     gs = growth_stats.get(well) or {}
 
     # Display growth stats table in an expander
@@ -613,40 +681,100 @@ def ui_window_fits_well_editor(plates: dict):
 
     st.divider()
 
-    # Add toggle for linear/log scale (persistent across well changes)
-    log_scale = st.toggle(
-        "Log scale (y-axis)",
-        value=st.session_state.get("log_scale_toggle", False),
-        key="log_scale_toggle",
-    )
-
     # Check which fitting method was used
     fit_method = gs.get("fit_method", "sliding_window")
-    is_model_fit = fit_method and "model_fitting" in str(fit_method)
+    # Only treat logistic, gompertz, and richards as parametric model fits
+    is_model_fit = fit_method and any(
+        model in str(fit_method) for model in ["logistic", "gompertz", "richards"]
+    )
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
 
-    # Use appropriate plotting function based on fit method
-    # For model fits, we need to regenerate the plot to show updated fits after lasso selection
-    # Use a version key based on critical growth stats to bust cache when they change
-    if is_model_fit:
-        # Create a version string from the growth stats to trigger cache updates
-        version_key = f"{gs.get('specific_growth_rate', 0)}_{gs.get('time_at_umax', 0)}_{gs.get('od_at_umax', 0)}_{gs.get('t_window_start', '')}_{gs.get('t_window_end', '')}"
-        fig_main = go.Figure(
-            _cached_model_fit_single(processed, growth_stats, well, version_key)
+    # Get the processed data for this well
+    d = processed.get(well)
+    if d is not None and not d.empty:
+        # Get time and OD data
+        t_raw, y_raw = _finite_sorted_xy(
+            d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
         )
-    else:
-        fig_main = go.Figure(_cached_window_single(processed, well))
 
-    fig_main = _vlines(
-        fig_main, processed, well, lag_end, exp_end, gs=gs, log_transform=log_scale
-    )
+        if t_raw.size > 0:
+            # Use hours throughout (no display conversion)
+            t_display = t_raw
 
-    # Update y-axis title based on scale
-    if log_scale:
-        fig_main.update_yaxes(title="ln(OD600)")
+            # Determine scale
+            scale = "log" if log_scale else "linear"
+
+            # Create base plot using growthcurves - this matches the notebook pattern
+            fig_main = gc_plot.create_base_plot(t_display, y_raw, scale=scale)
+
+            # Highlight lasso-selected points (default: all points)
+            selected_times = gs.get("_used_fit_times")
+            if not selected_times:
+                selected_times = t_raw.tolist()
+            fig_main = _add_lasso_selected_points(
+                fig_main,
+                t_raw,
+                y_raw,
+                selected_times,
+                scale=scale,
+            )
+
+            # Annotate plot with growth stats if available
+            if not is_bad_fit(gs) and gs:
+                # Get stats from dictionary
+                exp_phase_start = _as_finite_float(gs.get("exp_phase_start"))
+                exp_phase_end = _as_finite_float(gs.get("exp_phase_end"))
+                time_at_umax = _as_finite_float(gs.get("time_at_umax"))
+                od_at_umax = _as_finite_float(gs.get("od_at_umax"))
+                max_od = _as_finite_float(gs.get("max_od"))
+
+                # Prepare umax point - use original OD values (not log-transformed)
+                umax_point = (
+                    (time_at_umax, od_at_umax)
+                    if time_at_umax is not None and od_at_umax is not None
+                    else None
+                )
+
+                # Get fit result from session state
+                fit_result = fit_parameters.get(well)
+
+                # Annotate plot - exact pattern from notebook example
+                fig_main = gc_plot.annotate_plot(
+                    fig_main,
+                    phase_boundaries=(
+                        (exp_phase_start, exp_phase_end)
+                        if exp_phase_start is not None and exp_phase_end is not None
+                        else None
+                    ),
+                    time_umax=time_at_umax,
+                    od_umax=od_at_umax,
+                    od_max=max_od,
+                    umax_point=umax_point,
+                    fitted_model=fit_result,
+                    scale=scale,
+                )
+
+            # Update axis labels
+            time_label = "Time (hours)"
+            y_label = "ln(OD600)" if log_scale else "OD600 (baseline-corrected)"
+            fig_main.update_xaxes(title=time_label, showgrid=False, type="linear")
+            fig_main.update_yaxes(title=y_label, showgrid=False)
+
+            # Apply layout for lasso selection functionality
+            fig_main.update_layout(
+                uirevision="keep",
+                dragmode="lasso",
+                showlegend=False,
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                margin=dict(l=20, r=20, t=20, b=20),
+                height=600,
+            )
+        else:
+            fig_main = go.Figure()
     else:
-        fig_main.update_yaxes(title="OD600 (baseline-corrected)")
+        fig_main = go.Figure()
 
     st.plotly_chart(
         fig_main,
@@ -659,14 +787,9 @@ def ui_window_fits_well_editor(plates: dict):
     )
 
     # Only show derivative plots for sliding window method
-    if not is_model_fit:
-        fig_d1 = plot_window_single_d1(
-            plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20, gs=gs
-        )
-        fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p, gs=gs)
-        st.plotly_chart(fig_d1, width="stretch")
-        st.plotly_chart(fig_d2, width="stretch")
-    else:
-        st.info(
-            f"Growth descriptors calculated using {fit_method}. Derivative plots are only available for Sliding Window method."
-        )
+    fig_d1 = plot_window_single_d1(
+        plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20, gs=gs
+    )
+    fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p, gs=gs)
+    st.plotly_chart(fig_d1, width="stretch")
+    st.plotly_chart(fig_d2, width="stretch")
