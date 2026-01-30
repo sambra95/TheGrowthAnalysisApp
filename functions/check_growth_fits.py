@@ -143,9 +143,7 @@ def _add_lasso_selected_points(
     if sel.size == 0:
         return fig
 
-    refit_indices = _match_selected_times(
-        t_arr, sel, time_tolerance=time_tolerance
-    )
+    refit_indices = _match_selected_times(t_arr, sel, time_tolerance=time_tolerance)
     if refit_indices.size == 0:
         return fig
 

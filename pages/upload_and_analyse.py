@@ -129,8 +129,7 @@ with title_col:
 with popover_col:
     st.write("")
     with st.popover("Explain this page to me", width="stretch"):
-        st.markdown(
-            """
+        st.markdown("""
 **Actions you can perform on this page:**
 - Upload data files. This excel table contains the time-series data for your growth curves, arranged with each column corresponding to a well
 - Upload plate maps. This excel table dictates how each sample will be named in the app.
@@ -138,8 +137,7 @@ with popover_col:
 - Preview your plate layout before analysis
 - Run growth curve analysis on the uploaded plates
 
-"""
-        )
+""")
 
 st.divider()
 
@@ -193,15 +191,13 @@ with u2:
             with st.popover("Help", width="stretch"):
                 st.markdown("**Required Plate Map Format:**")
                 st.markdown("Excel file (.xlsx or .xls) with sample layout")
-                st.markdown(
-                    """
+                st.markdown("""
                     - 96-well plate format (rows A-H, columns 1-12)
                     - Samples with the same name will be assigned as replicates
                     - Use 'BLANK' for blank wells
                     - Leave cells empty for wells to ignore
                     - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visulations' page.
-                    """
-                )
+                    """)
 
                 # Create example plate map table
                 example_map = pd.DataFrame(
@@ -405,8 +401,7 @@ with st.container(border=True):
 
             st.markdown("### Growth Descriptor Calculation Methods")
 
-            st.markdown(
-                """
+            st.markdown("""
 Both methods output the same set of growth descriptors:
 
 | Metric | Description |
@@ -420,8 +415,7 @@ Both methods output the same set of growth descriptors:
 | **Max OD** | Maximum OD reached (carrying capacity) |
 | **Fit window** | Start and end times of the fitting window (h) |
 | **RMSE** | Root mean square error of the fit |
-"""
-            )
+""")
 
             # Sliding Window Expander
             with st.expander("Sliding Window Method", expanded=False):
@@ -523,20 +517,17 @@ Both methods output the same set of growth descriptors:
                 )
                 st.plotly_chart(fig_sw, width="stretch", config={"staticPlot": True})
 
-                st.markdown(
-                    """
+                st.markdown("""
 **How it works:**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
 3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The **maximum slope** across all windows is reported as **μ_max**
-                    """
-                )
+                    """)
 
             # Spline Method Expander
             with st.expander("Spline Method", expanded=False):
-                st.markdown(
-                    """
+                st.markdown("""
 **How it works:**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
@@ -552,21 +543,18 @@ Both methods output the same set of growth descriptors:
 - Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
-                    """
-                )
+                    """)
 
             # Model Fitting Expander
             with st.expander("Model Fitting Method", expanded=False):
-                st.markdown(
-                    """
+                st.markdown("""
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
 3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
 
 **Available models:**
-                    """
-                )
+                    """)
 
                 t = np.linspace(0, 48, 200)
 
@@ -652,16 +640,14 @@ Both methods output the same set of growth descriptors:
 
             # Phase Boundary Detection Expander
             with st.expander("Phase Boundary Detection", expanded=False):
-                st.markdown(
-                    """
+                st.markdown("""
 **Both methods use the same approach** for detecting phase boundaries, based on the first derivative (growth rate) of the curve:
 
 1. **Lag phase end**: First time point where growth rate exceeds the threshold
 2. **Exponential phase end**: First time point *after* peak where rate drops below threshold
 
 **The threshold** is set as a fraction of μ_max (default 10%).
-                    """
-                )
+                    """)
 
                 # Generate derivative curve data for illustration
                 t_deriv = np.linspace(0, 48, 200)
@@ -769,8 +755,7 @@ Both methods output the same set of growth descriptors:
                 )
                 st.plotly_chart(fig_deriv, width="stretch", config={"staticPlot": True})
 
-                st.markdown(
-                    """
+                st.markdown("""
 **Difference between methods:**
 
 | | Sliding Window | Model Fitting |
@@ -783,8 +768,7 @@ Both methods output the same set of growth descriptors:
 - *Exp cutoff*: Fraction of μ_max for exponential phase end detection (default 10%)
 
 Lower values detect transitions earlier; higher values require more pronounced rate changes.
-                    """
-                )
+                    """)
 
     method_col, option_col = st.columns(2)
     with method_col:

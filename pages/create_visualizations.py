@@ -8,9 +8,8 @@ with title_col:
     st.title("Create Visualizations")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", width='stretch'):
-        st.markdown(
-            """
+    with st.popover("Explain this page to me", width="stretch"):
+        st.markdown("""
 **Actions you can perform on this page:**
 - Create custom visualizations of growth parameters (max growth rate, lag time, yield, etc.)
 - Group and compare samples by strain or condition
@@ -18,8 +17,7 @@ with popover_col:
 - Visualize statistical summaries across experimental conditions
 
 💡 **Tip:** You can download any plot by clicking the camera icon in the top right corner of the plot.
-"""
-        )
+""")
 
 plates = require_plates()
 

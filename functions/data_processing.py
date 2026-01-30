@@ -195,7 +195,13 @@ def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:
 
 def _empty_plate():
     """Create an empty plate record structure."""
-    return {"name": {}, "raw_data": {}, "processed_data": {}, "growth_stats": {}, "fit_parameters": {}}
+    return {
+        "name": {},
+        "raw_data": {},
+        "processed_data": {},
+        "growth_stats": {},
+        "fit_parameters": {},
+    }
 
 
 def load_plate(

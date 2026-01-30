@@ -157,7 +157,9 @@ def build_export_zip(
     include_baseline_plots: bool,
     include_replicates: bool,
     include_well_plots: bool,
-    well_graphs: list[str] | None = None,  # e.g. ["OD", "1st Derivative", "2nd Derivative"]
+    well_graphs: (
+        list[str] | None
+    ) = None,  # e.g. ["OD", "1st Derivative", "2nd Derivative"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
@@ -292,7 +294,9 @@ def build_export_zip(
                                 t_display = t_raw
 
                                 # Create base plot using growthcurves
-                                fig = gc_plot.create_base_plot(t_display, y_raw, scale="linear")
+                                fig = gc_plot.create_base_plot(
+                                    t_display, y_raw, scale="linear"
+                                )
 
                                 # Annotate plot if requested
                                 if add_annotations and not is_bad_fit(gs) and gs:
@@ -313,7 +317,10 @@ def build_export_zip(
 
                                     # Prepare umax point
                                     umax_point = None
-                                    if time_at_umax is not None and od_at_umax is not None:
+                                    if (
+                                        time_at_umax is not None
+                                        and od_at_umax is not None
+                                    ):
                                         umax_point = (time_at_umax, od_at_umax)
 
                                     fit_result = fit_parameters.get(well)
@@ -321,7 +328,11 @@ def build_export_zip(
                                     # Annotate plot
                                     fig = gc_plot.annotate_plot(
                                         fig,
-                                        phase_boundaries=(exp_phase_start, exp_phase_end) if exp_phase_start and exp_phase_end else None,
+                                        phase_boundaries=(
+                                            (exp_phase_start, exp_phase_end)
+                                            if exp_phase_start and exp_phase_end
+                                            else None
+                                        ),
                                         time_umax=time_at_umax,
                                         od_umax=od_at_umax,
                                         od_max=max_od,
@@ -333,7 +344,9 @@ def build_export_zip(
                                 # Update axis labels
                                 time_label = "Time (hours)"
                                 fig.update_xaxes(title=time_label, showgrid=False)
-                                fig.update_yaxes(title="OD600 (baseline-corrected)", showgrid=False)
+                                fig.update_yaxes(
+                                    title="OD600 (baseline-corrected)", showgrid=False
+                                )
 
                                 zf.writestr(
                                     f"{plate_dir}/growth_curves/{well}.png",
@@ -341,7 +354,10 @@ def build_export_zip(
                                 )
 
                     # Only export derivative plots for sliding window method
-                    if "1st Derivative" in well_graphs or "2nd Derivative" in well_graphs:
+                    if (
+                        "1st Derivative" in well_graphs
+                        or "2nd Derivative" in well_graphs
+                    ):
                         gs = (p.get("growth_stats") or {}).get(well) or {}
                         fit_method = gs.get("fit_method", "sliding_window")
                         is_model_fit = fit_method and "model_fitting" in str(fit_method)
