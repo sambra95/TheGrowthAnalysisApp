@@ -608,14 +608,20 @@ def ui_window_fits_well_editor(plates: dict):
     col1, col2 = st.columns(2, gap="large")
     with col1:
         with st.container(border=True):
-            plate_col, toggle_col = st.columns([3, 1], vertical_alignment="bottom")
+            plate_col, toggle_col1, toggle_col2 = st.columns([2, 1, 1], vertical_alignment="bottom")
             with plate_col:
                 plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
-            with toggle_col:
+            with toggle_col1:
                 log_scale = st.toggle(
                     "Log scale",
                     value=st.session_state.get("log_scale_toggle", False),
                     key="log_scale_toggle",
+                )
+            with toggle_col2:
+                show_annotations = st.toggle(
+                    "Show annotations",
+                    value=st.session_state.get("show_annotations_toggle", True),
+                    key="show_annotations_toggle",
                 )
             prev, mid, next_ = st.columns([2, 4, 2], vertical_alignment="bottom")
             with prev:
@@ -718,8 +724,8 @@ def ui_window_fits_well_editor(plates: dict):
                 scale=scale,
             )
 
-            # Annotate plot with growth stats if available
-            if not is_bad_fit(gs) and gs:
+            # Annotate plot with growth stats if available and annotations are enabled
+            if show_annotations and not is_bad_fit(gs) and gs:
                 # Get stats from dictionary
                 exp_phase_start = _as_finite_float(gs.get("exp_phase_start"))
                 exp_phase_end = _as_finite_float(gs.get("exp_phase_end"))
