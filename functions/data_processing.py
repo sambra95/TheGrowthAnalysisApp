@@ -296,7 +296,7 @@ def analyse_plate(record: dict):
                 fit_result = fit_parametric(
                     t_arr,
                     y_arr,
-                    model_type=p.get("model_type", "logistic"),
+                    model=p.get("model_type", "logistic"),
                 )
                 if fit_result is not None:
                     fit = extract_stats_from_fit(

@@ -952,7 +952,7 @@ def add_window_well(
                     fit_y = fit_y[win_mask]
 
                 # Refit the model to get the fitted curve (using python_package)
-                fit_result = fit_parametric(fit_t, fit_y, model_type=model_type)
+                fit_result = fit_parametric(fit_t, fit_y, model=model_type)
 
                 if fit_result is not None:
                     # Generate dense predictions for smooth curve
@@ -1412,7 +1412,7 @@ def plot_model_fit_single_annotated(
             model_type = fit_method.replace("model_fitting_", "")
 
             # Refit the model to get the fitted curve (using growthcurves package)
-            fit_result = fit_parametric(t, y, model_type=model_type)
+            fit_result = fit_parametric(t, y, model=model_type)
 
             if fit_result is not None:
                 t_dense = np.linspace(float(t.min()), float(t.max()), 200)

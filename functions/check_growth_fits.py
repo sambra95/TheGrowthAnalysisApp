@@ -195,7 +195,7 @@ def _analyse_series_with_plate_params(
             fit_result = fit_parametric(
                 t_arr,
                 y_arr,
-                model_type=params.get("model_type", "logistic"),
+                model=params.get("model_type", "logistic"),
             )
             if fit_result is not None:
                 fit = extract_stats_from_fit(
