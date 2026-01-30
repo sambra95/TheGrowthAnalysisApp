@@ -681,9 +681,9 @@ def ui_window_fits_well_editor(plates: dict):
 
     # Check which fitting method was used
     fit_method = gs.get("fit_method", "sliding_window")
-    # Only treat logistic, gompertz, and richards as parametric model fits
+    # Only treat logistic, gompertz, richards, and baranyi as parametric model fits
     is_model_fit = fit_method and any(
-        model in str(fit_method) for model in ["logistic", "gompertz", "richards"]
+        model in str(fit_method) for model in ["logistic", "gompertz", "richards", "baranyi"]
     )
 
     chart_key = f"lasso_fit_{plate_id}_{well}"

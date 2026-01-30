@@ -638,6 +638,41 @@ Both methods output the same set of growth descriptors:
                 )
                 st.plotly_chart(fig_ric, width="stretch", config={"staticPlot": True})
 
+                # Baranyi model
+                st.markdown("**Baranyi-Roberts**")
+                st.latex(
+                    r"y(t) = \frac{K}{1 + \frac{K - y_0}{y_0} \cdot e^{-\mu_{\max} A(t)}}"
+                )
+                st.caption(
+                    "Baranyi-Roberts model with physiological lag parameter h₀. Mechanistic model accounting for cell adaptation during lag phase."
+                )
+                # Simple approximation of Baranyi for visualization
+                h0 = 5.0
+                mu_max_b = 0.15
+                K_b = 1.0
+                y0_b = 0.05
+                A_t = t + (1.0 / mu_max_b) * np.log(
+                    np.exp(-mu_max_b * t) + np.exp(-h0) - np.exp(-mu_max_b * t - h0)
+                )
+                y_baranyi = K_b / (1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t))
+                fig_bar = go.Figure()
+                fig_bar.add_trace(
+                    go.Scatter(
+                        x=t,
+                        y=y_baranyi,
+                        mode="lines",
+                        line=dict(color="purple", width=2),
+                    )
+                )
+                fig_bar.update_layout(
+                    height=150,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis_title="Time (h)",
+                    yaxis_title="OD600",
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_bar, width="stretch", config={"staticPlot": True})
+
             # Phase Boundary Detection Expander
             with st.expander("Phase Boundary Detection", expanded=False):
                 st.markdown("""
@@ -779,6 +814,7 @@ Lower values detect transitions earlier; higher values require more pronounced r
             "Logistic (parametric)",
             "Gompertz (parametric)",
             "Richards (parametric)",
+            "Baranyi (parametric)",
         ]
 
         # Determine current selection index from stored params
@@ -794,8 +830,12 @@ Lower values detect transitions earlier; higher values require more pronounced r
                 default_index = 2
             elif stored_model == "gompertz":
                 default_index = 3
-            else:  # richards
+            elif stored_model == "richards":
                 default_index = 4
+            elif stored_model == "baranyi":
+                default_index = 5
+            else:
+                default_index = 2  # fallback to logistic
         else:
             default_index = 0
 
@@ -819,9 +859,16 @@ Lower values detect transitions earlier; higher values require more pronounced r
         elif "Gompertz" in selected_method:
             growth_method = "Model Fitting"
             model_type = "gompertz"
-        else:  # Richards
+        elif "Richards" in selected_method:
             growth_method = "Model Fitting"
             model_type = "richards"
+        elif "Baranyi" in selected_method:
+            growth_method = "Model Fitting"
+            model_type = "baranyi"
+        else:
+            # Fallback
+            growth_method = "Sliding Window"
+            model_type = "logistic"
 
     with option_col:
         # Method-specific options

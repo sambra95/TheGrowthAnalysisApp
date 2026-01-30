@@ -15,6 +15,7 @@ from functions.data_processing import (
     smooth,
 )
 from growthcurves.models import (
+    baranyi_model,
     gompertz_model,
     logistic_model,
     richards_model,
@@ -923,9 +924,9 @@ def add_window_well(
     if add_window_line:
         # Check which fitting method was used
         fit_method = gs.get("fit_method", "sliding_window")
-        # Only treat logistic, gompertz, and richards as parametric model fits
+        # Only treat logistic, gompertz, richards, and baranyi as parametric model fits
         is_model_fit = fit_method and any(
-            model in str(fit_method) for model in ["logistic", "gompertz", "richards"]
+            model in str(fit_method) for model in ["logistic", "gompertz", "richards", "baranyi"]
         )
 
         if is_model_fit:
@@ -977,6 +978,14 @@ def add_window_well(
                             params["y0"],
                             params["mu_max_param"],
                             params["lam"],
+                        )
+                    elif fit_result["model_type"] == "baranyi":
+                        y_fit = baranyi_model(
+                            t_dense,
+                            params["K"],
+                            params["y0"],
+                            params["mu_max_param"],
+                            params["h0"],
                         )
                     else:
                         # Logistic model
@@ -1406,7 +1415,7 @@ def plot_model_fit_single_annotated(
         fit_method = gs.get("fit_method", "")
         # Only process parametric model fits (not sliding_window or spline)
         if fit_method and any(
-            model in fit_method for model in ["logistic", "gompertz", "richards"]
+            model in fit_method for model in ["logistic", "gompertz", "richards", "baranyi"]
         ):
             # Extract model type from fit_method string (e.g., "model_fitting_logistic")
             model_type = fit_method.replace("model_fitting_", "")
@@ -1436,6 +1445,14 @@ def plot_model_fit_single_annotated(
                         params["y0"],
                         params["mu_max_param"],
                         params["lam"],
+                    )
+                elif fit_result["model_type"] == "baranyi":
+                    y_fit = baranyi_model(
+                        t_dense,
+                        params["K"],
+                        params["y0"],
+                        params["mu_max_param"],
+                        params["h0"],
                     )
                 else:
                     # Logistic model
