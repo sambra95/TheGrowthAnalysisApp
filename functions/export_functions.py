@@ -161,6 +161,12 @@ def build_export_zip(
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
+    annot_phase: bool = True,
+    annot_time_umax: bool = True,
+    annot_od_umax: bool = True,
+    annot_od_max: bool = True,
+    annot_umax_point: bool = True,
+    annot_fitted_model: bool = True,
     scale: int = 2,
     baseline_width: int = 1200,
     baseline_height: int = 800,
@@ -318,22 +324,23 @@ def build_export_zip(
                                     if (
                                         time_at_umax is not None
                                         and od_at_umax is not None
+                                        and annot_umax_point
                                     ):
                                         umax_point = (time_at_umax, od_at_umax)
 
-                                    fit_result = fit_parameters.get(well)
+                                    fit_result = fit_parameters.get(well) if annot_fitted_model else None
 
-                                    # Annotate plot
+                                    # Annotate plot with selected annotations
                                     fig = gc_plot.annotate_plot(
                                         fig,
                                         phase_boundaries=(
                                             (exp_phase_start, exp_phase_end)
-                                            if exp_phase_start and exp_phase_end
+                                            if exp_phase_start and exp_phase_end and annot_phase
                                             else None
                                         ),
-                                        time_umax=time_at_umax,
-                                        od_umax=od_at_umax,
-                                        od_max=max_od,
+                                        time_umax=time_at_umax if annot_time_umax else None,
+                                        od_umax=od_at_umax if annot_od_umax else None,
+                                        od_max=max_od if annot_od_max else None,
                                         umax_point=umax_point,
                                         fitted_model=fit_result,
                                         scale="linear",
@@ -459,40 +466,86 @@ def ui_export(plates: dict):
                 )
 
             if c_well:
-                cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+                cb_col, popover_col = st.columns([3, 9], vertical_alignment="center")
                 with cb_col:
                     c_add_annotations = st.checkbox(
                         "Annotations",
                         value=True,
                         key="annotations_checkbox",
                     )
-                with desc_col:
-                    st.caption("Draw phase boundary lines on well plots")
+                with popover_col:
+                    with st.popover("Select annotations", use_container_width=False):
+                        st.caption("Choose which annotations to include on well plots:")
 
-                col_w, col_h = st.columns(2)
-                well_width = col_w.number_input(
-                    "Width (px)",
-                    min_value=400,
-                    max_value=3000,
-                    value=1200,
-                    step=100,
-                    key="well_width",
-                )
-                well_height = col_h.number_input(
-                    "Height (px)",
-                    min_value=300,
-                    max_value=2500,
-                    value=800,
-                    step=100,
-                    key="well_height",
-                )
+                        # Create two columns: plot on left, checkboxes on right
+                        plot_col, checkbox_col = st.columns([2, 1])
 
-                well_graphs = st.multiselect(
-                    "Well graph types",
-                    options=["OD", "1st Derivative", "2nd Derivative"],
-                    default=["OD", "1st Derivative", "2nd Derivative"],
-                    key="well_graphs",
-                )
+                        with plot_col:
+                            # Show pre-generated demo plot image
+                            st.image("info_plots/annotation_demo.png", use_column_width=True)
+
+                        with checkbox_col:
+                            annot_phase = st.checkbox(
+                                "Phase boundaries",
+                                value=True,
+                                key="annot_phase_boundaries",
+                            )
+                            annot_time_umax = st.checkbox(
+                                "Time at μmax",
+                                value=True,
+                                key="annot_time_umax",
+                            )
+                            annot_od_umax = st.checkbox(
+                                "OD at μmax",
+                                value=True,
+                                key="annot_od_umax",
+                            )
+                            annot_od_max = st.checkbox(
+                                "Max OD",
+                                value=True,
+                                key="annot_od_max",
+                            )
+                            annot_umax_point = st.checkbox(
+                                "μmax point",
+                                value=True,
+                                key="annot_umax_point",
+                            )
+                            annot_fitted_model = st.checkbox(
+                                "Fitted model curve",
+                                value=True,
+                                key="annot_fitted_model",
+                            )
+
+                # Single row for graph types, width, and height
+                graph_col, width_col, height_col = st.columns([3, 1, 1])
+
+                with graph_col:
+                    well_graphs = st.multiselect(
+                        "Well graph types",
+                        options=["OD", "1st Derivative", "2nd Derivative"],
+                        default=["OD", "1st Derivative", "2nd Derivative"],
+                        key="well_graphs",
+                    )
+
+                with width_col:
+                    well_width = st.number_input(
+                        "Width (px)",
+                        min_value=400,
+                        max_value=3000,
+                        value=1200,
+                        step=100,
+                        key="well_width",
+                    )
+
+                with height_col:
+                    well_height = st.number_input(
+                        "Height (px)",
+                        min_value=300,
+                        max_value=2500,
+                        value=800,
+                        step=100,
+                        key="well_height",
+                    )
 
                 selected_plate_ids = st.multiselect(
                     "Plates to include",
@@ -531,6 +584,12 @@ def ui_export(plates: dict):
             else:
                 # Set defaults when well plots are not included
                 c_add_annotations = True
+                annot_phase = True
+                annot_time_umax = True
+                annot_od_umax = True
+                annot_od_max = True
+                annot_umax_point = True
+                annot_fitted_model = True
                 well_width = 1200
                 well_height = 800
                 well_graphs = []
@@ -602,6 +661,12 @@ def ui_export(plates: dict):
         selected_plates_tuple,
         wells_tuple,
         add_annotations,
+        annot_phase,
+        annot_time_umax,
+        annot_od_umax,
+        annot_od_max,
+        annot_umax_point,
+        annot_fitted_model,
         global_w,
         global_h,
         well_w,
@@ -628,6 +693,12 @@ def ui_export(plates: dict):
             ),
             wells_by_plate=wells_dict,
             add_annotations=add_annotations,
+            annot_phase=annot_phase,
+            annot_time_umax=annot_time_umax,
+            annot_od_umax=annot_od_umax,
+            annot_od_max=annot_od_max,
+            annot_umax_point=annot_umax_point,
+            annot_fitted_model=annot_fitted_model,
             baseline_width=global_w,
             baseline_height=global_h,
             plate_width=global_w,
@@ -656,6 +727,12 @@ def ui_export(plates: dict):
             tuple(selected_plate_ids) if selected_plate_ids else (),
             wells_tuple,
             c_add_annotations,
+            annot_phase,
+            annot_time_umax,
+            annot_od_umax,
+            annot_od_max,
+            annot_umax_point,
+            annot_fitted_model,
             global_width,
             global_height,
             well_width,
