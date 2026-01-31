@@ -815,309 +815,18 @@ def plot_growth_stats(
 
 
 # --- window fits ----------------------------------------------------------------
-def add_window_well(
-    fig,
-    *,
-    d,  # dataframe for this well (or None/empty)
-    well: str,
-    gs: dict | None = None,
-    row: int | None = None,
-    col: int | None = None,
-    marker_size: int = 5,
-    marker_color: str = "#d32f2f",
-    line_color: str = "blue",
-    shade_lag="rgba(180,180,180,0.18)",
-    shade_exp="rgba(100,149,237,0.16)",
-    shade_stat="rgba(144,238,144,0.16)",
-    add_phase_shading: bool = True,
-    add_window_line: bool = True,
-    time_unit: str = "hours",
-):
-    """
-    Draw a single well (points + optional phase shading + optional fit line/curve)
-    onto an existing Plotly figure.
-
-    The fit visualization depends on the fit_method in growth stats:
-      - "Model Fitting (type)": Displays the fitted growth model curve
-      - "Sliding Window": Displays the linear maximum growth rate window
-
-    Works for both:
-      - go.Figure() (row/col None)
-      - make_subplots() figure (row/col provided)
-
-    Args:
-        time_unit: Unit for time display ("seconds", "minutes", or "hours")
-    """
-    gs = gs or {}
-
-    # Helper: where to add traces
-    trace_kwargs = {}
-    if row is not None and col is not None:
-        trace_kwargs = dict(row=row, col=col)
-
-    # Empty: nothing to draw
-    if d is None or d.empty:
-        return
-
-    t, y = _finite_sorted_xy(
-        d["Time"].to_numpy(),
-        d["baseline_corrected"].to_numpy(),
-    )
-    if t.size == 0:
-        return
-
-    # Convert time to display unit
-    t_display = convert_hours_to_unit(t, time_unit)
-    tmin, tmax = float(t[0]), float(t[-1])
-    tmin_display, tmax_display = float(t_display[0]), float(t_display[-1])
-
-    # ---- Phase shading (needs correct xref/yref for each subplot) ----
-    bad = is_bad_fit(gs)
-    if add_phase_shading and (not bad):
-        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
-        if exp_end < lag_end:
-            exp_end = lag_end
-
-        # Convert to display unit
-        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
-        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
-
-        # IMPORTANT: xref/yref differ between single-figure and subplots
-        if row is None:
-            xref = "x"
-            yref = "y domain"
-        else:
-            axis_index = (row - 1) * 12 + col  # for 8x12 plate only
-            xref = "x" if axis_index == 1 else f"x{axis_index}"
-            yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
-
-        fig.add_shape(
-            type="rect",
-            x0=lag_end_display,
-            x1=exp_end_display,
-            y0=0,
-            y1=1,
-            xref=xref,
-            yref=yref,
-            fillcolor=shade_exp,
-            line_width=0,
-            layer="below",
-        )
-
-    # ---- Scatter points ----
-    fig.add_trace(
-        go.Scatter(
-            x=t_display,
-            y=y,
-            mode="markers",
-            marker=dict(size=marker_size, color=marker_color),
-            hovertemplate=(
-                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
-            ),
-            showlegend=False,
-        ),
-        **trace_kwargs,
-    )
-
-    # ---- Window/gradient line or fitted model curve ----
-    if add_window_line:
-        # Check which fitting method was used
-        fit_method = gs.get("fit_method", "sliding_window")
-        # Only treat logistic, gompertz, richards, and baranyi as parametric model fits
-        is_model_fit = fit_method and any(
-            model in str(fit_method) for model in ["logistic", "gompertz", "richards", "baranyi"]
-        )
-
-        if is_model_fit:
-            # Draw fitted model curve for model-based fits
-            model_type = _model_type_from_fit_method(str(fit_method))
-            if model_type:
-
-                # Use t_window_start and t_window_end to determine fitting range
-                t_win_start = gs.get("t_window_start")
-                t_win_end = gs.get("t_window_end")
-
-                # Start with all data, then apply filters
-                fit_t = t.copy()
-                fit_y = y.copy()
-
-                # Apply window selection if available
-                if t_win_start is not None and t_win_end is not None:
-                    # Use only the selected time range
-                    time_tolerance = 0.1
-                    win_mask = (fit_t >= t_win_start - time_tolerance) & (
-                        fit_t <= t_win_end + time_tolerance
-                    )
-                    fit_t = fit_t[win_mask]
-                    fit_y = fit_y[win_mask]
-
-                # Refit the model to get the fitted curve (using python_package)
-                fit_result = fit_parametric(fit_t, fit_y, model=model_type)
-
-                if fit_result is not None:
-                    # Generate dense predictions for smooth curve
-                    t_dense = np.linspace(float(fit_t.min()), float(fit_t.max()), 200)
-                    t_dense_display = convert_hours_to_unit(t_dense, time_unit)
-                    params = fit_result["params"]
-
-                    # python_package models work in linear space directly
-                    if fit_result["model_type"] == "richards":
-                        y_fit = richards_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["r"],
-                            params["t0"],
-                            params["nu"],
-                        )
-                    elif fit_result["model_type"] == "gompertz":
-                        y_fit = gompertz_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["mu_max_param"],
-                            params["lam"],
-                        )
-                    elif fit_result["model_type"] == "baranyi":
-                        y_fit = baranyi_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["mu_max_param"],
-                            params["h0"],
-                        )
-                    else:
-                        # Logistic model
-                        y_fit = logistic_model(
-                            t_dense,
-                            params["K"],
-                            params["y0"],
-                            params["r"],
-                            params["t0"],
-                        )
-
-                    # Add the fitted curve as a trace
-                    fig.add_trace(
-                        go.Scatter(
-                            x=t_dense_display,
-                            y=y_fit,
-                            mode="lines",
-                            line=dict(width=2, color=line_color),
-                            hovertemplate=(
-                                f"Model: {model_type}<br>Time=%{{x:.2f}} {time_unit}<br>"
-                                f"Fitted OD=%{{y:.4f}}<extra></extra>"
-                            ),
-                            showlegend=False,
-                        ),
-                        **trace_kwargs,
-                    )
-        else:
-            # Sliding window: highlight points within the μ_max window in blue
-            t_win_start = gs.get("t_window_start")
-            t_win_end = gs.get("t_window_end")
-            if t_win_start is not None and t_win_end is not None:
-                win_mask = (t >= float(t_win_start)) & (t <= float(t_win_end))
-                if np.any(win_mask):
-                    t_win_display = convert_hours_to_unit(t[win_mask], time_unit)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=t_win_display,
-                            y=y[win_mask],
-                            mode="markers",
-                            marker=dict(size=marker_size + 2, color="blue"),
-                            hovertemplate=(
-                                f"μ_max window<br>Time=%{{x:.2f}} {time_unit}<br>"
-                                f"OD=%{{y:.4f}}<extra></extra>"
-                            ),
-                            showlegend=False,
-                        ),
-                        **trace_kwargs,
-                    )
-
-    # ---- μ_max point on top ----
-    if not is_bad_fit(gs):
-        t_umax = gs.get("time_at_umax")
-        y_umax = gs.get("od_at_umax")
-        if (
-            t_umax is not None
-            and y_umax is not None
-            and np.isfinite(t_umax)
-            and np.isfinite(y_umax)
-        ):
-            t_umax_display = convert_hours_to_unit(float(t_umax), time_unit)
-            fig.add_trace(
-                go.Scatter(
-                    x=[t_umax_display],
-                    y=[float(y_umax)],
-                    mode="markers",
-                    marker=dict(size=marker_size + 7, color="#66BB6A"),
-                    hovertemplate=(
-                        f"Umax point<br>Time=%{{x:.2f}} {time_unit}<br>"
-                        f"OD=%{{y:.4f}}<extra></extra>"
-                    ),
-                    showlegend=False,
-                ),
-                **trace_kwargs,
-            )
-
-
-@st.cache_data(show_spinner=False)
-def plot_window_single(
-    processed_data: dict,
-    well: str,
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-    time_unit: str = "hours",
-):
-    """Plot a single well with lasso selection enabled.
-
-    Args:
-        processed_data: Dictionary of processed data by well
-        well: Well identifier
-        plot_bgcolor: Background color for plot area
-        paper_bgcolor: Background color for paper
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-    """
-    d = (processed_data or {}).get(well)
-    fig = go.Figure()
-
-    add_window_well(
-        fig,
-        d=d,
-        well=well,
-        gs=None,  # or pass stats if you want shading/line here too
-        row=None,
-        col=None,
-        marker_size=5,
-        time_unit=time_unit,
-    )
-
-    # layout only here
-    fig.update_layout(
-        height=600,
-        showlegend=False,
-        plot_bgcolor=plot_bgcolor,
-        paper_bgcolor=paper_bgcolor,
-        uirevision="keep",
-        dragmode="lasso",
-        margin=dict(l=20, r=20, t=20, b=20),
-    )
-    fig.update_xaxes(type="linear", showgrid=False, title=get_time_label(time_unit))
-    fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
-    return fig
-
-
 def plot_window_plate(plate: dict, time_unit: str = "hours"):
     """Plot a full 96-well plate overview with window-fit overlays.
 
     Args:
-        plate: Plate dictionary containing processed_data and growth_stats
+        plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
+    fit_params = plate.get("fit_parameters") or {}
 
+    # Step 1: Create axis with 96 subplots
     fig = make_subplots(
         rows=8,
         cols=12,
@@ -1127,19 +836,24 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         shared_yaxes=True,
     )
 
-    # global ranges (same as you already do)
+    # Check if there's any data
+    if not proc:
+        fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
+        return fig
+
+    # Calculate global ranges
     ts, ys = [], []
     for d in proc.values():
         if d is None or d.empty:
             continue
         ts.append(d["Time"])
         ys.append(d["baseline_corrected"])
+
     if not ts:
         fig.update_layout(height=900, margin=dict(t=60), showlegend=False)
         return fig
 
     x_min, x_max = float(min(t.min() for t in ts)), float(max(t.max() for t in ts))
-    # Convert to display unit for range
     x_min_display = convert_hours_to_unit(x_min, time_unit)
     x_max_display = convert_hours_to_unit(x_max, time_unit)
     y_min, y_max = float(min(y.min() for y in ys)), float(max(y.max() for y in ys))
@@ -1147,23 +861,121 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
     y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
+    time_label = get_time_label(time_unit)
+
     for i, well in enumerate(ALL_WELLS, 1):
         d = proc.get(well)
-        if d is None or d.empty:
-            continue
+        gs = gs_all.get(well) or {}
+        fit_result = fit_params.get(well)
 
         r, c = divmod(i - 1, 12)
         r, c = r + 1, c + 1
 
-        add_window_well(
-            fig,
-            d=d,
-            well=well,
-            gs=gs_all.get(well) or {},
+        # Skip empty wells
+        if d is None or d.empty:
+            # Add well name annotation even for empty wells
+            axis_suffix = "" if i == 1 else str(i)
+            fig.add_annotation(
+                text=well,
+                xref=f"x{axis_suffix} domain",
+                yref=f"y{axis_suffix} domain",
+                x=0.05,
+                y=0.95,
+                showarrow=False,
+                font=dict(size=9, color="lightgray"),
+                xanchor="left",
+                yanchor="top",
+            )
+            continue
+
+        # Get time and data arrays
+        t, y = _finite_sorted_xy(
+            d["Time"].to_numpy(),
+            d["baseline_corrected"].to_numpy(),
+        )
+
+        if t.size == 0:
+            continue
+
+        # Convert time to display unit
+        t_display = convert_hours_to_unit(t, time_unit)
+
+        # Step 2: Populate subplot with create_base_plot
+        # Create a temporary base plot to extract its trace
+        temp_fig = gc_plot.create_base_plot(
+            time=t_display,
+            data=y,
+            scale='linear',
+            xlabel=time_label,
+            ylabel='OD600 (baseline-corrected)',
+            marker_size=2,
+            marker_opacity=0.7,
+            marker_color='#d32f2f'
+        )
+
+        # Extract traces from temp_fig and add to main figure
+        for trace in temp_fig.data:
+            trace.showlegend = False
+            fig.add_trace(trace, row=r, col=c)
+
+        # Step 3: Annotate subplot with annotate_plot
+        # Prepare annotation parameters from growth stats
+        phase_boundaries = None
+        time_umax = None
+        od_umax = None
+        od_max = None
+        fitted_model = None
+
+        if not is_bad_fit(gs):
+            exp_start = gs.get("exp_phase_start")
+            exp_end = gs.get("exp_phase_end")
+            if exp_start is not None and exp_end is not None:
+                phase_boundaries = (
+                    convert_hours_to_unit(float(exp_start), time_unit),
+                    convert_hours_to_unit(float(exp_end), time_unit)
+                )
+
+            t_umax = gs.get("time_at_umax")
+            y_umax = gs.get("od_at_umax")
+            if t_umax is not None and np.isfinite(t_umax):
+                time_umax = convert_hours_to_unit(float(t_umax), time_unit)
+            if y_umax is not None and np.isfinite(y_umax):
+                od_umax = float(y_umax)
+
+            # Get max OD
+            max_od_value = gs.get("max_od")
+            if max_od_value is not None and np.isfinite(max_od_value):
+                od_max = float(max_od_value)
+
+            # Use the stored fit result directly if available
+            if fit_result is not None:
+                # Convert time values in fit_result params to display unit
+                fitted_model = fit_result.copy()
+                if 'params' in fitted_model:
+                    params_copy = fitted_model['params'].copy()
+                    # Convert fit_t_min and fit_t_max to display unit
+                    if 'fit_t_min' in params_copy:
+                        params_copy['fit_t_min'] = convert_hours_to_unit(
+                            float(params_copy['fit_t_min']), time_unit
+                        )
+                    if 'fit_t_max' in params_copy:
+                        params_copy['fit_t_max'] = convert_hours_to_unit(
+                            float(params_copy['fit_t_max']), time_unit
+                        )
+                    fitted_model['params'] = params_copy
+
+        # Apply annotations to the subplot
+        fig = gc_plot.annotate_plot(
+            fig=fig,
+            phase_boundaries=phase_boundaries,
+            time_umax=time_umax,
+            od_umax=od_umax,
+            od_max=od_max,
+            umax_point=None,  # Don't show green dot for umax
+            fitted_model=fitted_model,
+            scale='linear',
             row=r,
-            col=c,
-            marker_size=2,  # plate: smaller dots
-            time_unit=time_unit,
+            col=c
         )
 
         # Add well name in top-left corner of each subplot
@@ -1183,315 +995,6 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
     fig.update_layout(height=900, margin=dict(t=20), showlegend=False)
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
     fig.update_yaxes(showgrid=False, range=y_range, matches="y")
-    return fig
-
-
-# --- model-based fits ----------------------------------------------------------
-def add_model_fit_well(
-    fig,
-    *,
-    d,  # dataframe for this well (or None/empty)
-    well: str,
-    gs: dict | None = None,
-    row: int | None = None,
-    col: int | None = None,
-    marker_size: int = 5,
-    marker_color: str = "#d32f2f",
-    line_color: str = "blue",
-    shade_lag="rgba(180,180,180,0.18)",
-    shade_exp="rgba(100,149,237,0.16)",
-    shade_stat="rgba(144,238,144,0.16)",
-    add_phase_shading: bool = True,
-    add_model_curve: bool = True,
-    time_unit: str = "hours",
-):
-    """
-    Draw a single well with fitted growth model curve overlay.
-
-    Similar to add_window_well but overlays the fitted parametric model
-    instead of the sliding window line.
-
-    Works for both:
-      - go.Figure() (row/col None)
-      - make_subplots() figure (row/col provided)
-
-    Args:
-        time_unit: Unit for time display ("seconds", "minutes", or "hours")
-    """
-    gs = gs or {}
-
-    # Helper: where to add traces
-    trace_kwargs = {}
-    if row is not None and col is not None:
-        trace_kwargs = dict(row=row, col=col)
-
-    # Empty: nothing to draw
-    if d is None or d.empty:
-        return
-
-    t, y = _finite_sorted_xy(
-        d["Time"].to_numpy(),
-        d["baseline_corrected"].to_numpy(),
-    )
-    if t.size == 0:
-        return
-
-    # Convert time to display unit
-    t_display = convert_hours_to_unit(t, time_unit)
-    tmin, tmax = float(t[0]), float(t[-1])
-
-    # ---- Phase shading ----
-    bad = is_bad_fit(gs)
-    if add_phase_shading and (not bad):
-        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
-        if exp_end < lag_end:
-            exp_end = lag_end
-
-        # Convert to display unit
-        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
-        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
-
-        # IMPORTANT: xref/yref differ between single-figure and subplots
-        if row is None:
-            xref = "x"
-            yref = "y domain"
-        else:
-            axis_index = (row - 1) * 12 + col  # for 8x12 plate only
-            xref = "x" if axis_index == 1 else f"x{axis_index}"
-            yref = "y domain" if axis_index == 1 else f"y{axis_index} domain"
-
-        fig.add_shape(
-            type="rect",
-            x0=lag_end_display,
-            x1=exp_end_display,
-            y0=0,
-            y1=1,
-            xref=xref,
-            yref=yref,
-            fillcolor=shade_exp,
-            line_width=0,
-            layer="below",
-        )
-
-    # ---- Scatter points ----
-    fig.add_trace(
-        go.Scatter(
-            x=t_display,
-            y=y,
-            mode="markers",
-            marker=dict(size=marker_size, color=marker_color),
-            hovertemplate=(
-                f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>OD=%{{y:.4f}}<extra></extra>"
-            ),
-            showlegend=False,
-        ),
-        **trace_kwargs,
-    )
-
-
-@st.cache_data(show_spinner=False)
-def plot_model_fit_single(
-    processed_data: dict,
-    growth_stats: dict,
-    well: str,
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-    time_unit: str = "hours",
-):
-    """Plot a single well with fitted growth model overlay and lasso selection enabled.
-
-    Args:
-        processed_data: Dictionary of processed data by well
-        growth_stats: Dictionary of growth statistics by well
-        well: Well identifier
-        plot_bgcolor: Background color for plot area
-        paper_bgcolor: Background color for paper
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-    """
-    d = (processed_data or {}).get(well)
-    gs = (growth_stats or {}).get(well)
-
-    fig = go.Figure()
-
-    add_model_fit_well(
-        fig,
-        d=d,
-        well=well,
-        gs=gs,
-        marker_size=5,
-        marker_color="#d32f2f",
-        line_color="blue",
-        time_unit=time_unit,
-    )
-
-    fig.update_layout(
-        height=600,
-        showlegend=False,
-        plot_bgcolor=plot_bgcolor,
-        paper_bgcolor=paper_bgcolor,
-        uirevision="keep",
-        dragmode="lasso",
-        margin=dict(l=20, r=20, t=20, b=20),
-    )
-    fig.update_xaxes(type="linear", showgrid=False, title=get_time_label(time_unit))
-    fig.update_yaxes(showgrid=False, title="OD600 (baseline-corrected)")
-
-    return fig
-
-
-@st.cache_data(show_spinner=False)
-def plot_model_fit_single_annotated(
-    d,
-    gs: dict,
-    well: str,
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-    time_unit: str = "hours",
-):
-    """
-    Plot a single well with model fit and annotations for phase boundaries.
-    Similar to plot_window_single_annotated but for model-based fits.
-
-    Args:
-        d: DataFrame with Time and baseline_corrected columns
-        gs: Growth statistics dictionary
-        well: Well identifier
-        plot_bgcolor: Background color for plot area
-        paper_bgcolor: Background color for paper
-        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
-    """
-    time_label = get_time_label(time_unit)
-    if d is None or d.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            title=f"Well {well} - No data",
-            xaxis_title=time_label,
-            yaxis_title="OD600",
-        )
-        return fig
-
-    fig = go.Figure()
-
-    t, y = _finite_sorted_xy(d["Time"].to_numpy(), d["baseline_corrected"].to_numpy())
-    if t.size == 0:
-        return fig
-
-    # Convert time to display unit
-    t_display = convert_hours_to_unit(t, time_unit)
-    tmin, tmax = float(t[0]), float(t[-1])
-
-    # --- shading + fit curve from growth stats ---
-    gs = gs or {}
-    if gs and not is_bad_fit(gs):
-        lag_end = float(np.clip(gs.get("exp_phase_start", tmin), tmin, tmax))
-        exp_end = float(np.clip(gs.get("exp_phase_end", tmax), tmin, tmax))
-        exp_end = max(exp_end, lag_end)
-        max_od = float(gs.get("max_od", 0.0) or 0.0)
-
-        # Convert to display unit
-        lag_end_display = convert_hours_to_unit(lag_end, time_unit)
-        exp_end_display = convert_hours_to_unit(exp_end, time_unit)
-
-        # add line for lag end
-        fig.add_vline(x=lag_end_display, line_dash="dot")
-
-        # colour code exponential phase
-        fig.add_vrect(
-            x0=lag_end_display,
-            x1=exp_end_display,
-            fillcolor="rgba(76, 175, 80, 0.16)",
-            line_width=0,
-            layer="below",
-        )
-
-        # add line for exp end
-        fig.add_vline(x=exp_end_display, line_dash="dot")
-
-        # add line for max OD600
-        fig.add_hline(y=max_od, line_dash="dot")
-
-        # Add fitted model curve
-        fit_method = gs.get("fit_method", "")
-        # Only process parametric model fits (not sliding_window or spline)
-        if fit_method and any(
-            model in fit_method for model in ["logistic", "gompertz", "richards", "baranyi"]
-        ):
-            # Extract model type from fit_method string (e.g., "model_fitting_logistic")
-            model_type = fit_method.replace("model_fitting_", "")
-
-            # Refit the model to get the fitted curve (using growthcurves package)
-            fit_result = fit_parametric(t, y, model=model_type)
-
-            if fit_result is not None:
-                t_dense = np.linspace(float(t.min()), float(t.max()), 200)
-                t_dense_display = convert_hours_to_unit(t_dense, time_unit)
-                params = fit_result["params"]
-
-                # python_package models work in linear space directly
-                if fit_result["model_type"] == "richards":
-                    y_fit = richards_model(
-                        t_dense,
-                        params["K"],
-                        params["y0"],
-                        params["r"],
-                        params["t0"],
-                        params["nu"],
-                    )
-                elif fit_result["model_type"] == "gompertz":
-                    y_fit = gompertz_model(
-                        t_dense,
-                        params["K"],
-                        params["y0"],
-                        params["mu_max_param"],
-                        params["lam"],
-                    )
-                elif fit_result["model_type"] == "baranyi":
-                    y_fit = baranyi_model(
-                        t_dense,
-                        params["K"],
-                        params["y0"],
-                        params["mu_max_param"],
-                        params["h0"],
-                    )
-                else:
-                    # Logistic model
-                    y_fit = logistic_model(
-                        t_dense, params["K"], params["y0"], params["r"], params["t0"]
-                    )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=t_dense_display,
-                            y=y_fit,
-                            mode="lines",
-                            line=dict(width=3, color="rgba(30, 144, 255, 0.7)"),
-                            name=f"Fitted {model_type} model",
-                            showlegend=True,
-                        )
-                    )
-
-    # Add data points
-    fig.add_trace(
-        go.Scatter(
-            x=t_display,
-            y=y,
-            mode="markers",
-            marker=dict(size=5, color="#d32f2f"),
-            name="Data",
-            showlegend=True,
-        )
-    )
-
-    fig.update_layout(
-        title=f"Well {well} - Model Fit",
-        xaxis_title=time_label,
-        yaxis_title="OD600 (baseline corrected)",
-        plot_bgcolor=plot_bgcolor,
-        paper_bgcolor=paper_bgcolor,
-        hovermode="closest",
-    )
-
     return fig
 
 

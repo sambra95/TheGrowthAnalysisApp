@@ -10,10 +10,8 @@ import growthcurves.plot as gc_plot
 
 from functions.plotting_functions import (
     plot_baseline,
-    plot_model_fit_single,
     plot_replicates_by_sample,
     plot_window_plate,
-    plot_window_single,
     plot_window_single_d1,
     plot_window_single_d2,
     _finite_sorted_xy,
