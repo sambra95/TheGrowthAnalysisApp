@@ -12,6 +12,8 @@ from functions.data_processing import (
     ALL_WELLS,
     compute_first_derivative,
     compute_second_derivative,
+    compute_specific_growth_rate,
+    compute_sliding_window_growth_rate,
     smooth,
 )
 from growthcurves.models import (
@@ -19,6 +21,7 @@ from growthcurves.models import (
     gompertz_model,
     logistic_model,
     richards_model,
+    spline_from_params,
 )
 from growthcurves.parametric import fit_parametric
 from growthcurves.utils import is_no_growth
@@ -1011,6 +1014,12 @@ def d2_model(t, A, r, t0):
     return A * r * (u * (u - 1) / (1 + u) ** 3)
 
 
+def mu_model(t, A, r, t0):
+    """Idealized specific growth rate model (μ = 1/N × dN/dt)."""
+    u = np.exp(-r * (t - t0))
+    return r * u / (1 + u)
+
+
 @st.cache_data
 def _fit_idealised_derivatives(t, dy):
     """Fit the idealized derivative model to a gradient series."""
@@ -1032,6 +1041,257 @@ def _fit_idealised_derivatives(t, dy):
         return popt
     except Exception:
         return None
+
+
+def plot_derivative_metric(
+    plate: dict,
+    well: str,
+    metric: str,
+    sg_window=11,
+    sg_poly=2,
+    time_unit: str = "hours",
+    gs: dict | None = None,
+):
+    """Plot either dN/dt or μ (specific growth rate) for a well.
+
+    This function generates three traces:
+    1. Raw data metric (light grey)
+    2. Smoothed data metric (main trace)
+    3. Model fit metric (dashed line)
+
+    Args:
+        plate: Plate dictionary containing processed_data and fit_parameters
+        well: Well identifier
+        metric: Either "dndt" for dN/dt or "mu" for μ
+        sg_window: Savitzky-Golay window size
+        sg_poly: Savitzky-Golay polynomial order
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+        gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
+            only the lasso-selected data points will be used for calculation.
+    """
+    # Validate metric
+    if metric not in ["dndt", "mu"]:
+        raise ValueError(f"metric must be 'dndt' or 'mu', got '{metric}'")
+
+    # Get processed data
+    d = (plate.get("processed_data") or {}).get(well)
+    if d is None or d.empty:
+        return go.Figure()
+
+    t_full = d["Time"].to_numpy(float)
+    y_full = d["baseline_corrected"].to_numpy(float)
+
+    # Store full time range for x-axis before any filtering
+    t_full_display = convert_hours_to_unit(t_full, time_unit)
+    x_range = [float(t_full_display.min()), float(t_full_display.max())]
+
+    t_raw = t_full.copy()
+    y_raw = y_full.copy()
+
+    # Filter to lasso-selected points if available
+    gs = gs or {}
+    used_times = gs.get("_used_fit_times")
+    if used_times is not None and len(used_times) > 0:
+        used_times_arr = np.asarray(used_times)
+        time_tolerance = 0.01
+        used_mask = np.zeros(len(t_raw), dtype=bool)
+        for ut in used_times_arr:
+            used_mask |= np.abs(t_raw - ut) < time_tolerance
+        t_raw = t_raw[used_mask]
+        y_raw = y_raw[used_mask]
+
+    if len(t_raw) < 3:
+        return go.Figure()
+
+    # Step 1: Calculate metric on raw data
+    if metric == "dndt":
+        t_metric_raw, metric_raw = compute_first_derivative(t_raw, y_raw)
+        metric_label = "dN/dt"
+        y_axis_title = "dN/dt"
+        plot_title = f"dN/dt – {well}"
+    else:  # mu
+        t_metric_raw, metric_raw = compute_specific_growth_rate(t_raw, y_raw)
+        metric_label = "μ"
+        y_axis_title = "μ (h⁻¹)"
+        plot_title = f"Specific growth rate – {well}"
+
+    # Step 2: Smooth the data
+    y_smooth = smooth(y_raw, sg_window, sg_poly)
+
+    # Step 3: Calculate metric on smoothed data
+    if metric == "dndt":
+        t_metric_smooth, metric_smooth = compute_first_derivative(t_raw, y_smooth)
+    else:  # mu
+        t_metric_smooth, metric_smooth = compute_specific_growth_rate(t_raw, y_smooth)
+
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t_metric_smooth, time_unit)
+
+    # Create figure
+    fig = go.Figure()
+
+    # Plot raw metric (light grey)
+    t_raw_display = convert_hours_to_unit(t_metric_raw, time_unit)
+    fig.add_trace(
+        go.Scatter(
+            x=t_raw_display,
+            y=metric_raw,
+            mode="lines",
+            line=dict(width=1, color="lightgrey"),
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (raw)=%{{y:.4f}}<extra></extra>",
+            showlegend=False,
+            name="Raw",
+        )
+    )
+
+    # Plot smoothed metric (lighter red)
+    fig.add_trace(
+        go.Scatter(
+            x=t_display,
+            y=metric_smooth,
+            mode="lines",
+            line=dict(width=2, color="#FF6692"),
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (smoothed)=%{{y:.4f}}<extra></extra>",
+            showlegend=False,
+            name="Smoothed",
+        )
+    )
+
+    # Step 4 & 5: Generate model metric and plot
+    fit_parameters = (plate.get("fit_parameters") or {}).get(well)
+    if fit_parameters is not None:
+        model_type = fit_parameters.get("model_type", "")
+        params = fit_parameters.get("params", {})
+        metric_model = None
+        t_model = None
+
+        # Get the fitted data range
+        fit_t_min = params.get("fit_t_min")
+        fit_t_max = params.get("fit_t_max")
+
+        # Filter to fitted range if available
+        if fit_t_min is not None and fit_t_max is not None:
+            fit_mask = (t_raw >= fit_t_min) & (t_raw <= fit_t_max)
+            t_model = t_raw[fit_mask]
+            y_model_raw = y_raw[fit_mask]
+            y_model_smooth = y_smooth[fit_mask]
+        else:
+            # Use full range if fit bounds not available
+            t_model = t_raw
+            y_model_raw = y_raw
+            y_model_smooth = y_smooth
+
+        if len(t_model) < 2:
+            # Not enough points in fitted range
+            t_model = None
+        else:
+            if model_type == "sliding_window":
+                # For sliding window, calculate from raw data (as growthcurves does)
+                window_points = params.get("window_points", 15)
+                if metric == "dndt":
+                    # For dN/dt, we need to smooth first then compute derivative
+                    _, metric_model = compute_first_derivative(t_model, y_model_smooth)
+                else:  # mu
+                    # For μ, use sliding window on raw data
+                    _, metric_model = compute_sliding_window_growth_rate(
+                        t_model, y_model_raw, window_points=window_points
+                    )
+
+            elif model_type in ["logistic", "gompertz", "richards", "baranyi"]:
+                # For parametric models, compute metric from the model
+                model_func = {
+                    "logistic": logistic_model,
+                    "gompertz": gompertz_model,
+                    "richards": richards_model,
+                    "baranyi": baranyi_model,
+                }.get(model_type)
+
+                if model_func is not None:
+                    # Handle parameter name mismatches and filter metadata
+                    model_params = params.copy()
+                    if "mu_max_param" in model_params:
+                        model_params["mu_max"] = model_params.pop("mu_max_param")
+                    model_params.pop("fit_t_min", None)
+                    model_params.pop("fit_t_max", None)
+
+                    # Evaluate the model on fitted range
+                    y_model = model_func(t_model, **model_params)
+
+                    # Compute metric from model
+                    if metric == "dndt":
+                        _, metric_model = compute_first_derivative(t_model, y_model)
+                    else:  # mu
+                        _, metric_model = compute_specific_growth_rate(t_model, y_model)
+
+            elif model_type == "spline":
+                # For spline model, reconstruct the spline and evaluate
+                try:
+                    spline = spline_from_params(params)
+
+                    if metric == "dndt":
+                        # Spline is fitted to log(y), so exp(spline(t)) gives y
+                        y_log_model = spline(t_model)
+                        y_model = np.exp(y_log_model)
+                        _, metric_model = compute_first_derivative(t_model, y_model)
+                    else:  # mu
+                        # μ = d(ln(y))/dt, which is the derivative of the spline
+                        metric_model = spline.derivative()(t_model)
+                except Exception:
+                    # If spline reconstruction fails, skip model trace
+                    pass
+
+        # Plot model metric if available
+        if metric_model is not None and t_model is not None and np.isfinite(metric_model).any():
+            t_model_display = convert_hours_to_unit(t_model, time_unit)
+            fig.add_trace(
+                go.Scatter(
+                    x=t_model_display,
+                    y=metric_model,
+                    mode="lines",
+                    line=dict(width=2, dash="dash", color="#636EFA"),
+                    hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (fitted)=%{{y:.4f}}<extra></extra>",
+                    showlegend=False,
+                    name="Fitted",
+                )
+            )
+
+    # Add phase boundary annotations
+    phase_boundaries = None
+    if gs and not is_bad_fit(gs):
+        exp_start = gs.get("exp_phase_start")
+        exp_end = gs.get("exp_phase_end")
+        if exp_start is not None and exp_end is not None:
+            phase_boundaries = (
+                convert_hours_to_unit(float(exp_start), time_unit),
+                convert_hours_to_unit(float(exp_end), time_unit)
+            )
+
+    if phase_boundaries is not None:
+        fig = gc_plot.annotate_plot(
+            fig=fig,
+            phase_boundaries=phase_boundaries,
+            time_umax=None,
+            od_umax=None,
+            od_max=None,
+            umax_point=None,
+            fitted_model=None,
+            scale='linear',
+            row=None,
+            col=None,
+        )
+
+    # Update layout
+    fig.update_layout(
+        title=plot_title,
+        height=400,
+        showlegend=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
+    fig.update_yaxes(showgrid=False, title=y_axis_title)
+    return fig
 
 
 def plot_window_single_d1(
@@ -1138,15 +1398,15 @@ def plot_window_single_d1(
             )
 
     fig.update_layout(
-        title=f"First derivative (smoothed) – {well}",
-        height=320,
+        title=f"dN/dt (smoothed) – {well}",
+        height=400,
         showlegend=False,
         plot_bgcolor="white",
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
     fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
-    fig.update_yaxes(showgrid=False, title="d(OD)/dt")
+    fig.update_yaxes(showgrid=False, title="dN/dt")
     return fig
 
 
@@ -1252,6 +1512,163 @@ def plot_window_single_d2(
     )
     fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
     fig.update_yaxes(showgrid=False, title="d²(OD)/dt²")
+    return fig
+
+
+def plot_window_single_mu(
+    plate: dict,
+    well: str,
+    sg_window=11,
+    sg_poly=2,
+    add_fit=True,
+    time_unit: str = "hours",
+    gs: dict | None = None,
+):
+    """Plot the instantaneous specific growth rate of a well's smoothed curve.
+
+    Args:
+        plate: Plate dictionary containing processed_data
+        well: Well identifier
+        sg_window: Savitzky-Golay window size
+        sg_poly: Savitzky-Golay polynomial order
+        add_fit: Whether to add fitted curve
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+        gs: Growth statistics dictionary (optional). If provided with _used_fit_times,
+            only the lasso-selected data points will be used for derivative calculation.
+    """
+    d = (plate.get("processed_data") or {}).get(well)
+    if d is None or d.empty:
+        return go.Figure()
+
+    t_full = d["Time"].to_numpy(float)
+    y_full = d["baseline_corrected"].to_numpy(float)
+
+    # Store full time range for x-axis before any filtering
+    t_full_display = convert_hours_to_unit(t_full, time_unit)
+    x_range = [float(t_full_display.min()), float(t_full_display.max())]
+
+    t = t_full.copy()
+    y = y_full.copy()
+
+    # Filter to lasso-selected points if available
+    gs = gs or {}
+    used_times = gs.get("_used_fit_times")
+    if used_times is not None and len(used_times) > 0:
+        used_times_arr = np.asarray(used_times)
+        time_tolerance = 0.01  # Small tolerance for floating point matching
+        used_mask = np.zeros(len(t), dtype=bool)
+        for ut in used_times_arr:
+            used_mask |= np.abs(t - ut) < time_tolerance
+        t = t[used_mask]
+        y = y[used_mask]
+
+    if len(t) < 3:
+        return go.Figure()
+
+    fig = go.Figure()
+
+    # Plot unsmoothed specific growth rate in light grey
+    _, mu_unsmoothed = compute_specific_growth_rate(t, y)
+    t_display = convert_hours_to_unit(t, time_unit)
+    fig.add_trace(
+        go.Scatter(
+            x=t_display,
+            y=mu_unsmoothed,
+            mode="lines",
+            line=dict(width=1, color="lightgrey"),
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>μ (unsmoothed)=%{{y:.4f}}<extra></extra>",
+            showlegend=False,
+            name="Unsmoothed",
+        )
+    )
+
+    # Apply smoothing before computing derivative for main trace
+    y_s = smooth(y, sg_window, sg_poly)
+
+    # Compute specific growth rate using the data processing function
+    t, mu = compute_specific_growth_rate(t, y_s)
+
+    # Convert time to display unit
+    t_display = convert_hours_to_unit(t, time_unit)
+
+    # Plot smoothed specific growth rate
+    fig.add_trace(
+        go.Scatter(
+            x=t_display,
+            y=mu,
+            mode="lines",
+            line=dict(width=2, color="#636EFA"),
+            hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>μ (smoothed)=%{{y:.4f}}<extra></extra>",
+            showlegend=False,
+            name="Smoothed",
+        )
+    )
+
+    if add_fit:
+        # Get fit parameters from the plate
+        fit_parameters = (plate.get("fit_parameters") or {}).get(well)
+        mu_fit = None
+
+        if fit_parameters is not None:
+            model_type = fit_parameters.get("model_type", "")
+            params = fit_parameters.get("params", {})
+
+            if model_type == "sliding_window":
+                # For sliding window, compute instantaneous μ at each time point
+                # Get window_points parameter
+                window_points = params.get("window_points", 15)
+                # Use the smoothed data to match the main trace
+                _, mu_fit = compute_sliding_window_growth_rate(t, y_s, window_points=window_points)
+
+            elif model_type in ["logistic", "gompertz", "richards", "baranyi"]:
+                # For parametric models, compute μ from the model
+                # μ = (1/N) * dN/dt, so we need to evaluate the model and its derivative
+                model_func = {
+                    "logistic": logistic_model,
+                    "gompertz": gompertz_model,
+                    "richards": richards_model,
+                    "baranyi": baranyi_model,
+                }.get(model_type)
+
+                if model_func is not None:
+                    # Handle parameter name mismatches and filter metadata fields
+                    # fit_gompertz and fit_baranyi store "mu_max_param" but models expect "mu_max"
+                    model_params = params.copy()
+                    if "mu_max_param" in model_params:
+                        model_params["mu_max"] = model_params.pop("mu_max_param")
+
+                    # Remove metadata fields that aren't model parameters
+                    model_params.pop("fit_t_min", None)
+                    model_params.pop("fit_t_max", None)
+
+                    # Evaluate the model
+                    y_model = model_func(t, **model_params)
+                    # Compute specific growth rate from the model
+                    _, mu_fit = compute_specific_growth_rate(t, y_model)
+
+        if mu_fit is not None and np.isfinite(mu_fit).any():
+            fig.add_trace(
+                go.Scatter(
+                    x=t_display,
+                    y=mu_fit,
+                    mode="lines",
+                    line=dict(width=2, dash="dash", color="#636EFA"),
+                    hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>μ (fitted)=%{{y:.4f}}<extra></extra>",
+                    showlegend=False,
+                    name="Fitted",
+                )
+            )
+
+    fig.update_layout(
+        title=f"Specific growth rate – {well}",
+        height=400,
+        showlegend=False,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
+    fig.update_yaxes(showgrid=False, title="μ (h⁻¹)")
     return fig
 
 

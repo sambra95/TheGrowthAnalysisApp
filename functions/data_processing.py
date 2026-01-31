@@ -99,6 +99,87 @@ def compute_second_derivative(t, y):
     return t, d2y
 
 
+def compute_specific_growth_rate(t, y):
+    """
+    Compute the instantaneous specific growth rate (μ = 1/N × dN/dt).
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected)
+
+    Returns:
+        Tuple of (t, mu) where mu is the specific growth rate μ = (1/y) × dy/dt
+    """
+    t, y = _as_float(t), _as_float(y)
+    dy = np.gradient(y, t)
+
+    # Avoid division by zero - set mu to nan where y is too small
+    mu = np.where(np.abs(y) > 1e-10, dy / y, np.nan)
+
+    return t, mu
+
+
+def compute_sliding_window_growth_rate(t, y, window_points=15):
+    """
+    Compute instantaneous specific growth rate using a sliding window approach.
+
+    For each time point, fits a linear regression to log(y) vs t in a window
+    centered at that point. The slope of the regression is the instantaneous
+    specific growth rate μ at that time.
+
+    Args:
+        t: Time array
+        y: OD600 values (baseline-corrected, must be positive)
+        window_points: Number of points in each sliding window
+
+    Returns:
+        Tuple of (t_out, mu_out) where mu_out is the sliding window growth rate.
+        Returns arrays with NaN for points where window fitting failed.
+    """
+    t, y = _as_float(t), _as_float(y)
+
+    if len(t) < window_points:
+        return t, np.full_like(t, np.nan)
+
+    # Compute log(y), handling non-positive values
+    y_log = np.where(y > 0, np.log(y), np.nan)
+
+    mu = np.full_like(t, np.nan)
+    half_window = window_points // 2
+
+    for i in range(len(t)):
+        # Define window boundaries
+        start = max(0, i - half_window)
+        end = min(len(t), i + half_window + 1)
+
+        # Ensure window has enough points
+        if end - start < max(3, window_points // 2):
+            continue
+
+        t_win = t[start:end]
+        y_log_win = y_log[start:end]
+
+        # Skip if we have NaN values in the window
+        valid_mask = np.isfinite(y_log_win)
+        if valid_mask.sum() < 3:
+            continue
+
+        t_win_valid = t_win[valid_mask]
+        y_log_win_valid = y_log_win[valid_mask]
+
+        # Fit linear regression: log(y) = slope * t + intercept
+        # slope = μ (specific growth rate)
+        try:
+            if np.ptp(t_win_valid) > 0:
+                slope, _ = np.polyfit(t_win_valid, y_log_win_valid, 1)
+                if np.isfinite(slope):
+                    mu[i] = slope
+        except (np.linalg.LinAlgError, ValueError):
+            continue
+
+    return t, mu
+
+
 def calculate_phase_ends(t, y_s, lag_frac=0.10, exp_frac=0.10):
     """Estimate lag and exponential phase end times from a smoothed curve.
 

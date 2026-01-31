@@ -11,8 +11,7 @@ from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats_fr
 import growthcurves.plot as gc_plot
 from functions.plotting_functions import (
     is_bad_fit,
-    plot_window_single_d1,
-    plot_window_single_d2,
+    plot_derivative_metric,
     _finite_sorted_xy,
 )
 
@@ -790,10 +789,12 @@ def ui_window_fits_well_editor(plates: dict):
         width="stretch",
     )
 
-    # Only show derivative plots for sliding window method
-    fig_d1 = plot_window_single_d1(
-        plate, well, sg_window=sg_w, sg_poly=sg_p, frac_peak=0.20, gs=gs
+    # Show derivative plots
+    fig_dndt = plot_derivative_metric(
+        plate, well, metric="dndt", sg_window=sg_w, sg_poly=sg_p, gs=gs
     )
-    fig_d2 = plot_window_single_d2(plate, well, sg_window=sg_w, sg_poly=sg_p, gs=gs)
-    st.plotly_chart(fig_d1, width="stretch")
-    st.plotly_chart(fig_d2, width="stretch")
+    fig_mu = plot_derivative_metric(
+        plate, well, metric="mu", sg_window=sg_w, sg_poly=sg_p, gs=gs
+    )
+    st.plotly_chart(fig_dndt, width="stretch")
+    st.plotly_chart(fig_mu, width="stretch")
