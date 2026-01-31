@@ -328,17 +328,25 @@ def build_export_zip(
                                     ):
                                         umax_point = (time_at_umax, od_at_umax)
 
-                                    fit_result = fit_parameters.get(well) if annot_fitted_model else None
+                                    fit_result = (
+                                        fit_parameters.get(well)
+                                        if annot_fitted_model
+                                        else None
+                                    )
 
                                     # Annotate plot with selected annotations
                                     fig = gc_plot.annotate_plot(
                                         fig,
                                         phase_boundaries=(
                                             (exp_phase_start, exp_phase_end)
-                                            if exp_phase_start and exp_phase_end and annot_phase
+                                            if exp_phase_start
+                                            and exp_phase_end
+                                            and annot_phase
                                             else None
                                         ),
-                                        time_umax=time_at_umax if annot_time_umax else None,
+                                        time_umax=(
+                                            time_at_umax if annot_time_umax else None
+                                        ),
                                         od_umax=od_at_umax if annot_od_umax else None,
                                         od_max=max_od if annot_od_max else None,
                                         umax_point=umax_point,
@@ -466,55 +474,49 @@ def ui_export(plates: dict):
                 )
 
             if c_well:
-                cb_col, popover_col = st.columns([3, 9], vertical_alignment="center")
-                with cb_col:
-                    c_add_annotations = st.checkbox(
-                        "Annotations",
-                        value=True,
-                        key="annotations_checkbox",
-                    )
-                with popover_col:
-                    with st.popover("Select annotations", use_container_width=False):
-                        st.caption("Choose which annotations to include on well plots:")
+                c_add_annotations = True  # Always add annotations when well plots are enabled
 
-                        # Create two columns: plot on left, checkboxes on right
-                        plot_col, checkbox_col = st.columns([2, 1])
+                with st.popover("Choose annotations to include", use_container_width=True):
+                    st.caption("Choose which annotations to include on well plots:")
 
-                        with plot_col:
-                            # Show pre-generated demo plot image
-                            st.image("info_plots/annotation_demo.png", use_column_width=True)
+                    # Create two columns: plot on left, checkboxes on right
+                    plot_col, checkbox_col = st.columns([2, 1])
 
-                        with checkbox_col:
-                            annot_phase = st.checkbox(
-                                "Phase boundaries",
-                                value=True,
-                                key="annot_phase_boundaries",
-                            )
-                            annot_time_umax = st.checkbox(
-                                "Time at μmax",
-                                value=True,
-                                key="annot_time_umax",
-                            )
-                            annot_od_umax = st.checkbox(
-                                "OD at μmax",
-                                value=True,
-                                key="annot_od_umax",
-                            )
-                            annot_od_max = st.checkbox(
-                                "Max OD",
-                                value=True,
-                                key="annot_od_max",
-                            )
-                            annot_umax_point = st.checkbox(
-                                "μmax point",
-                                value=True,
-                                key="annot_umax_point",
-                            )
-                            annot_fitted_model = st.checkbox(
-                                "Fitted model curve",
-                                value=True,
-                                key="annot_fitted_model",
-                            )
+                    with plot_col:
+                        # Show pre-generated demo plot image
+                        st.image("info_plots/annotation_demo.png", width="stretch")
+
+                    with checkbox_col:
+                        annot_phase = st.checkbox(
+                            "Phase boundaries",
+                            value=True,
+                            key="annot_phase_boundaries",
+                        )
+                        annot_time_umax = st.checkbox(
+                            "Time at μmax",
+                            value=True,
+                            key="annot_time_umax",
+                        )
+                        annot_od_umax = st.checkbox(
+                            "OD at μmax",
+                            value=True,
+                            key="annot_od_umax",
+                        )
+                        annot_od_max = st.checkbox(
+                            "Max OD",
+                            value=True,
+                            key="annot_od_max",
+                        )
+                        annot_umax_point = st.checkbox(
+                            "μmax point",
+                            value=True,
+                            key="annot_umax_point",
+                        )
+                        annot_fitted_model = st.checkbox(
+                            "Fitted model curve",
+                            value=True,
+                            key="annot_fitted_model",
+                        )
 
                 # Single row for graph types, width, and height
                 graph_col, width_col, height_col = st.columns([3, 1, 1])
