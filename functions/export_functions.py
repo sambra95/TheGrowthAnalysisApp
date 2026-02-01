@@ -6,15 +6,17 @@ import zipfile
 import pandas as pd
 import streamlit as st
 import growthcurves.plot as gc_plot
+from growthcurves.plot import plot_derivative_metric
 
 from functions.plotting_functions import (
     plot_baseline,
     plot_replicates_by_sample,
     plot_window_plate,
-    plot_window_single_d1,
-    plot_window_single_mu,
     _finite_sorted_xy,
     is_bad_fit,
+)
+from functions.check_growth_fits import (
+    _add_lasso_selected_points,
 )
 
 
@@ -154,9 +156,7 @@ def build_export_zip(
     include_baseline_plots: bool,
     include_replicates: bool,
     include_well_plots: bool,
-    well_graphs: (
-        list[str] | None
-    ) = None,  # e.g. ["OD", "1st Derivative", "μ"]
+    well_graphs: list[str] | None = None,  # e.g. ["OD", "1st Derivative", "μ"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
@@ -301,6 +301,18 @@ def build_export_zip(
                                     t_display, y_raw, scale="linear"
                                 )
 
+                                # Highlight data points used in analysis with red overlay
+                                selected_times = gs.get("_used_fit_times")
+                                if not selected_times:
+                                    selected_times = t_raw.tolist()
+                                fig = _add_lasso_selected_points(
+                                    fig,
+                                    t_raw,
+                                    y_raw,
+                                    selected_times,
+                                    scale="linear",
+                                )
+
                                 # Annotate plot if requested
                                 if add_annotations and not is_bad_fit(gs) and gs:
                                     # Get stats from dictionary
@@ -366,30 +378,70 @@ def build_export_zip(
                                 )
 
                     # Export derivative and growth rate plots
-                    if "1st Derivative" in well_graphs:
-                        fig = plot_window_single_d1(
-                            p,
-                            well,
-                            sg_window=sg_w,
-                            sg_poly=sg_p,
-                            frac_peak=0.20,
-                            add_fit=False,
-                        )
-                        if fig is not None:
-                            zf.writestr(
-                                f"{plate_dir}/curves_d1/{well}.png",
-                                _png(fig, well_width, well_height),
+                    if "1st Derivative" in well_graphs or "μ" in well_graphs:
+                        # Get the processed data for this well
+                        d = processed.get(well)
+                        all_growth_stats = p.get("growth_stats") or {}
+                        gs = all_growth_stats.get(well) or {}
+                        fit_parameters = p.get("fit_parameters") or {}
+
+                        if d is not None and not d.empty:
+                            # Get time and OD data
+                            t_raw, y_raw = _finite_sorted_xy(
+                                d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
                             )
 
-                    if "μ" in well_graphs:
-                        fig = plot_window_single_mu(
-                            p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
-                        )
-                        if fig is not None:
-                            zf.writestr(
-                                f"{plate_dir}/curves_mu/{well}.png",
-                                _png(fig, well_width, well_height),
-                            )
+                            if t_raw.size > 0:
+                                # Prepare phase boundaries if available
+                                phase_boundaries = None
+                                if not is_bad_fit(gs) and gs:
+                                    exp_phase_start = gs.get("exp_phase_start")
+                                    exp_phase_end = gs.get("exp_phase_end")
+                                    if (
+                                        exp_phase_start is not None
+                                        and exp_phase_end is not None
+                                    ):
+                                        phase_boundaries = (
+                                            exp_phase_start,
+                                            exp_phase_end,
+                                        )
+
+                                # Get fit result for model overlay
+                                fit_result = fit_parameters.get(well)
+
+                                if "1st Derivative" in well_graphs:
+                                    fig = plot_derivative_metric(
+                                        t=t_raw,
+                                        y=y_raw,
+                                        metric="dndt",
+                                        fit_result=fit_result,
+                                        sg_window=sg_w,
+                                        sg_poly=sg_p,
+                                        phase_boundaries=phase_boundaries,
+                                        title=f"dN/dt – {well}",
+                                    )
+                                    if fig is not None:
+                                        zf.writestr(
+                                            f"{plate_dir}/curves_d1/{well}.png",
+                                            _png(fig, well_width, well_height),
+                                        )
+
+                                if "μ" in well_graphs:
+                                    fig = plot_derivative_metric(
+                                        t=t_raw,
+                                        y=y_raw,
+                                        metric="mu",
+                                        fit_result=fit_result,
+                                        sg_window=sg_w,
+                                        sg_poly=sg_p,
+                                        phase_boundaries=phase_boundaries,
+                                        title=f"Specific growth rate – {well}",
+                                    )
+                                    if fig is not None:
+                                        zf.writestr(
+                                            f"{plate_dir}/curves_mu/{well}.png",
+                                            _png(fig, well_width, well_height),
+                                        )
 
     buf.seek(0)
     return buf.getvalue()
@@ -452,16 +504,19 @@ def ui_export(plates: dict):
     # Well Level Plots
     with row1_col2:
         with st.container(border=True):
-            st.header("Well Level Plots")
-            cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+            # Title and checkbox on the same line
+            title_col, cb_col = st.columns([1, 2], vertical_alignment="center")
+            with title_col:
+                st.header("Well Level Plots")
             with cb_col:
                 c_well = st.checkbox(
                     "Include well plots", value=False, key="well_checkbox"
                 )
-            with desc_col:
-                st.caption(
-                    "Individual well growth curves with annotations and derivative plots"
-                )
+
+            # Caption underneath the title
+            st.caption(
+                "Individual well growth curves with annotations and derivative plots"
+            )
 
             if c_well:
                 c_add_annotations = (
@@ -517,7 +572,7 @@ def ui_export(plates: dict):
 
                 with graph_col:
                     well_graphs = st.multiselect(
-                        "Well graph types",
+                        "Well graphs to include",
                         options=["OD", "1st Derivative", "μ"],
                         default=["OD", "1st Derivative", "μ"],
                         key="well_graphs",
