@@ -597,8 +597,8 @@ def ui_export(plates: dict):
                         step=100,
                         key="well_height",
                     )
-
-                selected_plate_ids = st.multiselect(
+                col1, col2 = st.columns((4, 1), vertical_alignment="center")
+                selected_plate_ids = col1.multiselect(
                     "Plates to include",
                     options=plate_ids,
                     default=plate_ids,
@@ -610,8 +610,8 @@ def ui_export(plates: dict):
 
                 if selected_plate_ids:
 
-                    include_all_wells = st.checkbox(
-                        "Include all wells for all plates",
+                    include_all_wells = col2.checkbox(
+                        "Include all wells",
                         value=True,
                         key="include_all_wells_global",
                     )
