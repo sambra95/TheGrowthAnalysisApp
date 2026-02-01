@@ -272,6 +272,24 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
         {(nm or "").strip() for *_, nm, __ in items} - {"", "False", "BLANK"}
     )
 
+    # Return empty figure if no valid samples found
+    if not names:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No analyzed data available. Please analyze your data first.",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            showarrow=False,
+            font=dict(size=16),
+        )
+        fig.update_layout(
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+        )
+        return fig
+
     cols = int(np.sqrt(max(1, len(names)))) + 1
     rows = (len(names) + cols - 1) // cols
     pos = {n: divmod(i, cols) for i, n in enumerate(names)}
