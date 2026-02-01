@@ -700,358 +700,427 @@ Phase boundaries are detected when μ crosses these thresholds. Lower values det
 st.divider()
 
 # Upload (store bytes directly into ss.plates[plate_id]).
-u1, u2 = st.columns(2)
-with u1:
-    with st.container(border=True):
-        st.header("Step 1. Upload data file")
-        data_file = st.file_uploader(
-            "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
-        )
-with u2:
-    with st.container(border=True):
-        st.header("Step 2. Upload plate map")
-        map_file = st.file_uploader(
-            "Plate map (.xls/.xlsx) with 'rows' column", ["xlsx", "xls"], key="map_up"
-        )
+@st.fragment
+def upload_files_fragment():
+    """Fragment for file upload controls."""
+    u1, u2 = st.columns(2)
+    with u1:
+        with st.container(border=True):
+            st.header("Step 1. Upload data file")
+            data_file = st.file_uploader(
+                "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
+            )
+    with u2:
+        with st.container(border=True):
+            st.header("Step 2. Upload plate map")
+            map_file = st.file_uploader(
+                "Plate map (.xls/.xlsx) with 'rows' column", ["xlsx", "xls"], key="map_up"
+            )
 
-if st.button(
-    "Load plate",
-    type="primary",
-    width="stretch",
-    disabled=not (data_file and map_file),
-):
-    plate_id = (
-        data_file.name.rsplit(".", 1)[0]
-        if getattr(data_file, "name", None)
-        else "Plate"
-    )
-    load_plate(
-        ss.plates,
-        plate_id,
-        data_bytes=data_file.getvalue(),
-        plate_bytes=map_file.getvalue(),
-        params=DEFAULT_PARAMS,
-    )
-    st.toast(f"Saved uploads for {plate_id}")
+    if st.button(
+        "Load plate",
+        type="primary",
+        width="stretch",
+        disabled=not (data_file and map_file),
+    ):
+        plate_id = (
+            data_file.name.rsplit(".", 1)[0]
+            if getattr(data_file, "name", None)
+            else "Plate"
+        )
+        load_plate(
+            ss.plates,
+            plate_id,
+            data_bytes=data_file.getvalue(),
+            plate_bytes=map_file.getvalue(),
+            params=DEFAULT_PARAMS,
+        )
+        st.toast(f"Saved uploads for {plate_id}")
+
+upload_files_fragment()
 
 
 ready = sorted(ss.plates)
 
 # Step 3: Select plate and input metadata
-with st.container(border=True):
-    st.header("Step 3. Select plate and preprocessing parameters")
+@st.fragment
+def preprocessing_params_fragment():
+    """Fragment for preprocessing parameters and plate preview."""
+    with st.container(border=True):
+        st.header("Step 3. Select plate and preprocessing parameters")
 
-    pcol, acol = st.columns(2, gap="large")
+        pcol, acol = st.columns(2, gap="large")
 
-    with pcol:
-        plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-        params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+        with pcol:
+            plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+            params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
-        a, b, c = st.columns(3, vertical_alignment="center")
-        time_unit = a.selectbox(
-            "Time unit in data file",
-            options=["seconds", "minutes", "hours"],
-            index=["seconds", "minutes", "hours"].index(
-                params0.get("time_unit", "hours")
-            ),
-            help="Select the unit of time values in your data file's Time column",
-        )
-        pl_cm = b.number_input(
-            "Pathlength (cm)",
-            value=float(params0["pathlength_cm_"]),
-            step=0.01,
-            format="%.3f",
-            help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
-        )
-        blank = c.checkbox(
-            "Blank subtraction",
-            bool(params0["blank"]),
-            help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
-        )
+            a, b, c = st.columns(3, vertical_alignment="center")
+            time_unit = a.selectbox(
+                "Time unit in data file",
+                options=["seconds", "minutes", "hours"],
+                index=["seconds", "minutes", "hours"].index(
+                    params0.get("time_unit", "hours")
+                ),
+                help="Select the unit of time values in your data file's Time column",
+            )
+            pl_cm = b.number_input(
+                "Pathlength (cm)",
+                value=float(params0["pathlength_cm_"]),
+                step=0.01,
+                format="%.3f",
+                help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
+            )
+            blank = c.checkbox(
+                "Blank subtraction",
+                bool(params0["blank"]),
+                help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
+            )
 
-        a, b = st.columns(2)
-        clip_time_series = (
-            float(
-                a.number_input(
-                    "Start (h)",
-                    0.0,
-                    1e6,
-                    float(params0["clip_time_series"][0]),
-                    0.5,
-                    help="Starting time for analysis (earlier time points will be excluded)",
+            a, b = st.columns(2)
+            clip_time_series = (
+                float(
+                    a.number_input(
+                        "Start (h)",
+                        0.0,
+                        1e6,
+                        float(params0["clip_time_series"][0]),
+                        0.5,
+                        help="Starting time for analysis (earlier time points will be excluded)",
+                    )
+                ),
+                float(
+                    b.number_input(
+                        "End (h)",
+                        0.0,
+                        1e6,
+                        float(params0["clip_time_series"][1]),
+                        0.5,
+                        help="Ending time for analysis (later time points will be excluded)",
+                    )
+                ),
+            )
+
+            # Get default excluded wells from params0
+            default_excluded = params0.get("remove_wells", [])
+            if default_excluded is False or not default_excluded:
+                default_excluded = []
+
+            remove_wells = st.multiselect(
+                "Exclude wells",
+                options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
+                default=default_excluded,
+                help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
+            )
+
+            # Preserve the False sentinel behavior used elsewhere.
+            remove_wells = remove_wells if remove_wells else False
+
+            st.write("")
+            if st.button(
+                "Remove selected plate",
+                type="tertiary",
+                width="stretch",
+                disabled=not plate_id,
+            ):
+                ss.plates.pop(plate_id, None)
+                st.rerun()
+
+        with acol:
+            # Preview grid in Step 3
+            if plate_id:
+                rec = ss.plates.get(plate_id, {})
+                if rec.get("uploads"):
+                    # Build a temporary params dict for preview (will be completed in Step 4)
+                    preview_params = dict(
+                        time_unit=str(time_unit),
+                        pathlength_cm_=float(pl_cm),
+                        clip_time_series=clip_time_series,
+                        remove_wells=remove_wells,
+                        blank=bool(blank),
+                        window_points=int(params0.get("window_points", 15)),
+                        lag_cutoff=float(params0.get("lag_cutoff", 0.1)),
+                        exp_cutoff=float(params0.get("exp_cutoff", 0.1)),
+                        sg_window=int(params0.get("sg_window", 15)),
+                        sg_poly=int(params0.get("sg_poly", 2)),
+                        min_data_points=int(params0.get("min_data_points", 5)),
+                        min_signal_to_noise=float(params0.get("min_signal_to_noise", 5.0)),
+                        min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
+                        growth_method=str(params0.get("growth_method", "Sliding Window")),
+                        model_type=str(params0.get("model_type", "logistic")),
+                    )
+                    tmp = {"uploads": rec["uploads"], "params": preview_params}
+                    plate_preview = analyse_plate(tmp)
+                    present = set(plate_preview.get("growth_stats", {}).keys())
+
+                    grid = build_symbol_grid(
+                        plate_map=plate_preview["plate_map"],
+                        present=present,
+                        remove_wells=preview_params["remove_wells"],
+                        blank=preview_params["blank"],
+                    )
+
+                    st.subheader(plate_id)
+                    st.caption(
+                        "· 🟩 sample · 🟦 blank · 🟥 excluded by user · 🟧 not in data file · ⬜ not in plate map"
+                    )
+                    render_plate_table(grid)
+
+            else:
+                st.info("Upload files to see plate preview.")
+
+    # Store selected values in session state for access by other fragments
+    if plate_id:
+        ss.setdefault("step3_params", {})
+        ss["step3_params"]["plate_id"] = plate_id
+        ss["step3_params"]["time_unit"] = time_unit
+        ss["step3_params"]["pl_cm"] = pl_cm
+        ss["step3_params"]["blank"] = blank
+        ss["step3_params"]["clip_time_series"] = clip_time_series
+        ss["step3_params"]["remove_wells"] = remove_wells
+        ss["step3_params"]["params0"] = params0
+
+preprocessing_params_fragment()
+
+# Step 4: Select analysis parameters
+@st.fragment
+def analysis_params_fragment():
+    """Fragment for analysis parameters."""
+    # Get values from Step 3
+    step3_params = ss.get("step3_params", {})
+    params0 = step3_params.get("params0", DEFAULT_PARAMS)
+
+    with st.container(border=True):
+        st.header("Step 4. Select the analysis parameters")
+
+        st.markdown("**Growth Descriptor Calculation Method**")
+
+        method_col, option_col = st.columns(2)
+        with method_col:
+            # Map display names to internal method names
+            method_options = [
+                "Sliding Window (non-parametric)",
+                "Spline (non-parametric)",
+                "Logistic (parametric)",
+                "Gompertz (parametric)",
+                "Richards (parametric)",
+                "Baranyi (parametric)",
+            ]
+
+            # Determine current selection index from stored params
+            stored_method = params0.get("growth_method", "Sliding Window")
+            stored_model = params0.get("model_type", "logistic")
+
+            if stored_method == "Sliding Window":
+                default_index = 0
+            elif stored_method == "Spline":
+                default_index = 1
+            elif stored_method == "Model Fitting":
+                if stored_model == "logistic":
+                    default_index = 2
+                elif stored_model == "gompertz":
+                    default_index = 3
+                elif stored_model == "richards":
+                    default_index = 4
+                elif stored_model == "baranyi":
+                    default_index = 5
+                else:
+                    default_index = 2  # fallback to logistic
+            else:
+                default_index = 0
+
+            selected_method = st.selectbox(
+                "Method",
+                options=method_options,
+                index=default_index,
+                help="Choose how to calculate growth descriptors: non-parametric methods use data-driven approaches, parametric methods fit theoretical growth models",
+            )
+
+            # Parse selection to determine growth_method and model_type
+            if "Sliding Window" in selected_method:
+                growth_method = "Sliding Window"
+                model_type = "logistic"  # dummy value
+            elif "Spline" in selected_method:
+                growth_method = "Spline"
+                model_type = "logistic"  # dummy value
+            elif "Logistic" in selected_method:
+                growth_method = "Model Fitting"
+                model_type = "logistic"
+            elif "Gompertz" in selected_method:
+                growth_method = "Model Fitting"
+                model_type = "gompertz"
+            elif "Richards" in selected_method:
+                growth_method = "Model Fitting"
+                model_type = "richards"
+            elif "Baranyi" in selected_method:
+                growth_method = "Model Fitting"
+                model_type = "baranyi"
+            else:
+                # Fallback
+                growth_method = "Sliding Window"
+                model_type = "logistic"
+
+        with option_col:
+            # Method-specific options
+            if growth_method == "Sliding Window":
+                window_points = st.number_input(
+                    "Window size (points)",
+                    5,
+                    200,
+                    int(params0["window_points"]),
+                    1,
+                    help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
                 )
-            ),
-            float(
-                b.number_input(
-                    "End (h)",
-                    0.0,
-                    1e6,
-                    float(params0["clip_time_series"][1]),
-                    0.5,
-                    help="Ending time for analysis (later time points will be excluded)",
+                spline_s = None
+            elif growth_method == "Spline":
+                default_spline_s = params0.get("spline_s", 1.0)
+                if default_spline_s is None:
+                    default_spline_s = 1.0
+                spline_s = st.number_input(
+                    "Smoothing factor",
+                    0.01,
+                    100.0,
+                    float(default_spline_s),
+                    0.1,
+                    help="Smoothing factor for spline fit (lower = more flexible, higher = smoother). Set to None for automatic smoothing based on data size.",
                 )
-            ),
-        )
+                window_points = int(params0["window_points"])
+            else:
+                # Model Fitting - no additional parameters needed (model already selected)
+                window_points = int(params0["window_points"])
+                spline_s = None
 
-        # Get default excluded wells from params0
-        default_excluded = params0.get("remove_wells", [])
-        if default_excluded is False or not default_excluded:
-            default_excluded = []
-
-        remove_wells = st.multiselect(
-            "Exclude wells",
-            options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
-            default=default_excluded,
-            help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
-        )
-
-        # Preserve the False sentinel behavior used elsewhere.
-        remove_wells = remove_wells if remove_wells else False
+        # Phase boundary cutoffs - apply to all methods
+        st.write("")
+        st.markdown("**Phase Boundary Detection**")
+        lag_col, exp_col = st.columns(2)
+        with lag_col:
+            lag_cutoff = st.number_input(
+                "Lag phase cutoff",
+                0.01,
+                0.5,
+                float(params0.get("lag_cutoff", 0.5)),
+                0.01,
+                format="%.2f",
+                help="Fraction of maximum growth rate used to define the end of lag phase",
+            )
+        with exp_col:
+            exp_cutoff = st.number_input(
+                "Exponential phase cutoff",
+                0.01,
+                0.5,
+                float(params0.get("exp_cutoff", 0.5)),
+                0.01,
+                format="%.2f",
+                help="Fraction of maximum growth rate used to define the end of exponential phase",
+            )
 
         st.write("")
+        st.markdown("**'No Growth' Thresholds**")
+        st.caption("Wells failing these criteria will be marked as no growth")
+
+        col1, col2, col3 = st.columns(3)
+        min_data_points = col1.number_input(
+            "Minimum data points",
+            1,
+            100,
+            int(params0.get("min_data_points", 5)),
+            1,
+            help="Minimum number of valid data points required for growth analysis",
+        )
+        min_signal_to_noise = col2.number_input(
+            "Minimum signal-to-noise ratio",
+            0.1,
+            100.0,
+            float(params0.get("min_signal_to_noise", 5.0)),
+            0.1,
+            help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
+        )
+        min_growth_rate = col3.number_input(
+            "Minimum growth rate (1/h)",
+            0.0,
+            1.0,
+            float(params0.get("min_growth_rate", 0.001)),
+            0.0001,
+            format="%.4f",
+            help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
+        )
+
+    # Store analysis parameters in session state
+    ss.setdefault("step4_params", {})
+    ss["step4_params"]["window_points"] = window_points
+    ss["step4_params"]["lag_cutoff"] = lag_cutoff
+    ss["step4_params"]["exp_cutoff"] = exp_cutoff
+    ss["step4_params"]["min_data_points"] = min_data_points
+    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
+    ss["step4_params"]["min_growth_rate"] = min_growth_rate
+    ss["step4_params"]["growth_method"] = growth_method
+    ss["step4_params"]["model_type"] = model_type
+    ss["step4_params"]["spline_s"] = spline_s
+
+analysis_params_fragment()
+
+# Step 5: Click analyse
+@st.fragment
+def analyse_button_fragment():
+    """Fragment for the analyze button."""
+    # Get values from Step 3 and Step 4
+    step3_params = ss.get("step3_params", {})
+    step4_params = ss.get("step4_params", {})
+
+    plate_id = step3_params.get("plate_id")
+    time_unit = step3_params.get("time_unit", "hours")
+    pl_cm = step3_params.get("pl_cm", 0.42)
+    blank = step3_params.get("blank", True)
+    clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
+    remove_wells = step3_params.get("remove_wells", False)
+    params0 = step3_params.get("params0", DEFAULT_PARAMS)
+
+    window_points = step4_params.get("window_points", 15)
+    lag_cutoff = step4_params.get("lag_cutoff", 0.5)
+    exp_cutoff = step4_params.get("exp_cutoff", 0.5)
+    min_data_points = step4_params.get("min_data_points", 5)
+    min_signal_to_noise = step4_params.get("min_signal_to_noise", 5.0)
+    min_growth_rate = step4_params.get("min_growth_rate", 0.001)
+    growth_method = step4_params.get("growth_method", "Sliding Window")
+    model_type = step4_params.get("model_type", "logistic")
+    spline_s = step4_params.get("spline_s", None)
+
+    # Build final params dict
+    params = dict(
+        time_unit=str(time_unit),
+        pathlength_cm_=float(pl_cm),
+        clip_time_series=clip_time_series,
+        remove_wells=remove_wells,
+        blank=bool(blank),
+        window_points=int(window_points),
+        lag_cutoff=float(lag_cutoff),
+        exp_cutoff=float(exp_cutoff),
+        sg_window=int(params0.get("sg_window", 15)),
+        sg_poly=int(params0.get("sg_poly", 2)),
+        min_data_points=int(min_data_points),
+        min_signal_to_noise=float(min_signal_to_noise),
+        min_growth_rate=float(min_growth_rate),
+        growth_method=str(growth_method),
+        model_type=str(model_type),
+        spline_s=float(spline_s) if spline_s is not None else None,
+    )
+
+    with st.container(border=True):
+        st.header("Step 5. Click analyse")
+
         if st.button(
-            "Remove selected plate",
-            type="tertiary",
+            "Update parameters and analyse selected plate",
+            type="primary",
             width="stretch",
             disabled=not plate_id,
         ):
-            ss.plates.pop(plate_id, None)
-            st.rerun()
-
-    with acol:
-        # Preview grid in Step 3
-        if plate_id:
             rec = ss.plates.get(plate_id, {})
-            if rec.get("uploads"):
-                # Build a temporary params dict for preview (will be completed in Step 4)
-                preview_params = dict(
-                    time_unit=str(time_unit),
-                    pathlength_cm_=float(pl_cm),
-                    clip_time_series=clip_time_series,
-                    remove_wells=remove_wells,
-                    blank=bool(blank),
-                    window_points=int(params0.get("window_points", 15)),
-                    lag_cutoff=float(params0.get("lag_cutoff", 0.1)),
-                    exp_cutoff=float(params0.get("exp_cutoff", 0.1)),
-                    sg_window=int(params0.get("sg_window", 15)),
-                    sg_poly=int(params0.get("sg_poly", 2)),
-                    min_data_points=int(params0.get("min_data_points", 5)),
-                    min_signal_to_noise=float(params0.get("min_signal_to_noise", 5.0)),
-                    min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
-                    growth_method=str(params0.get("growth_method", "Sliding Window")),
-                    model_type=str(params0.get("model_type", "logistic")),
-                )
-                tmp = {"uploads": rec["uploads"], "params": preview_params}
-                plate_preview = analyse_plate(tmp)
-                present = set(plate_preview.get("growth_stats", {}).keys())
-
-                grid = build_symbol_grid(
-                    plate_map=plate_preview["plate_map"],
-                    present=present,
-                    remove_wells=preview_params["remove_wells"],
-                    blank=preview_params["blank"],
-                )
-
-                st.subheader(plate_id)
-                st.caption(
-                    "· 🟩 sample · 🟦 blank · 🟥 excluded by user · 🟧 not in data file · ⬜ not in plate map"
-                )
-                render_plate_table(grid)
-
-        else:
-            st.info("Upload files to see plate preview.")
-
-# Step 4: Select analysis parameters
-with st.container(border=True):
-    st.header("Step 4. Select the analysis parameters")
-
-    st.markdown("**Growth Descriptor Calculation Method**")
-
-    method_col, option_col = st.columns(2)
-    with method_col:
-        # Map display names to internal method names
-        method_options = [
-            "Sliding Window (non-parametric)",
-            "Spline (non-parametric)",
-            "Logistic (parametric)",
-            "Gompertz (parametric)",
-            "Richards (parametric)",
-            "Baranyi (parametric)",
-        ]
-
-        # Determine current selection index from stored params
-        stored_method = params0.get("growth_method", "Sliding Window")
-        stored_model = params0.get("model_type", "logistic")
-
-        if stored_method == "Sliding Window":
-            default_index = 0
-        elif stored_method == "Spline":
-            default_index = 1
-        elif stored_method == "Model Fitting":
-            if stored_model == "logistic":
-                default_index = 2
-            elif stored_model == "gompertz":
-                default_index = 3
-            elif stored_model == "richards":
-                default_index = 4
-            elif stored_model == "baranyi":
-                default_index = 5
+            if not rec.get("uploads"):
+                st.error("No uploads found for this plate.")
             else:
-                default_index = 2  # fallback to logistic
-        else:
-            default_index = 0
+                rec["params"] = params
+                ss.plates[plate_id] = analyse_plate(rec)
+                st.toast(f"Analysed {plate_id}", duration="infinite")
 
-        selected_method = st.selectbox(
-            "Method",
-            options=method_options,
-            index=default_index,
-            help="Choose how to calculate growth descriptors: non-parametric methods use data-driven approaches, parametric methods fit theoretical growth models",
-        )
-
-        # Parse selection to determine growth_method and model_type
-        if "Sliding Window" in selected_method:
-            growth_method = "Sliding Window"
-            model_type = "logistic"  # dummy value
-        elif "Spline" in selected_method:
-            growth_method = "Spline"
-            model_type = "logistic"  # dummy value
-        elif "Logistic" in selected_method:
-            growth_method = "Model Fitting"
-            model_type = "logistic"
-        elif "Gompertz" in selected_method:
-            growth_method = "Model Fitting"
-            model_type = "gompertz"
-        elif "Richards" in selected_method:
-            growth_method = "Model Fitting"
-            model_type = "richards"
-        elif "Baranyi" in selected_method:
-            growth_method = "Model Fitting"
-            model_type = "baranyi"
-        else:
-            # Fallback
-            growth_method = "Sliding Window"
-            model_type = "logistic"
-
-    with option_col:
-        # Method-specific options
-        if growth_method == "Sliding Window":
-            window_points = st.number_input(
-                "Window size (points)",
-                5,
-                200,
-                int(params0["window_points"]),
-                1,
-                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
-            )
-            spline_s = None
-        elif growth_method == "Spline":
-            default_spline_s = params0.get("spline_s", 1.0)
-            if default_spline_s is None:
-                default_spline_s = 1.0
-            spline_s = st.number_input(
-                "Smoothing factor",
-                0.01,
-                100.0,
-                float(default_spline_s),
-                0.1,
-                help="Smoothing factor for spline fit (lower = more flexible, higher = smoother). Set to None for automatic smoothing based on data size.",
-            )
-            window_points = int(params0["window_points"])
-        else:
-            # Model Fitting - no additional parameters needed (model already selected)
-            window_points = int(params0["window_points"])
-            spline_s = None
-
-    # Phase boundary cutoffs - apply to all methods
-    st.write("")
-    st.markdown("**Phase Boundary Detection**")
-    lag_col, exp_col = st.columns(2)
-    with lag_col:
-        lag_cutoff = st.number_input(
-            "Lag phase cutoff",
-            0.01,
-            0.5,
-            float(params0.get("lag_cutoff", 0.5)),
-            0.01,
-            format="%.2f",
-            help="Fraction of maximum growth rate used to define the end of lag phase",
-        )
-    with exp_col:
-        exp_cutoff = st.number_input(
-            "Exponential phase cutoff",
-            0.01,
-            0.5,
-            float(params0.get("exp_cutoff", 0.5)),
-            0.01,
-            format="%.2f",
-            help="Fraction of maximum growth rate used to define the end of exponential phase",
-        )
-
-    st.write("")
-    st.markdown("**'No Growth' Thresholds**")
-    st.caption("Wells failing these criteria will be marked as no growth")
-
-    col1, col2, col3 = st.columns(3)
-    min_data_points = col1.number_input(
-        "Minimum data points",
-        1,
-        100,
-        int(params0.get("min_data_points", 5)),
-        1,
-        help="Minimum number of valid data points required for growth analysis",
-    )
-    min_signal_to_noise = col2.number_input(
-        "Minimum signal-to-noise ratio",
-        0.1,
-        100.0,
-        float(params0.get("min_signal_to_noise", 5.0)),
-        0.1,
-        help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
-    )
-    min_growth_rate = col3.number_input(
-        "Minimum growth rate (1/h)",
-        0.0,
-        1.0,
-        float(params0.get("min_growth_rate", 0.001)),
-        0.0001,
-        format="%.4f",
-        help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
-    )
-
-# Build final params dict
-params = dict(
-    time_unit=str(time_unit),
-    pathlength_cm_=float(pl_cm),
-    clip_time_series=clip_time_series,
-    remove_wells=remove_wells,
-    blank=bool(blank),
-    window_points=int(window_points),
-    lag_cutoff=float(lag_cutoff),
-    exp_cutoff=float(exp_cutoff),
-    sg_window=int(params0.get("sg_window", 15)),
-    sg_poly=int(params0.get("sg_poly", 2)),
-    min_data_points=int(min_data_points),
-    min_signal_to_noise=float(min_signal_to_noise),
-    min_growth_rate=float(min_growth_rate),
-    growth_method=str(growth_method),
-    model_type=str(model_type),
-    spline_s=float(spline_s) if spline_s is not None else None,
-)
-
-# Step 5: Click analyse
-with st.container(border=True):
-    st.header("Step 5. Click analyse")
-
-    if st.button(
-        "Update parameters and analyse selected plate",
-        type="primary",
-        width="stretch",
-        disabled=not plate_id,
-    ):
-        rec = ss.plates.get(plate_id, {})
-        if not rec.get("uploads"):
-            st.error("No uploads found for this plate.")
-        else:
-            rec["params"] = params
-            ss.plates[plate_id] = analyse_plate(rec)
-            st.toast(f"Analysed {plate_id}", duration="infinite")
+analyse_button_fragment()
