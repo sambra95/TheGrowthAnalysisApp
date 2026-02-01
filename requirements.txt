@@ -6,3 +6,5 @@ streamlit==1.52.0
 openpyxl==3.1.5
 xlrd==2.0.2
 growthcurves==0.3.0
+streamlit_sortables==0.3.1
+streamlit-aggrid==1.2.1
