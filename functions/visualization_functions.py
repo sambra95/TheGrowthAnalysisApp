@@ -334,12 +334,12 @@ def ui_growth_summaries(plates: dict):
         "growth_combined_form",
         border=False,
     ):
-        col1, col_or, col2 = st.columns([1, 0.1, 1])
+        col1, col2 = st.columns([1, 1])
         # ============================================================
         # Box 1: Growth stats controls
         # ============================================================
         with col1.container(border=True):
-            st.header("Step 2a. Plot Growth Statistics")
+            st.header("Step 2. option a) Plot Growth Statistics")
 
             x_choices = ["Sample Name"]
             group_choices = ["None"]
@@ -421,19 +421,10 @@ def ui_growth_summaries(plates: dict):
             )
 
         # ============================================================
-        # Middle column: OR divider
-        # ============================================================
-        with col_or:
-            st.markdown(
-                "<h1 style='text-align: center; margin-top: 120px;'>OR</h1>",
-                unsafe_allow_html=True,
-            )
-
-        # ============================================================
         # Box 2: Mean + replicates controls
         # ============================================================
         with col2.container(border=True):
-            st.header("Step 2b. Plot Mean and Replicate Growth Curves")
+            st.header("Step 2. option b) Plot Growth Curves")
 
             curves_t0, curves_t1 = st.slider(
                 "Mean/replicates plot time window (hours)",
