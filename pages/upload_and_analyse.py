@@ -75,6 +75,7 @@ def build_symbol_grid(
     return grid
 
 
+@st.cache_data
 def render_plate_table(grid: pd.DataFrame):
     """Render an HTML table showing the plate status grid."""
     css = """
