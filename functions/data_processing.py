@@ -377,7 +377,7 @@ def analyse_plate(record: dict):
                 fit_result = fit_parametric(
                     t_arr,
                     y_arr,
-                    model=p.get("model_type", "logistic"),
+                    method=p.get("model_type", "logistic"),
                 )
                 if fit_result is not None:
                     fit = extract_stats_from_fit(
@@ -397,7 +397,7 @@ def analyse_plate(record: dict):
                 fit_result = fit_non_parametric(
                     t_arr,
                     y_arr,
-                    umax_method="spline",
+                    method="spline",
                     spline_s=p.get("spline_s", None),
                     exp_start=lag_frac,
                     exp_end=exp_frac,
@@ -420,7 +420,7 @@ def analyse_plate(record: dict):
                 fit_result = fit_non_parametric(
                     t_arr,
                     y_arr,
-                    umax_method="sliding_window",
+                    method="sliding_window",
                     window_points=int(p["window_points"]),
                     exp_start=lag_frac,
                     exp_end=exp_frac,
@@ -493,7 +493,7 @@ def compute_window_fits(
             fit_result = fit_non_parametric(
                 t_arr,
                 y_arr,
-                umax_method="sliding_window",
+                method="sliding_window",
                 window_points=int(window_points),
                 exp_start=float(lag_frac),
                 exp_end=float(exp_frac),

@@ -4,7 +4,6 @@ import io
 import zipfile
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 import growthcurves.plot as gc_plot
 
@@ -84,7 +83,7 @@ def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
 
     # Calculate both mean and std
-    agg_funcs = {col: ["mean", "std"] for col in num}
+    {col: ["mean", "std"] for col in num}
     result = gs.groupby("Sample Name")[num].agg(["mean", "std"])
 
     # Flatten the multi-level columns: convert (col, 'mean') to 'col_mean'
@@ -474,9 +473,13 @@ def ui_export(plates: dict):
                 )
 
             if c_well:
-                c_add_annotations = True  # Always add annotations when well plots are enabled
+                c_add_annotations = (
+                    True  # Always add annotations when well plots are enabled
+                )
 
-                with st.popover("Choose annotations to include", use_container_width=True):
+                with st.popover(
+                    "Choose annotations to include", use_container_width=True
+                ):
                     st.caption("Choose which annotations to include on well plots:")
 
                     # Create two columns: plot on left, checkboxes on right

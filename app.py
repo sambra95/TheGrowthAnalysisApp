@@ -1,4 +1,5 @@
 import streamlit as st
+from styling import red_buttons, green_gradient, green_navbar
 
 st.set_page_config(
     page_title="TheGrowthAnalysisApp", layout="wide", page_icon="logo.svg"
@@ -17,9 +18,6 @@ nav = st.navigation(
     ],
     position="top",
 )
-
-# styles delete buttons in the app
-from styling import red_buttons, green_gradient, green_navbar
 
 red_buttons()
 green_gradient()

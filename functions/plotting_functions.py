@@ -23,7 +23,6 @@ from growthcurves.models import (
     richards_model,
     spline_from_params,
 )
-from growthcurves.parametric import fit_parametric
 from growthcurves.utils import is_no_growth
 import growthcurves.plot as gc_plot
 
@@ -908,12 +907,12 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         temp_fig = gc_plot.create_base_plot(
             time=t_display,
             data=y,
-            scale='linear',
+            scale="linear",
             xlabel=time_label,
-            ylabel='OD600 (baseline-corrected)',
+            ylabel="OD600 (baseline-corrected)",
             marker_size=2,
             marker_opacity=0.7,
-            marker_color='#d32f2f'
+            marker_color="#d32f2f",
         )
 
         # Extract traces from temp_fig and add to main figure
@@ -935,7 +934,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
             if exp_start is not None and exp_end is not None:
                 phase_boundaries = (
                     convert_hours_to_unit(float(exp_start), time_unit),
-                    convert_hours_to_unit(float(exp_end), time_unit)
+                    convert_hours_to_unit(float(exp_end), time_unit),
                 )
 
             t_umax = gs.get("time_at_umax")
@@ -954,18 +953,18 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
             if fit_result is not None:
                 # Convert time values in fit_result params to display unit
                 fitted_model = fit_result.copy()
-                if 'params' in fitted_model:
-                    params_copy = fitted_model['params'].copy()
+                if "params" in fitted_model:
+                    params_copy = fitted_model["params"].copy()
                     # Convert fit_t_min and fit_t_max to display unit
-                    if 'fit_t_min' in params_copy:
-                        params_copy['fit_t_min'] = convert_hours_to_unit(
-                            float(params_copy['fit_t_min']), time_unit
+                    if "fit_t_min" in params_copy:
+                        params_copy["fit_t_min"] = convert_hours_to_unit(
+                            float(params_copy["fit_t_min"]), time_unit
                         )
-                    if 'fit_t_max' in params_copy:
-                        params_copy['fit_t_max'] = convert_hours_to_unit(
-                            float(params_copy['fit_t_max']), time_unit
+                    if "fit_t_max" in params_copy:
+                        params_copy["fit_t_max"] = convert_hours_to_unit(
+                            float(params_copy["fit_t_max"]), time_unit
                         )
-                    fitted_model['params'] = params_copy
+                    fitted_model["params"] = params_copy
 
         # Apply annotations to the subplot
         fig = gc_plot.annotate_plot(
@@ -976,9 +975,9 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
             od_max=od_max,
             umax_point=None,  # Don't show green dot for umax
             fitted_model=fitted_model,
-            scale='linear',
+            scale="linear",
             row=r,
-            col=c
+            col=c,
         )
 
         # Add well name in top-left corner of each subplot
@@ -1241,7 +1240,11 @@ def plot_derivative_metric(
                     pass
 
         # Plot model metric if available
-        if metric_model is not None and t_model is not None and np.isfinite(metric_model).any():
+        if (
+            metric_model is not None
+            and t_model is not None
+            and np.isfinite(metric_model).any()
+        ):
             t_model_display = convert_hours_to_unit(t_model, time_unit)
             fig.add_trace(
                 go.Scatter(
@@ -1263,7 +1266,7 @@ def plot_derivative_metric(
         if exp_start is not None and exp_end is not None:
             phase_boundaries = (
                 convert_hours_to_unit(float(exp_start), time_unit),
-                convert_hours_to_unit(float(exp_end), time_unit)
+                convert_hours_to_unit(float(exp_end), time_unit),
             )
 
     if phase_boundaries is not None:
@@ -1275,7 +1278,7 @@ def plot_derivative_metric(
             od_max=None,
             umax_point=None,
             fitted_model=None,
-            scale='linear',
+            scale="linear",
             row=None,
             col=None,
         )
@@ -1369,7 +1372,7 @@ def plot_window_single_d1(
     )
     if add_fit:
         popt = _fit_idealised_derivatives(t, dy)
-        dy_fit = t_lag = t_exp = thr = None
+        dy_fit = thr = None
 
         if popt is not None:
             A, r, t0 = popt
@@ -1380,11 +1383,11 @@ def plot_window_single_d1(
 
                 idx_up = np.where(dy_fit >= thr)[0]
                 if idx_up.size:
-                    t_lag = float(t[idx_up[0]])
+                    float(t[idx_up[0]])
 
                 idx_dn = np.where((dy_fit <= thr) & (np.arange(len(t)) > peak_i))[0]
                 if idx_dn.size:
-                    t_exp = float(t[idx_dn[0]])
+                    float(t[idx_dn[0]])
 
         if dy_fit is not None and np.isfinite(dy_fit).any():
             fig.add_trace(
@@ -1618,7 +1621,9 @@ def plot_window_single_mu(
                 # Get window_points parameter
                 window_points = params.get("window_points", 15)
                 # Use the smoothed data to match the main trace
-                _, mu_fit = compute_sliding_window_growth_rate(t, y_s, window_points=window_points)
+                _, mu_fit = compute_sliding_window_growth_rate(
+                    t, y_s, window_points=window_points
+                )
 
             elif model_type in ["logistic", "gompertz", "richards", "baranyi"]:
                 # For parametric models, compute μ from the model

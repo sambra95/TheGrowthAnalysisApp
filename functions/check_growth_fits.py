@@ -194,7 +194,7 @@ def _analyse_series_with_plate_params(
             fit_result = fit_parametric(
                 t_arr,
                 y_arr,
-                model=params.get("model_type", "logistic"),
+                method=params.get("model_type", "logistic"),
             )
             if fit_result is not None:
                 fit = extract_stats_from_fit(
@@ -214,7 +214,7 @@ def _analyse_series_with_plate_params(
             fit_result = fit_non_parametric(
                 t_arr,
                 y_arr,
-                umax_method="spline",
+                method="spline",
                 spline_s=params.get("spline_s", None),
                 exp_start=lag_frac,
                 exp_end=exp_frac,
@@ -237,7 +237,7 @@ def _analyse_series_with_plate_params(
             fit_result = fit_non_parametric(
                 t_arr,
                 y_arr,
-                umax_method="sliding_window",
+                method="sliding_window",
                 window_points=int(params.get("window_points", 15)),
                 exp_start=lag_frac,
                 exp_end=exp_frac,
@@ -540,7 +540,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             params["remove_wells"] = list(remove_wells) + [well]
 
     with c1:
-        no_growth = st.button(
+        st.button(
             "No Growth",
             width="stretch",
             type="primary",
@@ -549,7 +549,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
 
     with c2:
-        reanalyse_well = st.button(
+        st.button(
             "Re-analyse",
             type="primary",
             width="stretch",
@@ -557,7 +557,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
 
     with c3:
-        delete_well = st.button(
+        st.button(
             "Exclude from analysis",
             width="stretch",
             type="tertiary",
@@ -607,7 +607,9 @@ def ui_window_fits_well_editor(plates: dict):
     col1, col2 = st.columns(2, gap="large")
     with col1:
         with st.container(border=True):
-            plate_col, toggle_col1, toggle_col2 = st.columns([2, 1, 1], vertical_alignment="bottom")
+            plate_col, toggle_col1, toggle_col2 = st.columns(
+                [2, 1, 1], vertical_alignment="bottom"
+            )
             with plate_col:
                 plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
             with toggle_col1:
@@ -687,8 +689,9 @@ def ui_window_fits_well_editor(plates: dict):
     # Check which fitting method was used
     fit_method = gs.get("fit_method", "sliding_window")
     # Only treat logistic, gompertz, richards, and baranyi as parametric model fits
-    is_model_fit = fit_method and any(
-        model in str(fit_method) for model in ["logistic", "gompertz", "richards", "baranyi"]
+    fit_method and any(
+        model in str(fit_method)
+        for model in ["logistic", "gompertz", "richards", "baranyi"]
     )
 
     chart_key = f"lasso_fit_{plate_id}_{well}"

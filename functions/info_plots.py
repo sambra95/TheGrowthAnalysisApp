@@ -8,7 +8,8 @@ all info plots.
 import numpy as np
 from pathlib import Path
 import growthcurves.plot as gc_plot
-from growthcurves.parametric import fit_parametric, extract_stats_from_fit
+from growthcurves.parametric import fit_parametric
+from growthcurves.utils import extract_stats_from_fit
 
 
 def create_annotation_demo_plot_png(save_path: Path):
@@ -26,7 +27,7 @@ def create_annotation_demo_plot_png(save_path: Path):
     y_noisy = y + np.random.normal(0, 0.02, len(y))
 
     # Fit a Richards model to the noisy data using growthcurves
-    fit_result = fit_parametric(t, y_noisy, model="richards")
+    fit_result = fit_parametric(t, y_noisy, method="richards")
 
     # Extract growth stats from the fit object
     growth_stats = extract_stats_from_fit(fit_result, t, y_noisy)
@@ -58,107 +59,121 @@ def create_annotation_demo_plot_png(save_path: Path):
     annotations = []
 
     if exp_start is not None:
-        annotations.append({
-            "x": exp_start,
-            "y": od_max if od_max else 0.95,
-            "text": "Phase boundary<br>(exp start)",
-            "showarrow": False,
-            "xanchor": "left",
-            "yanchor": "top",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-        })
+        annotations.append(
+            {
+                "x": exp_start,
+                "y": od_max if od_max else 0.95,
+                "text": "Phase boundary<br>(exp start)",
+                "showarrow": False,
+                "xanchor": "left",
+                "yanchor": "top",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
 
     if exp_end is not None:
-        annotations.append({
-            "x": exp_end,
-            "y": od_max if od_max else 0.95,
-            "text": "Phase boundary<br>(exp end)",
-            "showarrow": False,
-            "xanchor": "right",
-            "yanchor": "top",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-        })
+        annotations.append(
+            {
+                "x": exp_end,
+                "y": od_max if od_max else 0.95,
+                "text": "Phase boundary<br>(exp end)",
+                "showarrow": False,
+                "xanchor": "right",
+                "yanchor": "top",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
 
     if time_umax is not None:
-        annotations.append({
-            "x": time_umax,
-            "y": 0.1 if od_max else 0.1,
-            "text": "Time at μmax",
-            "showarrow": False,
-            "xanchor": "center",
-            "yanchor": "bottom",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-        })
+        annotations.append(
+            {
+                "x": time_umax,
+                "y": 0.1 if od_max else 0.1,
+                "text": "Time at μmax",
+                "showarrow": False,
+                "xanchor": "center",
+                "yanchor": "bottom",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
 
     if od_umax is not None:
-        annotations.append({
-            "x": 0.5,
-            "y": od_umax,
-            "text": "OD at μmax",
-            "showarrow": False,
-            "xanchor": "left",
-            "yanchor": "middle",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-        })
+        annotations.append(
+            {
+                "x": 0.5,
+                "y": od_umax,
+                "text": "OD at μmax",
+                "showarrow": False,
+                "xanchor": "left",
+                "yanchor": "middle",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
 
     if od_max is not None:
-        annotations.append({
-            "x": 19.5,
-            "y": od_max,
-            "text": "Max OD",
-            "showarrow": False,
-            "xanchor": "right",
-            "yanchor": "middle",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-        })
+        annotations.append(
+            {
+                "x": 19.5,
+                "y": od_max,
+                "text": "Max OD",
+                "showarrow": False,
+                "xanchor": "right",
+                "yanchor": "middle",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
 
     if time_umax is not None and od_umax is not None:
-        annotations.append({
-            "x": time_umax - 2,
-            "y": od_umax - (0.15 if od_max else 0.15),
-            "text": "μmax point",
+        annotations.append(
+            {
+                "x": time_umax - 2,
+                "y": od_umax - (0.15 if od_max else 0.15),
+                "text": "μmax point",
+                "showarrow": True,
+                "arrowhead": 2,
+                "arrowsize": 1,
+                "arrowwidth": 1.5,
+                "arrowcolor": "red",
+                "ax": 0,
+                "ay": 0,
+                "axref": "pixel",
+                "ayref": "pixel",
+                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+            }
+        )
+
+    # Add fitted model curve label
+    annotations.append(
+        {
+            "x": 10,
+            "y": 0.85 if od_max else 0.85,
+            "text": "Fitted model curve",
             "showarrow": True,
             "arrowhead": 2,
             "arrowsize": 1,
             "arrowwidth": 1.5,
-            "arrowcolor": "red",
+            "arrowcolor": "black",
             "ax": 0,
-            "ay": 0,
+            "ay": -30,
             "axref": "pixel",
             "ayref": "pixel",
             "bgcolor": "rgba(255, 255, 255, 0.8)",
             "bordercolor": "black",
             "borderwidth": 1,
-        })
-
-    # Add fitted model curve label
-    annotations.append({
-        "x": 10,
-        "y": 0.85 if od_max else 0.85,
-        "text": "Fitted model curve",
-        "showarrow": True,
-        "arrowhead": 2,
-        "arrowsize": 1,
-        "arrowwidth": 1.5,
-        "arrowcolor": "black",
-        "ax": 0,
-        "ay": -30,
-        "axref": "pixel",
-        "ayref": "pixel",
-        "bgcolor": "rgba(255, 255, 255, 0.8)",
-        "bordercolor": "black",
-        "borderwidth": 1,
-    })
+        }
+    )
 
     # Add all text annotations
     for annot in annotations:
@@ -176,7 +191,6 @@ def create_annotation_demo_plot_png(save_path: Path):
 
     # Save as PNG
     fig.write_image(save_path, format="png", width=800, height=400, scale=2)
-
 
 
 def save_all_info_plots():

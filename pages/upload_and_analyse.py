@@ -654,7 +654,9 @@ Both methods output the same set of growth descriptors:
                 A_t = t + (1.0 / mu_max_b) * np.log(
                     np.exp(-mu_max_b * t) + np.exp(-h0) - np.exp(-mu_max_b * t - h0)
                 )
-                y_baranyi = K_b / (1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t))
+                y_baranyi = K_b / (
+                    1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t)
+                )
                 fig_bar = go.Figure()
                 fig_bar.add_trace(
                     go.Scatter(
