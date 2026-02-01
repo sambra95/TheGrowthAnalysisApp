@@ -608,7 +608,7 @@ def ui_window_fits_well_editor(plates: dict):
     with col1:
         with st.container(border=True):
             plate_col, toggle_col1, toggle_col2 = st.columns(
-                [2, 1, 1], vertical_alignment="bottom"
+                [2, 0.9, 1.1], vertical_alignment="bottom", gap="small"
             )
             with plate_col:
                 plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
