@@ -5,4 +5,4 @@ plotly==6.3.1
 streamlit==1.52.0
 openpyxl==3.1.5
 xlrd==2.0.2
-growthcurves==0.2.0
+growthcurves==0.3.0
