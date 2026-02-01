@@ -699,8 +699,8 @@ Phase boundaries are detected when μ crosses these thresholds. Lower values det
 
 st.divider()
 
+
 # Upload (store bytes directly into ss.plates[plate_id]).
-@st.fragment
 def upload_files_fragment():
     """Fragment for file upload controls."""
     u1, u2 = st.columns(2)
@@ -714,7 +714,9 @@ def upload_files_fragment():
         with st.container(border=True):
             st.header("Step 2. Upload plate map")
             map_file = st.file_uploader(
-                "Plate map (.xls/.xlsx) with 'rows' column", ["xlsx", "xls"], key="map_up"
+                "Plate map (.xls/.xlsx) with 'rows' column",
+                ["xlsx", "xls"],
+                key="map_up",
             )
 
     if st.button(
@@ -737,10 +739,12 @@ def upload_files_fragment():
         )
         st.toast(f"Saved uploads for {plate_id}")
 
+
 upload_files_fragment()
 
 
 ready = sorted(ss.plates)
+
 
 # Step 3: Select plate and input metadata
 @st.fragment
@@ -844,9 +848,13 @@ def preprocessing_params_fragment():
                         sg_window=int(params0.get("sg_window", 15)),
                         sg_poly=int(params0.get("sg_poly", 2)),
                         min_data_points=int(params0.get("min_data_points", 5)),
-                        min_signal_to_noise=float(params0.get("min_signal_to_noise", 5.0)),
+                        min_signal_to_noise=float(
+                            params0.get("min_signal_to_noise", 5.0)
+                        ),
                         min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
-                        growth_method=str(params0.get("growth_method", "Sliding Window")),
+                        growth_method=str(
+                            params0.get("growth_method", "Sliding Window")
+                        ),
                         model_type=str(params0.get("model_type", "logistic")),
                     )
                     tmp = {"uploads": rec["uploads"], "params": preview_params}
@@ -880,7 +888,9 @@ def preprocessing_params_fragment():
         ss["step3_params"]["remove_wells"] = remove_wells
         ss["step3_params"]["params0"] = params0
 
+
 preprocessing_params_fragment()
+
 
 # Step 4: Select analysis parameters
 @st.fragment
@@ -1058,7 +1068,9 @@ def analysis_params_fragment():
     ss["step4_params"]["model_type"] = model_type
     ss["step4_params"]["spline_s"] = spline_s
 
+
 analysis_params_fragment()
+
 
 # Step 5: Click analyse
 @st.fragment
@@ -1122,5 +1134,6 @@ def analyse_button_fragment():
                 rec["params"] = params
                 ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
+
 
 analyse_button_fragment()
