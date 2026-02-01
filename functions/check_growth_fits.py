@@ -764,7 +764,13 @@ def ui_window_fits_well_editor(plates: dict):
             # Update axis labels
             time_label = "Time (hours)"
             y_label = "ln(OD600)" if log_scale else "OD600 (baseline-corrected)"
-            fig_main.update_xaxes(title=time_label, showgrid=False, type="linear")
+            # Set x-axis range to exactly match data range (removes gap at y-axis)
+            fig_main.update_xaxes(
+                title=time_label,
+                showgrid=False,
+                type="linear",
+                range=[float(t_display.min()), float(t_display.max())]
+            )
             fig_main.update_yaxes(title=y_label, showgrid=False)
 
             # Apply layout for lasso selection functionality
