@@ -8,8 +8,9 @@ with title_col:
     st.title("Check Growth Fits")
 with popover_col:
     st.write("")
-    with st.popover("Explain this page to me", width="stretch"):
-        st.markdown("""
+    with st.popover("Help", width="stretch"):
+        st.markdown(
+            """
 **Use this page to review the analysis of individual wells**
 - Adjust the phase boundaries and Max OD prediction using the sliders
 - Click "Delete" to exclude wells from the analysis
@@ -17,7 +18,8 @@ with popover_col:
 - Click "Re-analyze" to analyze the well with your previously selected settings
 - Click and drag on the graph select data points to re-calculate the maximum growth rate
 
-""")
+"""
+        )
         st.info(
             "You can download any plot by clicking the camera icon in the top right corner of the plot."
         )
