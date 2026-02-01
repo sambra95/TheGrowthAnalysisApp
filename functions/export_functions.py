@@ -12,7 +12,7 @@ from functions.plotting_functions import (
     plot_replicates_by_sample,
     plot_window_plate,
     plot_window_single_d1,
-    plot_window_single_d2,
+    plot_window_single_mu,
     _finite_sorted_xy,
     is_bad_fit,
 )
@@ -156,7 +156,7 @@ def build_export_zip(
     include_well_plots: bool,
     well_graphs: (
         list[str] | None
-    ) = None,  # e.g. ["OD", "1st Derivative", "2nd Derivative"]
+    ) = None,  # e.g. ["OD", "1st Derivative", "μ"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
@@ -365,40 +365,31 @@ def build_export_zip(
                                     _png(fig, well_width, well_height),
                                 )
 
-                    # Only export derivative plots for sliding window method
-                    if (
-                        "1st Derivative" in well_graphs
-                        or "2nd Derivative" in well_graphs
-                    ):
-                        gs = (p.get("growth_stats") or {}).get(well) or {}
-                        fit_method = gs.get("fit_method", "sliding_window")
-                        is_model_fit = fit_method and "model_fitting" in str(fit_method)
+                    # Export derivative and growth rate plots
+                    if "1st Derivative" in well_graphs:
+                        fig = plot_window_single_d1(
+                            p,
+                            well,
+                            sg_window=sg_w,
+                            sg_poly=sg_p,
+                            frac_peak=0.20,
+                            add_fit=False,
+                        )
+                        if fig is not None:
+                            zf.writestr(
+                                f"{plate_dir}/curves_d1/{well}.png",
+                                _png(fig, well_width, well_height),
+                            )
 
-                        if not is_model_fit:
-                            if "1st Derivative" in well_graphs:
-                                fig = plot_window_single_d1(
-                                    p,
-                                    well,
-                                    sg_window=sg_w,
-                                    sg_poly=sg_p,
-                                    frac_peak=0.20,
-                                    add_fit=False,
-                                )
-                                if fig is not None:
-                                    zf.writestr(
-                                        f"{plate_dir}/curves_d1/{well}.png",
-                                        _png(fig, well_width, well_height),
-                                    )
-
-                            if "2nd Derivative" in well_graphs:
-                                fig = plot_window_single_d2(
-                                    p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
-                                )
-                                if fig is not None:
-                                    zf.writestr(
-                                        f"{plate_dir}/curves_d2/{well}.png",
-                                        _png(fig, well_width, well_height),
-                                    )
+                    if "μ" in well_graphs:
+                        fig = plot_window_single_mu(
+                            p, well, sg_window=sg_w, sg_poly=sg_p, add_fit=False
+                        )
+                        if fig is not None:
+                            zf.writestr(
+                                f"{plate_dir}/curves_mu/{well}.png",
+                                _png(fig, well_width, well_height),
+                            )
 
     buf.seek(0)
     return buf.getvalue()
@@ -527,8 +518,8 @@ def ui_export(plates: dict):
                 with graph_col:
                     well_graphs = st.multiselect(
                         "Well graph types",
-                        options=["OD", "1st Derivative", "2nd Derivative"],
-                        default=["OD", "1st Derivative", "2nd Derivative"],
+                        options=["OD", "1st Derivative", "μ"],
+                        default=["OD", "1st Derivative", "μ"],
                         key="well_graphs",
                     )
 
