@@ -3,6 +3,10 @@
 import streamlit as st
 from functions.plate_overviews import require_plates, replicates_view, window_plate_view
 
+if not st.session_state.get("plates"):
+    st.info("Add data first by running **Upload and Analyze**.")
+    st.stop()
+
 title_col, popover_col = st.columns([9, 2])
 with title_col:
     st.title("Plate Overviews")

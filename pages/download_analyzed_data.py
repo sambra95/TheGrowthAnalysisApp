@@ -3,6 +3,10 @@
 import streamlit as st
 from functions.export_functions import require_plates, ui_export
 
+if not st.session_state.get("plates"):
+    st.info("Add data first by running **Upload and Analyze**.")
+    st.stop()
+
 title_col, popover_col = st.columns([9, 2])
 with title_col:
     st.title("Download Analyzed Data")
