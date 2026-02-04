@@ -561,16 +561,12 @@ The smoothing spline minimizes:
             with st.expander("Phase Boundary Detection", expanded=False):
                 st.markdown(
                     """
-**All methods use the same general approach** for detecting phase boundaries, based on the specific growth rate μ:
-
-1. **Lag phase end**: First time point where μ exceeds the threshold
-2. **Exponential phase end**: First time point *after* peak where μ drops below threshold
-
-**The threshold** is set as a fraction of μ_max (default 50%).
-
-However, **the methods differ in how they calculate μ** for phase boundary detection:
+Phase boundaries define when the lag phase ends and when the exponential phase ends. Three different methods are available for calculating these boundaries:
 """
                 )
+
+                # Threshold Method
+                st.markdown("**1. Threshold Method (Default for Mechanistic Models)**")
 
                 t_deriv = np.linspace(0, 48, 200)
                 exp_term = np.exp(-0.2 * (t_deriv - 24))
@@ -679,24 +675,177 @@ However, **the methods differ in how they calculate μ** for phase boundary dete
 
                 st.markdown(
                     """
-**How each method detects phase boundaries:**
-
-| Method | Curve Used | How μ is Calculated | Phase Boundary Detection |
-|---|---|---|---|
-| **Sliding Window** | Log-transformed raw data with Savitzky-Golay smoothing | sliding window derivative of smoothed ln(OD) | Apply threshold to μ values |
-| **Spline** | Smoothing spline fitted to log-transformed data | analytical μ of spline function | Apply threshold to μ values |
-| **Parametric Models** | Fitted parametric growth model | analytical μ of model equation | Apply threshold to μ values |
-
-**Key differences:**
-- **Sliding Window**: Uses empirical data directly, smoothed with Savitzky-Golay filter
-- **Spline**: Fits a flexible non-parametric curve to data, then calculates μ from derivative
-- **Parametric**: Assumes a specific growth model form, uses theoretical μ from model derivative
+**How it works:**
+1. Calculate the specific growth rate μ(t) = (1/N) × dN/dt across all time points
+2. Find the maximum growth rate μ_max and its time
+3. Set threshold values as fractions of μ_max (e.g., 50% of μ_max)
+4. **Lag phase end**: First time point where μ exceeds the lag threshold
+5. **Exp phase end**: First time point *after* μ_max where μ drops below the exp threshold
 
 **Threshold parameters:**
 - *Lag cutoff*: Fraction of μ_max used as threshold (default 50%)
 - *Exp cutoff*: Fraction of μ_max used as threshold (default 50%)
 
-Phase boundaries are detected when μ crosses these thresholds. Lower values detect transitions earlier; higher values require more pronounced rate changes.
+Lower threshold values detect phase transitions earlier; higher values require more pronounced rate changes.
+"""
+                )
+
+                st.divider()
+
+                # Tangent Method
+                st.markdown("**2. Tangent Method (Default for Non-Parametric Models)**")
+
+                # Generate growth curve and tangent
+                t_tang = np.linspace(0, 48, 200)
+                y_tang = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_tang - 24)))
+                y_tang_log = np.log(y_tang)
+
+                # Calculate specific growth rate
+                dy = np.gradient(y_tang, t_tang)
+                mu_tang = dy / y_tang
+                mu_max_tang = np.max(mu_tang)
+                t_umax_idx = np.argmax(mu_tang)
+                t_umax = t_tang[t_umax_idx]
+                od_umax = y_tang[t_umax_idx]
+                ln_od_umax = np.log(od_umax)
+
+                # Tangent line in log space: ln(OD) = ln(od_umax) + mu_max * (t - t_umax)
+                baseline_od = 0.05
+                plateau_od = 1.0
+                t_start_tang = t_umax + np.log(baseline_od / od_umax) / mu_max_tang
+                t_end_tang = t_umax + np.log(plateau_od / od_umax) / mu_max_tang
+
+                # Generate tangent line in log space (straight line)
+                t_tangent_line = np.linspace(t_start_tang, t_end_tang, 50)
+                ln_y_tangent_line = ln_od_umax + mu_max_tang * (t_tangent_line - t_umax)
+
+                fig_tang = go.Figure()
+
+                # Growth curve in log space
+                fig_tang.add_trace(
+                    go.Scatter(
+                        x=t_tang,
+                        y=y_tang_log,
+                        mode="lines",
+                        line=dict(color="blue", width=3),
+                        name="Growth curve",
+                    )
+                )
+
+                # Tangent line (straight in log space)
+                fig_tang.add_trace(
+                    go.Scatter(
+                        x=t_tangent_line,
+                        y=ln_y_tangent_line,
+                        mode="lines",
+                        line=dict(color="orange", width=2, dash="dash"),
+                        name="Tangent at μ_max",
+                    )
+                )
+
+                # Baseline and plateau in log space
+                fig_tang.add_hline(
+                    y=np.log(baseline_od),
+                    line_dash="dot",
+                    line_color="gray",
+                    opacity=0.5,
+                )
+                fig_tang.add_hline(
+                    y=np.log(plateau_od), line_dash="dot", line_color="gray", opacity=0.5
+                )
+
+                # Phase boundaries
+                fig_tang.add_vline(
+                    x=t_start_tang, line_dash="solid", line_color="green", line_width=2
+                )
+                fig_tang.add_vline(
+                    x=t_end_tang, line_dash="solid", line_color="red", line_width=2
+                )
+
+                # Annotations
+                fig_tang.add_annotation(
+                    x=t_start_tang,
+                    y=-1.5,
+                    text="Exp Phase<br>Start",
+                    showarrow=False,
+                    font=dict(color="green", size=10),
+                    xanchor="right",
+                    xshift=-5,
+                )
+                fig_tang.add_annotation(
+                    x=t_end_tang,
+                    y=-1.5,
+                    text="Exp Phase<br>End",
+                    showarrow=False,
+                    font=dict(color="red", size=10),
+                    xanchor="left",
+                    xshift=5,
+                )
+                fig_tang.add_annotation(
+                    x=t_umax,
+                    y=ln_od_umax + 0.2,
+                    text="μ_max",
+                    showarrow=True,
+                    arrowhead=2,
+                )
+
+                fig_tang.update_layout(
+                    height=250,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis_title="Time (h)",
+                    yaxis_title="ln(OD600)",
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_tang, width="stretch", config={"staticPlot": True})
+
+                st.markdown(
+                    """
+**How it works:**
+1. Find the point of maximum specific growth rate (μ_max) and its time (t_μmax)
+2. Draw a tangent line to the growth curve at that point
+3. The tangent line in log space is: ln(OD) = ln(OD_μmax) + μ_max × (t - t_μmax)
+4. **Exp phase start**: Time where tangent intersects baseline OD (lag phase level)
+5. **Exp phase end**: Time where tangent intersects plateau OD (stationary phase level)
+
+**Key features:**
+- Geometrically defines the exponential phase as the region where growth follows the maximum rate
+- More consistent across different curve shapes
+- Default for non-parametric methods (Sliding Window, Spline)
+- Does not require threshold parameters
+"""
+                )
+
+                st.divider()
+
+                # Parameter Extraction Method
+                st.markdown(
+                    "**3. Parameter Extraction (Phenomenological Models Only)**"
+                )
+
+                st.markdown(
+                    """
+**How it works:**
+For phenomenological models (logistic, Gompertz, Richards), the lag time λ (lambda) is a fitted parameter in the model equation. This method directly uses:
+- **Exp phase start**: λ (lag parameter from fitted model)
+- **Exp phase end**: Calculated using either threshold or tangent method
+
+**Key features:**
+- Uses the model's intrinsic lag parameter directly
+- Only available for phenomenological models with explicit λ parameter
+- Combines parameter extraction (for lag) with threshold or tangent method (for exp phase end)
+
+**Comparison of methods:**
+
+| Method | Advantages | Threshold Parameters Used |
+|---|---|---|
+| **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
+| **Tangent** | Geometric definition, no arbitrary thresholds | None |
+| **Parameter Extraction** | Uses model's intrinsic parameters | None (for lag), may use for exp end |
+
+**Recommendation:**
+- Default settings automatically select the most appropriate method for your chosen analysis approach
+- Threshold method works well for most mechanistic models and noisy data
+- Tangent method is preferred for non-parametric methods where no model assumptions are made
 """
                 )
 
