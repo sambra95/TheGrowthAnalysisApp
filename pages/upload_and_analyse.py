@@ -142,7 +142,7 @@ This page guides you through uploading your plate reader data and analyzing grow
 """
         )
 
-        with st.expander("Step 1 & 2: File Upload Requirements"):
+        with st.expander("File Upload Requirements"):
             st.markdown("**Data File Format:**")
             st.markdown("Excel file (.xlsx or .xls) with time series data")
             st.info(
@@ -221,13 +221,10 @@ This page guides you through uploading your plate reader data and analyzing grow
                     type="primary",
                 )
 
-        with st.expander("Step 4: Growth Descriptor Calculation Methods"):
-            import numpy as np
-            import plotly.graph_objects as go
-
+        with st.expander("Growth Descriptor Metrics"):
             st.markdown(
                 """
-Both methods output the same set of growth descriptors:
+All methods output the same set of growth descriptors:
 
 | Metric | Description |
 |---|---|
@@ -242,177 +239,19 @@ Both methods output the same set of growth descriptors:
 | **RMSE** | Root mean square error of the fit |
 """
             )
-
-            # Non-Parametric Methods expander
-            with st.expander("Non-Parametric Methods", expanded=False):
-                st.markdown("**Sliding Window Method**")
-
-                t_points = np.linspace(0, 48, 50)
-                y_points = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_points - 24)))
-
-                fig_sw = go.Figure()
-                fig_sw.add_trace(
-                    go.Scatter(
-                        x=t_points,
-                        y=y_points,
-                        mode="markers",
-                        marker=dict(color="blue", size=6),
-                        name="Data points",
-                    )
-                )
-
-                window_center_t = 24
-                window_half_width = 4
-                win_x0 = window_center_t - window_half_width
-                win_x1 = window_center_t + window_half_width
-
-                y_at_win = 0.05 + 0.95 / (
-                    1 + np.exp(-0.2 * (np.array([win_x0, win_x1]) - 24))
-                )
-                box_y_min = min(y_at_win) - 0.08
-                box_y_max = max(y_at_win) + 0.08
-
-                fig_sw.add_shape(
-                    type="rect",
-                    x0=win_x0,
-                    x1=win_x1,
-                    y0=box_y_min,
-                    y1=box_y_max,
-                    fillcolor="rgba(0,200,0,0.2)",
-                    line=dict(color="green", width=2),
-                )
-
-                fig_sw.add_annotation(
-                    x=window_center_t,
-                    y=box_y_max + 0.08,
-                    text="Sliding Window",
-                    showarrow=False,
-                    font=dict(color="green", size=12),
-                )
-
-                arrow_y = box_y_min + (box_y_max - box_y_min) / 2
-
-                fig_sw.add_annotation(
-                    x=win_x0 - 1,
-                    y=arrow_y,
-                    ax=win_x0 - 6,
-                    ay=arrow_y,
-                    xref="x",
-                    yref="y",
-                    axref="x",
-                    ayref="y",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1.5,
-                    arrowwidth=2,
-                    arrowcolor="gray",
-                    text="",
-                )
-
-                fig_sw.add_annotation(
-                    x=win_x1 + 6,
-                    y=arrow_y,
-                    ax=win_x1 + 1,
-                    ay=arrow_y,
-                    xref="x",
-                    yref="y",
-                    axref="x",
-                    ayref="y",
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1.5,
-                    arrowwidth=2,
-                    arrowcolor="gray",
-                    text="",
-                )
-
-                fig_sw.update_layout(
-                    height=250,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="ln(OD)",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_sw, width="stretch", config={"staticPlot": True})
-
-                st.markdown(
-                    """
+            st.markdown("### Parametric Methods")
+            st.caption("Currently selected model shown below")
+            st.markdown(
+                """
 **How it works:**
-1. A window of fixed size (e.g., 15 points) slides across the growth curve
-2. At each position, a linear regression is fitted to log-transformed OD values
-3. The slope of each fit represents the specific growth rate (μ) at that window
-4. The **maximum slope** across all windows is reported as **μ_max**
+1. A parametric growth model is fitted to the entire growth curve
+2. The model's analytical derivative gives the growth rate at each time point
+3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
 """
-                )
-
-                st.divider()
-
-                st.markdown("**Spline Method**")
-
-                # Generate spline visualization
-                t_spline_points = np.linspace(0, 48, 30)
-                y_spline_points = np.log(
-                    0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_points - 24)))
-                )
-
-                # Generate smooth spline curve
-                t_spline_smooth = np.linspace(0, 48, 200)
-                y_spline_smooth = np.log(
-                    0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_smooth - 24)))
-                )
-
-                fig_spline = go.Figure()
-
-                # Add data points
-                fig_spline.add_trace(
-                    go.Scatter(
-                        x=t_spline_points,
-                        y=y_spline_points,
-                        mode="markers",
-                        marker=dict(color="blue", size=6),
-                        name="Data points",
-                    )
-                )
-
-                # Add smooth spline fit
-                fig_spline.add_trace(
-                    go.Scatter(
-                        x=t_spline_smooth,
-                        y=y_spline_smooth,
-                        mode="lines",
-                        line=dict(color="green", width=3),
-                        name="Spline fit",
-                    )
-                )
-
-                fig_spline.update_layout(
-                    height=250,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="ln(OD)",
-                    showlegend=False,
-                )
-                st.plotly_chart(
-                    fig_spline, width="stretch", config={"staticPlot": True}
-                )
-
-                st.markdown(
-                    """
-**Mathematical representation:**
-
-The smoothing spline minimizes:
-"""
-                )
-                st.latex(
-                    r"\sum_{i=1}^{n} w_i(y_i - s(t_i))^2 + \lambda \int [s''(t)]^2 dt"
-                )
-                st.caption(
-                    "where s(t) is the spline function, λ is the smoothing parameter, and s''(t) is the second derivative (controls smoothness)"
-                )
-
-                st.markdown(
-                    """
-**How it works:**
+            )
+            st.markdown(
+                """
+**Spline method: How it works**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
 3. The derivative of the spline gives the specific growth rate at each time point
@@ -428,382 +267,42 @@ The smoothing spline minimizes:
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
 """
-                )
-
-            # Parametric Methods expander
-            with st.expander("Parametric Methods", expanded=False):
-                st.markdown(
-                    """
-**How it works:**
-1. A parametric growth model is fitted to the entire growth curve
-2. The model's analytical derivative gives the growth rate at each time point
-3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-
-**Available models:**
+            )
+            st.markdown(
+                """
+**Sliding window method: How it works**
+1. A window of fixed size (e.g., 15 points) slides across the growth curve
+2. At each position, a linear regression is fitted to log-transformed OD values
+3. The slope of each fit represents the specific growth rate (μ) at that window
+4. The maximum slope across all windows is reported as μ_max
 """
-                )
+            )
 
-                t = np.linspace(0, 48, 200)
+        with st.expander("Phase Boundary Method Comparison"):
+            st.markdown(
+                """
+| Method | Advantages | Threshold Parameters Used |
+|---|---|---|
+| **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
+| **Tangent** | Geometric definition, no arbitrary thresholds | None |
 
-                st.markdown("**Logistic**")
-                st.latex(r"y(t) = \frac{A}{1 + e^{-\mu(t - \lambda)}}")
-                st.caption(
-                    "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
-                )
-                y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
-                fig_log = go.Figure()
-                fig_log.add_trace(
-                    go.Scatter(
-                        x=t,
-                        y=y_logistic,
-                        mode="lines",
-                        line=dict(color="blue", width=2),
-                    )
-                )
-                fig_log.update_layout(
-                    height=150,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="OD600",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_log, width="stretch", config={"staticPlot": True})
+**Recommendation:**
+- Threshold method works well for most mechanistic models and noisy data
+- Tangent method is often preferred for non-parametric methods where no model assumptions are made
 
-                st.markdown("**Modified Gompertz**")
-                st.latex(
-                    r"y(t) = y_0 + A \cdot \exp\!\left[-\exp\!\left(\frac{\mu_{\max}\, e}{A}(\lambda - t) + 1\right)\right]"
-                )
-                st.caption(
-                    "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
-                )
-                y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
-                fig_gom = go.Figure()
-                fig_gom.add_trace(
-                    go.Scatter(
-                        x=t,
-                        y=y_gompertz,
-                        mode="lines",
-                        line=dict(color="green", width=2),
-                    )
-                )
-                fig_gom.update_layout(
-                    height=150,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="OD600",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_gom, width="stretch", config={"staticPlot": True})
-
-                st.markdown("**Richards**")
-                st.latex(
-                    r"y(t) = \frac{A}{(1 + \nu \cdot e^{-\mu(t - \lambda)})^{1/\nu}}"
-                )
-                st.caption(
-                    "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
-                )
-                nu = 2.0
-                y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
-                fig_ric = go.Figure()
-                fig_ric.add_trace(
-                    go.Scatter(
-                        x=t,
-                        y=y_richards,
-                        mode="lines",
-                        line=dict(color="orange", width=2),
-                    )
-                )
-                fig_ric.update_layout(
-                    height=150,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="OD600",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_ric, width="stretch", config={"staticPlot": True})
-
-                st.markdown("**Baranyi-Roberts**")
-                st.latex(
-                    r"y(t) = \frac{K}{1 + \frac{K - y_0}{y_0} \cdot e^{-\mu_{\max} A(t)}}"
-                )
-                st.caption(
-                    "Baranyi-Roberts model with physiological lag parameter h₀. Mechanistic model accounting for cell adaptation during lag phase."
-                )
-                h0 = 5.0
-                mu_max_b = 0.15
-                K_b = 1.0
-                y0_b = 0.05
-                A_t = t + (1.0 / mu_max_b) * np.log(
-                    np.exp(-mu_max_b * t) + np.exp(-h0) - np.exp(-mu_max_b * t - h0)
-                )
-                y_baranyi = K_b / (
-                    1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t)
-                )
-                fig_bar = go.Figure()
-                fig_bar.add_trace(
-                    go.Scatter(
-                        x=t,
-                        y=y_baranyi,
-                        mode="lines",
-                        line=dict(color="purple", width=2),
-                    )
-                )
-                fig_bar.update_layout(
-                    height=150,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="OD600",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_bar, width="stretch", config={"staticPlot": True})
-
-            # Phase Boundary Detection sub-expander
-            with st.expander("Phase Boundary Detection", expanded=False):
-                st.markdown(
-                    """
-Phase boundaries define when the lag phase ends and when the exponential phase ends. Three different methods are available for calculating these boundaries:
-"""
-                )
-
-                # Threshold Method
-                st.markdown("**1. Threshold Method (Default for Mechanistic Models)**")
-
-                t_deriv = np.linspace(0, 48, 200)
-                exp_term = np.exp(-0.2 * (t_deriv - 24))
-                y_deriv = 0.95 * 0.2 * exp_term / (1 + exp_term) ** 2
-
-                mu_max = np.max(y_deriv)
-                t_max = t_deriv[np.argmax(y_deriv)]
-                sigma = 8
-                y_fitted = mu_max * np.exp(-((t_deriv - t_max) ** 2) / (2 * sigma**2))
-
-                illustration_threshold = 0.25 * mu_max
-                left_crossings = np.where(y_fitted[:100] >= illustration_threshold)[0]
-                t_lag_end = (
-                    t_deriv[left_crossings[0]] if len(left_crossings) > 0 else 10
-                )
-                right_crossings = np.where(y_fitted[100:] >= illustration_threshold)[0]
-                t_exp_end = (
-                    t_deriv[100 + right_crossings[-1]]
-                    if len(right_crossings) > 0
-                    else 38
-                )
-
-                fig_deriv = go.Figure()
-
-                t_deriv_points = np.linspace(0, 48, 50)
-                exp_term_pts = np.exp(-0.2 * (t_deriv_points - 24))
-                y_deriv_points = 0.95 * 0.2 * exp_term_pts / (1 + exp_term_pts) ** 2
-
-                fig_deriv.add_trace(
-                    go.Scatter(
-                        x=t_deriv_points,
-                        y=y_deriv_points,
-                        mode="markers",
-                        marker=dict(color="blue", size=6),
-                        name="dOD/dt",
-                    )
-                )
-
-                fig_deriv.add_trace(
-                    go.Scatter(
-                        x=t_deriv,
-                        y=y_fitted,
-                        mode="lines",
-                        line=dict(color="orange", width=2, dash="dash"),
-                        name="Fitted curve",
-                    )
-                )
-
-                threshold = 0.25 * mu_max
-                fig_deriv.add_hline(
-                    y=threshold,
-                    line_dash="dash",
-                    line_color="gray",
-                    annotation_text="Cutoff",
-                    annotation_position="right",
-                )
-
-                fig_deriv.add_vline(
-                    x=t_lag_end,
-                    line_dash="solid",
-                    line_color="#66BB6A",
-                    line_width=2,
-                )
-                fig_deriv.add_vline(
-                    x=t_exp_end,
-                    line_dash="solid",
-                    line_color="red",
-                    line_width=2,
-                )
-
-                fig_deriv.add_annotation(
-                    x=t_lag_end,
-                    y=mu_max * 0.9,
-                    text="End of<br>Lag Phase",
-                    showarrow=False,
-                    font=dict(color="green", size=10),
-                    xanchor="right",
-                    xshift=-5,
-                )
-                fig_deriv.add_annotation(
-                    x=t_exp_end,
-                    y=mu_max * 0.9,
-                    text="End of<br>Exp. Phase",
-                    showarrow=False,
-                    font=dict(color="red", size=10),
-                    xanchor="left",
-                    xshift=5,
-                )
-
-                fig_deriv.add_annotation(
-                    x=t_max,
-                    y=mu_max + 0.003,
-                    text="μ_max",
-                    showarrow=False,
-                    font=dict(color="orange", size=11),
-                )
-
-                fig_deriv.update_layout(
-                    height=250,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="μ (h⁻¹)",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_deriv, width="stretch", config={"staticPlot": True})
-
-                st.markdown(
-                    """
-**How it works:**
+**Threshold method: How it works**
 1. Calculate the specific growth rate μ(t) = (1/N) × dN/dt across all time points
 2. Find the maximum growth rate μ_max and its time
 3. Set threshold values as fractions of μ_max (e.g., 50% of μ_max)
 4. **Lag phase end**: First time point where μ exceeds the lag threshold
-5. **Exp phase end**: First time point *after* μ_max where μ drops below the exp threshold
+5. **Exp phase end**: First time point after μ_max where μ drops below the exp threshold
 
 **Threshold parameters:**
-- *Lag cutoff*: Fraction of μ_max used as threshold (default 50%)
-- *Exp cutoff*: Fraction of μ_max used as threshold (default 50%)
+- **Lag cutoff**: Fraction of μ_max used as threshold
+- **Exp cutoff**: Fraction of μ_max used as threshold
+- Lower threshold values detect phase transitions earlier; higher values require more pronounced rate changes.
 
-Lower threshold values detect phase transitions earlier; higher values require more pronounced rate changes.
-"""
-                )
-
-                st.divider()
-
-                # Tangent Method
-                st.markdown("**2. Tangent Method (Default for Non-Parametric Models)**")
-
-                # Generate growth curve and tangent
-                t_tang = np.linspace(0, 48, 200)
-                y_tang = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_tang - 24)))
-                y_tang_log = np.log(y_tang)
-
-                # Calculate specific growth rate
-                dy = np.gradient(y_tang, t_tang)
-                mu_tang = dy / y_tang
-                mu_max_tang = np.max(mu_tang)
-                t_umax_idx = np.argmax(mu_tang)
-                t_umax = t_tang[t_umax_idx]
-                od_umax = y_tang[t_umax_idx]
-                ln_od_umax = np.log(od_umax)
-
-                # Tangent line in log space: ln(OD) = ln(od_umax) + mu_max * (t - t_umax)
-                baseline_od = 0.05
-                plateau_od = 1.0
-                t_start_tang = t_umax + np.log(baseline_od / od_umax) / mu_max_tang
-                t_end_tang = t_umax + np.log(plateau_od / od_umax) / mu_max_tang
-
-                # Generate tangent line in log space (straight line)
-                t_tangent_line = np.linspace(t_start_tang, t_end_tang, 50)
-                ln_y_tangent_line = ln_od_umax + mu_max_tang * (t_tangent_line - t_umax)
-
-                fig_tang = go.Figure()
-
-                # Growth curve in log space
-                fig_tang.add_trace(
-                    go.Scatter(
-                        x=t_tang,
-                        y=y_tang_log,
-                        mode="lines",
-                        line=dict(color="blue", width=3),
-                        name="Growth curve",
-                    )
-                )
-
-                # Tangent line (straight in log space)
-                fig_tang.add_trace(
-                    go.Scatter(
-                        x=t_tangent_line,
-                        y=ln_y_tangent_line,
-                        mode="lines",
-                        line=dict(color="orange", width=2, dash="dash"),
-                        name="Tangent at μ_max",
-                    )
-                )
-
-                # Baseline and plateau in log space
-                fig_tang.add_hline(
-                    y=np.log(baseline_od),
-                    line_dash="dot",
-                    line_color="gray",
-                    opacity=0.5,
-                )
-                fig_tang.add_hline(
-                    y=np.log(plateau_od),
-                    line_dash="dot",
-                    line_color="gray",
-                    opacity=0.5,
-                )
-
-                # Phase boundaries
-                fig_tang.add_vline(
-                    x=t_start_tang, line_dash="solid", line_color="green", line_width=2
-                )
-                fig_tang.add_vline(
-                    x=t_end_tang, line_dash="solid", line_color="red", line_width=2
-                )
-
-                # Annotations
-                fig_tang.add_annotation(
-                    x=t_start_tang,
-                    y=-1.5,
-                    text="Exp Phase<br>Start",
-                    showarrow=False,
-                    font=dict(color="green", size=10),
-                    xanchor="right",
-                    xshift=-5,
-                )
-                fig_tang.add_annotation(
-                    x=t_end_tang,
-                    y=-1.5,
-                    text="Exp Phase<br>End",
-                    showarrow=False,
-                    font=dict(color="red", size=10),
-                    xanchor="left",
-                    xshift=5,
-                )
-                fig_tang.add_annotation(
-                    x=t_umax,
-                    y=ln_od_umax + 0.2,
-                    text="μ_max",
-                    showarrow=True,
-                    arrowhead=2,
-                )
-
-                fig_tang.update_layout(
-                    height=250,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis_title="Time (h)",
-                    yaxis_title="ln(OD600)",
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_tang, width="stretch", config={"staticPlot": True})
-
-                st.markdown(
-                    """
-**How it works:**
+**Tangent method: How it works**
 1. Find the point of maximum specific growth rate (μ_max) and its time (t_μmax)
 2. Draw a tangent line to the growth curve at that point
 3. The tangent line in log space is: ln(OD) = ln(OD_μmax) + μ_max × (t - t_μmax)
@@ -816,41 +315,7 @@ Lower threshold values detect phase transitions earlier; higher values require m
 - Default for non-parametric methods (Sliding Window, Spline)
 - Does not require threshold parameters
 """
-                )
-
-                st.divider()
-
-                # Parameter Extraction Method
-                st.markdown(
-                    "**3. Parameter Extraction (Phenomenological Models Only)**"
-                )
-
-                st.markdown(
-                    """
-**How it works:**
-For phenomenological models (logistic, Gompertz, Richards), the lag time λ (lambda) is a fitted parameter in the model equation. This method directly uses:
-- **Exp phase start**: λ (lag parameter from fitted model)
-- **Exp phase end**: Calculated using either threshold or tangent method
-
-**Key features:**
-- Uses the model's intrinsic lag parameter directly
-- Only available for phenomenological models with explicit λ parameter
-- Combines parameter extraction (for lag) with threshold or tangent method (for exp phase end)
-
-**Comparison of methods:**
-
-| Method | Advantages | Threshold Parameters Used |
-|---|---|---|
-| **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
-| **Tangent** | Geometric definition, no arbitrary thresholds | None |
-| **Parameter Extraction** | Uses model's intrinsic parameters | None (for lag), may use for exp end |
-
-**Recommendation:**
-- Default settings automatically select the most appropriate method for your chosen analysis approach
-- Threshold method works well for most mechanistic models and noisy data
-- Tangent method is preferred for non-parametric methods where no model assumptions are made
-"""
-                )
+            )
 
 st.divider()
 
@@ -1104,12 +569,6 @@ def analysis_params_fragment():
             # Build combined method options for the selected family
             if model_family == "Mechanistic":
                 method_options = [
-                    (
-                        "Sliding Window (non-parametric)",
-                        "sliding_window",
-                        "Sliding Window",
-                    ),
-                    ("Spline (non-parametric)", "spline", "Spline"),
                     ("Logistic (parametric)", "mech_logistic", "Model Fitting"),
                     ("Gompertz (parametric)", "mech_gompertz", "Model Fitting"),
                     ("Richards (parametric)", "mech_richards", "Model Fitting"),
@@ -1202,12 +661,6 @@ def analysis_params_fragment():
                     window_points = int(params0["window_points"])
                     spline_s = float(default_spline_s)
 
-            # Info message for mechanistic models (outside columns)
-            if growth_method == "Model Fitting" and model_family == "mechanistic":
-                st.info(
-                    "Mechanistic models return both μ_max and intrinsic growth rate μ."
-                )
-
             st.write("")
             st.markdown("**'No Growth' Thresholds**")
             st.caption("Wells failing these criteria will be marked as no growth")
@@ -1238,6 +691,15 @@ def analysis_params_fragment():
                 format="%.4f",
                 help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
             )
+
+            # Help section for growth descriptor methods
+            st.write("")
+            import numpy as np
+            import plotly.graph_objects as go
+
+            # Determine which help content to show based on selected method
+            is_nonparametric = growth_method in ["Sliding Window", "Spline"]
+            is_parametric = growth_method == "Model Fitting"
 
         with boundary_col:
             st.markdown("**Phase Boundary Detection**")
@@ -1272,6 +734,589 @@ def analysis_params_fragment():
                 disabled=phase_boundary_method == "tangent",
                 help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
             )
+
+            # Help section for phase boundary detection
+            st.write("")
+
+        st.write("")
+        help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
+
+        with help_model_col:
+            st.markdown("**Growth Descriptor Calculation Method**")
+            # Show non-parametric methods if selected
+            if is_nonparametric:
+                if growth_method == "Sliding Window":
+                    st.markdown("**Sliding Window Method** (Currently Selected)")
+                    st.latex(r"\ln(N(t)) = N_0 + b\,t")
+
+                    t_points = np.linspace(0, 48, 50)
+                    y_points = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_points - 24)))
+
+                    fig_sw = go.Figure()
+                    fig_sw.add_trace(
+                        go.Scatter(
+                            x=t_points,
+                            y=y_points,
+                            mode="markers",
+                            marker=dict(color="blue", size=6),
+                            name="Data points",
+                        )
+                    )
+
+                    window_center_t = 24
+                    window_half_width = 4
+                    win_x0 = window_center_t - window_half_width
+                    win_x1 = window_center_t + window_half_width
+
+                    y_at_win = 0.05 + 0.95 / (
+                        1 + np.exp(-0.2 * (np.array([win_x0, win_x1]) - 24))
+                    )
+                    box_y_min = min(y_at_win) - 0.08
+                    box_y_max = max(y_at_win) + 0.08
+
+                    fig_sw.add_shape(
+                        type="rect",
+                        x0=win_x0,
+                        x1=win_x1,
+                        y0=box_y_min,
+                        y1=box_y_max,
+                        fillcolor="rgba(0,200,0,0.2)",
+                        line=dict(color="green", width=2),
+                    )
+
+                    fig_sw.add_annotation(
+                        x=window_center_t,
+                        y=box_y_max + 0.08,
+                        text="Sliding Window",
+                        showarrow=False,
+                        font=dict(color="green", size=12),
+                    )
+
+                    arrow_y = box_y_min + (box_y_max - box_y_min) / 2
+
+                    fig_sw.add_annotation(
+                        x=win_x0 - 1,
+                        y=arrow_y,
+                        ax=win_x0 - 6,
+                        ay=arrow_y,
+                        xref="x",
+                        yref="y",
+                        axref="x",
+                        ayref="y",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1.5,
+                        arrowwidth=2,
+                        arrowcolor="gray",
+                        text="",
+                    )
+
+                    fig_sw.add_annotation(
+                        x=win_x1 + 6,
+                        y=arrow_y,
+                        ax=win_x1 + 1,
+                        ay=arrow_y,
+                        xref="x",
+                        yref="y",
+                        axref="x",
+                        ayref="y",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1.5,
+                        arrowwidth=2,
+                        arrowcolor="gray",
+                        text="",
+                    )
+
+                    fig_sw.update_layout(
+                        height=250,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="ln(OD)",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_sw, width="stretch", config={"staticPlot": True}
+                    )
+
+                elif growth_method == "Spline":
+                    st.markdown("**Spline Method** (Currently Selected)")
+                    st.latex(r"\ln(N(t)) = \mathrm{spline}(t)")
+
+                    # Generate spline visualization
+                    t_spline_points = np.linspace(0, 48, 30)
+                    y_spline_points = np.log(
+                        0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_points - 24)))
+                    )
+
+                    # Generate smooth spline curve
+                    t_spline_smooth = np.linspace(0, 48, 200)
+                    y_spline_smooth = np.log(
+                        0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_smooth - 24)))
+                    )
+
+                    fig_spline = go.Figure()
+
+                    # Add data points
+                    fig_spline.add_trace(
+                        go.Scatter(
+                            x=t_spline_points,
+                            y=y_spline_points,
+                            mode="markers",
+                            marker=dict(color="blue", size=6),
+                            name="Data points",
+                        )
+                    )
+
+                    # Add smooth spline fit
+                    fig_spline.add_trace(
+                        go.Scatter(
+                            x=t_spline_smooth,
+                            y=y_spline_smooth,
+                            mode="lines",
+                            line=dict(color="green", width=3),
+                            name="Spline fit",
+                        )
+                    )
+
+                    fig_spline.update_layout(
+                        height=250,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="ln(OD)",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_spline, width="stretch", config={"staticPlot": True}
+                    )
+
+            # Show parametric methods if selected
+            elif is_parametric:
+                t = np.linspace(0, 48, 200)
+
+                # Show the currently selected model
+                if "logistic" in str(model_type):
+                    st.markdown("**Logistic** (Currently Selected)")
+                    if str(model_type).startswith("mech_"):
+                        st.latex(r"\frac{dN}{dt} = \mu\left(1-\frac{N}{K}\right)N")
+                    else:
+                        st.latex(
+                            r"\ln\!\left(\frac{N(t)}{N_0}\right) = \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}(\lambda-t)}{A}+2\right)}"
+                        )
+                    st.caption(
+                        "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
+                    )
+                    y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
+                    fig_log = go.Figure()
+                    fig_log.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_logistic,
+                            mode="lines",
+                            line=dict(color="blue", width=2),
+                        )
+                    )
+                    fig_log.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_log, width="stretch", config={"staticPlot": True}
+                    )
+
+                elif "gompertz" in str(model_type):
+                    model_name = (
+                        "Modified Gompertz"
+                        if "modified" in str(model_type)
+                        else "Gompertz"
+                    )
+                    st.markdown(f"**{model_name}** (Currently Selected)")
+                    if str(model_type).startswith("mech_"):
+                        st.latex(r"\frac{dN}{dt} = \mu\log\!\left(\frac{K}{N}\right)N")
+                    elif "modified" in str(model_type):
+                        st.latex(
+                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
+                        )
+                    else:
+                        st.latex(
+                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
+                        )
+                    st.caption(
+                        "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
+                    )
+                    y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
+                    fig_gom = go.Figure()
+                    fig_gom.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_gompertz,
+                            mode="lines",
+                            line=dict(color="green", width=2),
+                        )
+                    )
+                    fig_gom.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_gom, width="stretch", config={"staticPlot": True}
+                    )
+
+                elif "richards" in str(model_type):
+                    st.markdown("**Richards** (Currently Selected)")
+                    if str(model_type).startswith("mech_"):
+                        st.latex(
+                            r"\frac{dN}{dt}=\mu\left(1-\left(\frac{N}{K}\right)^{\beta}\right)N"
+                        )
+                    else:
+                        st.latex(
+                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
+                        )
+                    st.caption(
+                        "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
+                    )
+                    nu = 2.0
+                    y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
+                    fig_ric = go.Figure()
+                    fig_ric.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_richards,
+                            mode="lines",
+                            line=dict(color="orange", width=2),
+                        )
+                    )
+                    fig_ric.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_ric, width="stretch", config={"staticPlot": True}
+                    )
+
+                elif "baranyi" in str(model_type):
+                    st.markdown("**Baranyi-Roberts** (Currently Selected)")
+                    st.latex(
+                        r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(h_0)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
+                    )
+                    st.caption(
+                        "Baranyi-Roberts model with physiological lag parameter h₀. Mechanistic model accounting for cell adaptation during lag phase."
+                    )
+                    h0 = 5.0
+                    mu_max_b = 0.15
+                    K_b = 1.0
+                    y0_b = 0.05
+                    A_t = t + (1.0 / mu_max_b) * np.log(
+                        np.exp(-mu_max_b * t) + np.exp(-h0) - np.exp(-mu_max_b * t - h0)
+                    )
+                    y_baranyi = K_b / (
+                        1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t)
+                    )
+                    fig_bar = go.Figure()
+                    fig_bar.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_baranyi,
+                            mode="lines",
+                            line=dict(color="purple", width=2),
+                        )
+                    )
+                    fig_bar.update_layout(
+                        height=150,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        xaxis_title="Time (h)",
+                        yaxis_title="OD600",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(
+                        fig_bar, width="stretch", config={"staticPlot": True}
+                    )
+
+        with help_boundary_col:
+            st.markdown("**Phase Boundary Detection**")
+            st.markdown(
+                """
+Phase boundaries define when the lag phase ends and when the exponential phase ends. Different methods are available for calculating these boundaries:
+                """
+            )
+
+            # Show the currently selected method first
+            if phase_boundary_method == "threshold":
+                st.markdown("**Threshold Method** (Currently Selected)")
+
+                t_deriv = np.linspace(0, 48, 200)
+                exp_term = np.exp(-0.2 * (t_deriv - 24))
+                y_deriv = 0.95 * 0.2 * exp_term / (1 + exp_term) ** 2
+
+                mu_max_h = np.max(y_deriv)
+                t_max = t_deriv[np.argmax(y_deriv)]
+                sigma = 8
+                y_fitted = mu_max_h * np.exp(-((t_deriv - t_max) ** 2) / (2 * sigma**2))
+
+                illustration_threshold = 0.25 * mu_max_h
+                left_crossings = np.where(y_fitted[:100] >= illustration_threshold)[0]
+                t_lag_end = (
+                    t_deriv[left_crossings[0]] if len(left_crossings) > 0 else 10
+                )
+                right_crossings = np.where(y_fitted[100:] >= illustration_threshold)[0]
+                t_exp_end = (
+                    t_deriv[100 + right_crossings[-1]]
+                    if len(right_crossings) > 0
+                    else 38
+                )
+
+                fig_deriv = go.Figure()
+
+                t_deriv_points = np.linspace(0, 48, 50)
+                exp_term_pts = np.exp(-0.2 * (t_deriv_points - 24))
+                y_deriv_points = 0.95 * 0.2 * exp_term_pts / (1 + exp_term_pts) ** 2
+
+                fig_deriv.add_trace(
+                    go.Scatter(
+                        x=t_deriv_points,
+                        y=y_deriv_points,
+                        mode="markers",
+                        marker=dict(color="blue", size=6),
+                        name="dOD/dt",
+                    )
+                )
+
+                fig_deriv.add_trace(
+                    go.Scatter(
+                        x=t_deriv,
+                        y=y_fitted,
+                        mode="lines",
+                        line=dict(color="orange", width=2, dash="dash"),
+                        name="Fitted curve",
+                    )
+                )
+
+                threshold = 0.25 * mu_max_h
+                fig_deriv.add_hline(
+                    y=threshold,
+                    line_dash="dash",
+                    line_color="gray",
+                    annotation_text="Cutoff",
+                    annotation_position="right",
+                )
+
+                fig_deriv.add_vline(
+                    x=t_lag_end,
+                    line_dash="solid",
+                    line_color="#66BB6A",
+                    line_width=2,
+                )
+                fig_deriv.add_vline(
+                    x=t_exp_end,
+                    line_dash="solid",
+                    line_color="red",
+                    line_width=2,
+                )
+
+                fig_deriv.add_annotation(
+                    x=t_lag_end,
+                    y=mu_max_h * 0.9,
+                    text="End of<br>Lag Phase",
+                    showarrow=False,
+                    font=dict(color="green", size=10),
+                    xanchor="right",
+                    xshift=-5,
+                )
+                fig_deriv.add_annotation(
+                    x=t_exp_end,
+                    y=mu_max_h * 0.9,
+                    text="End of<br>Exp. Phase",
+                    showarrow=False,
+                    font=dict(color="red", size=10),
+                    xanchor="left",
+                    xshift=5,
+                )
+
+                fig_deriv.add_annotation(
+                    x=t_max,
+                    y=mu_max_h + 0.003,
+                    text="μ_max",
+                    showarrow=False,
+                    font=dict(color="orange", size=11),
+                )
+
+                fig_deriv.update_layout(
+                    height=250,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis_title="Time (h)",
+                    yaxis_title="μ (h⁻¹)",
+                    showlegend=False,
+                )
+                st.plotly_chart(
+                    fig_deriv,
+                    width="stretch",
+                    config={"staticPlot": True},
+                    key="phase_help_threshold_derivative_dup",
+                )
+
+            else:  # tangent method
+                st.markdown("**Tangent Method** (Currently Selected)")
+
+                # Generate growth curve and tangent
+                t_tang = np.linspace(0, 48, 200)
+                y_tang = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_tang - 24)))
+                y_tang_log = np.log(y_tang)
+
+                # Calculate specific growth rate
+                dy = np.gradient(y_tang, t_tang)
+                mu_tang = dy / y_tang
+                mu_max_tang = np.max(mu_tang)
+                t_umax_idx = np.argmax(mu_tang)
+                t_umax = t_tang[t_umax_idx]
+                od_umax = y_tang[t_umax_idx]
+                ln_od_umax = np.log(od_umax)
+
+                # Tangent line in log space: ln(OD) = ln(od_umax) + mu_max * (t - t_umax)
+                baseline_od = 0.05
+                plateau_od = 1.0
+                t_start_tang = t_umax + np.log(baseline_od / od_umax) / mu_max_tang
+                t_end_tang = t_umax + np.log(plateau_od / od_umax) / mu_max_tang
+
+                # Generate tangent line in log space (straight line)
+                t_tangent_line = np.linspace(t_start_tang, t_end_tang, 50)
+                ln_y_tangent_line = ln_od_umax + mu_max_tang * (t_tangent_line - t_umax)
+
+                fig_tang = go.Figure()
+
+                # Growth curve in log space
+                fig_tang.add_trace(
+                    go.Scatter(
+                        x=t_tang,
+                        y=y_tang_log,
+                        mode="lines",
+                        line=dict(color="blue", width=3),
+                        name="Growth curve",
+                    )
+                )
+
+                # Tangent line (straight in log space)
+                fig_tang.add_trace(
+                    go.Scatter(
+                        x=t_tangent_line,
+                        y=ln_y_tangent_line,
+                        mode="lines",
+                        line=dict(color="orange", width=2, dash="dash"),
+                        name="Tangent at μ_max",
+                    )
+                )
+
+                # Baseline and plateau in log space
+                fig_tang.add_hline(
+                    y=np.log(baseline_od),
+                    line_dash="dot",
+                    line_color="gray",
+                    opacity=0.5,
+                )
+                fig_tang.add_hline(
+                    y=np.log(plateau_od),
+                    line_dash="dot",
+                    line_color="gray",
+                    opacity=0.5,
+                )
+
+                # Phase boundaries
+                fig_tang.add_vline(
+                    x=t_start_tang, line_dash="solid", line_color="green", line_width=2
+                )
+                fig_tang.add_vline(
+                    x=t_end_tang, line_dash="solid", line_color="red", line_width=2
+                )
+
+                # Annotations
+                fig_tang.add_annotation(
+                    x=t_start_tang,
+                    y=-1.5,
+                    text="Exp Phase<br>Start",
+                    showarrow=False,
+                    font=dict(color="green", size=10),
+                    xanchor="right",
+                    xshift=-5,
+                )
+                fig_tang.add_annotation(
+                    x=t_end_tang,
+                    y=-1.5,
+                    text="Exp Phase<br>End",
+                    showarrow=False,
+                    font=dict(color="red", size=10),
+                    xanchor="left",
+                    xshift=5,
+                )
+                fig_tang.add_annotation(
+                    x=t_umax,
+                    y=ln_od_umax + 0.2,
+                    text="μ_max",
+                    showarrow=True,
+                    arrowhead=2,
+                )
+
+                fig_tang.update_layout(
+                    height=250,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    xaxis_title="Time (h)",
+                    yaxis_title="ln(OD600)",
+                    showlegend=False,
+                )
+                st.plotly_chart(
+                    fig_tang,
+                    width="stretch",
+                    config={"staticPlot": True},
+                    key="phase_help_tangent_dup",
+                )
+
+        if growth_method == "Model Fitting":
+            mu_max_calc = "fitted μmax"
+            model_rmse_calc = "RMSE over model fit window (entire curve)"
+            max_od_calc = "Maximum OD from fitted model over valid data range"
+        else:
+            mu_max_calc = "Max of d(ln N)/dt from local fit"
+            max_od_calc = "Maximum raw OD over valid data range"
+            if growth_method == "Sliding Window":
+                model_rmse_calc = "RMSE over sliding-window fit window"
+            else:
+                model_rmse_calc = "RMSE over spline fit window (log phase)"
+
+        if growth_method == "Model Fitting" and model_family == "mechanistic":
+            intrinsic_calc = "Fitted intrinsic μ"
+        else:
+            intrinsic_calc = "None"
+
+        if phase_boundary_method == "threshold":
+            boundary_calc = "From threshold phase-boundary method"
+        else:
+            boundary_calc = "From tangent phase-boundary method"
+
+        if growth_method == "Model Fitting" and model_type in {
+            "phenom_logistic",
+            "phenom_gompertz",
+            "phenom_gompertz_modified",
+            "phenom_richards",
+        }:
+            lag_time_calc = "λ (fitted lag parameter)"
+        else:
+            lag_time_calc = boundary_calc
+
+        st.markdown("**Growth parameter calculations (selected method)**")
+        st.markdown(
+            f"""
+| max_od | mu_max | intrinsic_growth_rate | doubling_time | lag_time | time_at_umax | od_at_umax | exp_phase_end | model_rmse |
+|---|---|---|---|---|---|---|---|---|
+| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / mu_max | {lag_time_calc} | Time where mu_max is maximal | Model-predicted OD at time_at_umax | {boundary_calc} | {model_rmse_calc} |
+"""
+        )
 
     # Store analysis parameters in session state
     ss.setdefault("step4_params", {})
