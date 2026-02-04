@@ -17,10 +17,14 @@ from functions.data_processing import (
     smooth,
 )
 from growthcurves.models import (
-    baranyi_model,
-    gompertz_model,
-    logistic_model,
-    richards_model,
+    mech_baranyi_model,
+    mech_gompertz_model,
+    mech_logistic_model,
+    mech_richards_model,
+    phenom_gompertz_model,
+    phenom_gompertz_modified_model,
+    phenom_logistic_model,
+    phenom_richards_model,
     spline_from_params,
 )
 from growthcurves.utils import is_no_growth
@@ -352,10 +356,11 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
 
 
 # --- growth stats ----------------------------------------------------------------
-# Mapping of metric names to their units for y-axis labels
-# Keys from python_package.py
+# Mapping of metric names to their units for y-axis labels.
 METRIC_UNITS = {
+    "mu_max": "h⁻¹",
     "specific_growth_rate": "h⁻¹",
+    "intrinsic_growth_rate": "h⁻¹",
     "doubling_time": "hours",
     "max_od": "OD600",
     "exp_phase_start": "hours",
@@ -366,7 +371,9 @@ METRIC_UNITS = {
 
 # Mapping of metric names to display titles
 METRIC_TITLES = {
+    "mu_max": "Maximum specific growth rate",
     "specific_growth_rate": "Maximum specific growth rate",
+    "intrinsic_growth_rate": "Intrinsic growth rate",
     "doubling_time": "Doubling time",
     "max_od": "Maximum OD",
     "exp_phase_start": "Lag phase end",
@@ -377,7 +384,9 @@ METRIC_TITLES = {
 
 # Mapping of metric names to y-axis labels (using Greek letters where appropriate)
 METRIC_Y_LABELS = {
+    "mu_max": "μ",
     "specific_growth_rate": "μ",
+    "intrinsic_growth_rate": "μᵢ",
     "doubling_time": "tᵈ",
 }
 
@@ -615,9 +624,9 @@ def plot_growth_stats(
         fig.update_layout(title="Growth statistics", height=400)
         return fig
 
-    # Keys from python_package.py
     metrics = [
-        "specific_growth_rate",
+        "mu_max",
+        "intrinsic_growth_rate",
         "max_od",
         "exp_phase_start",
         "exp_phase_end",
@@ -1214,13 +1223,26 @@ def plot_derivative_metric(
                         t_model, y_model_raw, window_points=window_points
                     )
 
-            elif model_type in ["logistic", "gompertz", "richards", "baranyi"]:
+            elif model_type in [
+                "mech_logistic",
+                "mech_gompertz",
+                "mech_richards",
+                "mech_baranyi",
+                "phenom_logistic",
+                "phenom_gompertz",
+                "phenom_gompertz_modified",
+                "phenom_richards",
+            ]:
                 # For parametric models, compute metric from the model
                 model_func = {
-                    "logistic": logistic_model,
-                    "gompertz": gompertz_model,
-                    "richards": richards_model,
-                    "baranyi": baranyi_model,
+                    "mech_logistic": mech_logistic_model,
+                    "mech_gompertz": mech_gompertz_model,
+                    "mech_richards": mech_richards_model,
+                    "mech_baranyi": mech_baranyi_model,
+                    "phenom_logistic": phenom_logistic_model,
+                    "phenom_gompertz": phenom_gompertz_model,
+                    "phenom_gompertz_modified": phenom_gompertz_modified_model,
+                    "phenom_richards": phenom_richards_model,
                 }.get(model_type)
 
                 if model_func is not None:
@@ -1643,19 +1665,31 @@ def plot_window_single_mu(
                     t, y_s, window_points=window_points
                 )
 
-            elif model_type in ["logistic", "gompertz", "richards", "baranyi"]:
+            elif model_type in [
+                "mech_logistic",
+                "mech_gompertz",
+                "mech_richards",
+                "mech_baranyi",
+                "phenom_logistic",
+                "phenom_gompertz",
+                "phenom_gompertz_modified",
+                "phenom_richards",
+            ]:
                 # For parametric models, compute μ from the model
                 # μ = (1/N) * dN/dt, so we need to evaluate the model and its derivative
                 model_func = {
-                    "logistic": logistic_model,
-                    "gompertz": gompertz_model,
-                    "richards": richards_model,
-                    "baranyi": baranyi_model,
+                    "mech_logistic": mech_logistic_model,
+                    "mech_gompertz": mech_gompertz_model,
+                    "mech_richards": mech_richards_model,
+                    "mech_baranyi": mech_baranyi_model,
+                    "phenom_logistic": phenom_logistic_model,
+                    "phenom_gompertz": phenom_gompertz_model,
+                    "phenom_gompertz_modified": phenom_gompertz_modified_model,
+                    "phenom_richards": phenom_richards_model,
                 }.get(model_type)
 
                 if model_func is not None:
                     # Handle parameter name mismatches and filter metadata fields
-                    # fit_gompertz and fit_baranyi store "mu_max_param" but models expect "mu_max"
                     model_params = params.copy()
                     if "mu_max_param" in model_params:
                         model_params["mu_max"] = model_params.pop("mu_max_param")

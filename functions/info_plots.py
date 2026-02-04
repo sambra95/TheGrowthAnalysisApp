@@ -9,7 +9,7 @@ import numpy as np
 from pathlib import Path
 import growthcurves.plot as gc_plot
 from growthcurves.parametric import fit_parametric
-from growthcurves.utils import extract_stats_from_fit
+from growthcurves.utils import extract_stats
 
 
 def create_annotation_demo_plot_png(save_path: Path):
@@ -27,10 +27,10 @@ def create_annotation_demo_plot_png(save_path: Path):
     y_noisy = y + np.random.normal(0, 0.02, len(y))
 
     # Fit a Richards model to the noisy data using growthcurves
-    fit_result = fit_parametric(t, y_noisy, method="richards")
+    fit_result = fit_parametric(t, y_noisy, method="mech_richards")
 
     # Extract growth stats from the fit object
-    growth_stats = extract_stats_from_fit(fit_result, t, y_noisy)
+    growth_stats = extract_stats(fit_result, t, y_noisy)
 
     # Get annotation positions from growth_stats
     exp_start = growth_stats.get("exp_phase_start")

@@ -34,9 +34,9 @@ def _build_growth_stats_long_df(
         if nm and nm not in sample_order:
             sample_order.append(nm)
 
-    # Keys from python_package.py
     metrics = [
-        "specific_growth_rate",
+        "mu_max",
+        "intrinsic_growth_rate",
         "doubling_time",
         "max_od",
         "exp_phase_start",
@@ -61,13 +61,21 @@ def _build_growth_stats_long_df(
                 continue
 
             for m in metrics:
+                if m == "mu_max":
+                    raw_val = gs.get("mu_max", gs.get("specific_growth_rate", np.nan))
+                else:
+                    raw_val = gs.get(m, np.nan)
+                try:
+                    val = float(raw_val)
+                except (TypeError, ValueError):
+                    val = np.nan
                 rows.append(
                     {
                         "plate": pid,
                         "well": well,
                         "sample_name": nm,
                         "metric": m,
-                        "value": float(gs.get(m, np.nan)),
+                        "value": val,
                     }
                 )
 
@@ -487,10 +495,10 @@ def ui_growth_summaries(plates: dict):
     if apply_stats:
         long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
 
-        # Display each metric as a separate downloadable plot
-        # Keys from python_package.py
+        # Display each metric as a separate downloadable plot.
         metrics = [
-            "specific_growth_rate",
+            "mu_max",
+            "intrinsic_growth_rate",
             "doubling_time",
             "max_od",
             "exp_phase_start",

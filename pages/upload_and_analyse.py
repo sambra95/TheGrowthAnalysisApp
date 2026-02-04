@@ -29,7 +29,9 @@ DEFAULT_PARAMS = dict(
     min_signal_to_noise=5.0,
     min_growth_rate=0.001,
     growth_method="Sliding Window",
-    model_type="logistic",
+    model_family="mechanistic",
+    model_type="mech_logistic",
+    phase_boundary_method="threshold",
     spline_s=1.0,
 )
 
@@ -856,7 +858,13 @@ def preprocessing_params_fragment():
                         growth_method=str(
                             params0.get("growth_method", "Sliding Window")
                         ),
-                        model_type=str(params0.get("model_type", "logistic")),
+                        model_family=str(
+                            params0.get("model_family", "mechanistic")
+                        ),
+                        model_type=str(params0.get("model_type", "mech_logistic")),
+                        phase_boundary_method=str(
+                            params0.get("phase_boundary_method", "threshold")
+                        ),
                     )
                     tmp = {"uploads": rec["uploads"], "params": preview_params}
                     plate_preview = analyse_plate(tmp)
@@ -899,6 +907,7 @@ def analysis_params_fragment():
     """Fragment for analysis parameters."""
     # Get values from Step 3
     step3_params = ss.get("step3_params", {})
+    step4_prev = ss.get("step4_params", {})
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
 
     with st.container(border=True):
@@ -908,70 +917,80 @@ def analysis_params_fragment():
 
         method_col, option_col = st.columns(2)
         with method_col:
-            # Map display names to internal method names
-            method_options = [
-                "Sliding Window (non-parametric)",
-                "Spline (non-parametric)",
-                "Logistic (parametric)",
-                "Gompertz (parametric)",
-                "Richards (parametric)",
-                "Baranyi (parametric)",
-            ]
-
-            # Determine current selection index from stored params
             stored_method = params0.get("growth_method", "Sliding Window")
-            stored_model = params0.get("model_type", "logistic")
-
-            if stored_method == "Sliding Window":
-                default_index = 0
-            elif stored_method == "Spline":
-                default_index = 1
-            elif stored_method == "Model Fitting":
-                if stored_model == "logistic":
-                    default_index = 2
-                elif stored_model == "gompertz":
-                    default_index = 3
-                elif stored_model == "richards":
-                    default_index = 4
-                elif stored_model == "baranyi":
-                    default_index = 5
+            stored_model_family = params0.get("model_family", "mechanistic")
+            stored_model_type = params0.get("model_type", "mech_logistic")
+            if stored_model_type in {"logistic", "gompertz", "richards", "baranyi"}:
+                if stored_model_family == "phenomenological":
+                    stored_model_type = {
+                        "logistic": "phenom_logistic",
+                        "gompertz": "phenom_gompertz",
+                        "richards": "phenom_richards",
+                        "baranyi": "mech_baranyi",
+                    }[stored_model_type]
                 else:
-                    default_index = 2  # fallback to logistic
-            else:
-                default_index = 0
+                    stored_model_type = f"mech_{stored_model_type}"
 
-            selected_method = st.selectbox(
-                "Method",
-                options=method_options,
-                index=default_index,
-                help="Choose how to calculate growth descriptors: non-parametric methods use data-driven approaches, parametric methods fit theoretical growth models",
+            analysis_mode = st.selectbox(
+                "Method class",
+                options=["Non-parametric", "Parametric"],
+                index=1 if stored_method == "Model Fitting" else 0,
+                help="Use non-parametric methods for data-driven estimates, or parametric models to fit mechanistic/phenomenological growth equations.",
             )
 
-            # Parse selection to determine growth_method and model_type
-            if "Sliding Window" in selected_method:
-                growth_method = "Sliding Window"
-                model_type = "logistic"  # dummy value
-            elif "Spline" in selected_method:
-                growth_method = "Spline"
-                model_type = "logistic"  # dummy value
-            elif "Logistic" in selected_method:
-                growth_method = "Model Fitting"
-                model_type = "logistic"
-            elif "Gompertz" in selected_method:
-                growth_method = "Model Fitting"
-                model_type = "gompertz"
-            elif "Richards" in selected_method:
-                growth_method = "Model Fitting"
-                model_type = "richards"
-            elif "Baranyi" in selected_method:
-                growth_method = "Model Fitting"
-                model_type = "baranyi"
+            growth_method = "Sliding Window"
+            model_family = stored_model_family
+            model_type = stored_model_type
+
+            if analysis_mode == "Non-parametric":
+                np_method = st.selectbox(
+                    "Non-parametric method",
+                    options=["Sliding Window", "Spline"],
+                    index=1 if stored_method == "Spline" else 0,
+                )
+                growth_method = np_method
             else:
-                # Fallback
-                growth_method = "Sliding Window"
-                model_type = "logistic"
+                growth_method = "Model Fitting"
+                model_family = st.selectbox(
+                    "Parametric model type",
+                    options=["mechanistic", "phenomenological"],
+                    index=0 if stored_model_family == "mechanistic" else 1,
+                    format_func=lambda v: v.capitalize(),
+                )
+
+                if model_family == "mechanistic":
+                    model_options = [
+                        ("Logistic", "mech_logistic"),
+                        ("Gompertz", "mech_gompertz"),
+                        ("Richards", "mech_richards"),
+                        ("Baranyi-Roberts", "mech_baranyi"),
+                    ]
+                else:
+                    model_options = [
+                        ("Logistic", "phenom_logistic"),
+                        ("Gompertz", "phenom_gompertz"),
+                        ("Modified Gompertz", "phenom_gompertz_modified"),
+                        ("Richards", "phenom_richards"),
+                    ]
+
+                model_codes = [m[1] for m in model_options]
+                default_model_idx = (
+                    model_codes.index(stored_model_type)
+                    if stored_model_type in model_codes
+                    else 0
+                )
+                selected_model_label = st.selectbox(
+                    "Model",
+                    options=[m[0] for m in model_options],
+                    index=default_model_idx,
+                )
+                model_type = dict(model_options)[selected_model_label]
 
         with option_col:
+            default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
+            if default_spline_s is None:
+                default_spline_s = 1.0
+
             # Method-specific options
             if growth_method == "Sliding Window":
                 window_points = st.number_input(
@@ -982,28 +1001,38 @@ def analysis_params_fragment():
                     1,
                     help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
                 )
-                spline_s = None
-            elif growth_method == "Spline":
-                default_spline_s = params0.get("spline_s", 1.0)
-                if default_spline_s is None:
-                    default_spline_s = 1.0
-                spline_s = st.number_input(
-                    "Smoothing factor",
-                    0.01,
-                    100.0,
-                    float(default_spline_s),
-                    0.1,
-                    help="Smoothing factor for spline fit (lower = more flexible, higher = smoother). Set to None for automatic smoothing based on data size.",
-                )
-                window_points = int(params0["window_points"])
+                spline_s = float(default_spline_s)
             else:
                 # Model Fitting - no additional parameters needed (model already selected)
                 window_points = int(params0["window_points"])
-                spline_s = None
+                spline_s = float(default_spline_s)
+                if model_family == "mechanistic":
+                    st.info(
+                        "Mechanistic models return both μ_max and intrinsic growth rate μ."
+                    )
+
+            spline_s = st.number_input(
+                "Spline smoothing factor (s)",
+                0.01,
+                100.0,
+                float(spline_s),
+                0.1,
+                disabled=(growth_method != "Spline"),
+                help="Used when Non-parametric method is Spline. Lower values follow noise more closely; higher values produce smoother fits.",
+            )
 
         # Phase boundary cutoffs - apply to all methods
         st.write("")
         st.markdown("**Phase Boundary Detection**")
+        phase_boundary_method = st.selectbox(
+            "Phase boundary calculation",
+            options=["threshold", "tangent"],
+            index=0
+            if params0.get("phase_boundary_method", "threshold") == "threshold"
+            else 1,
+            format_func=lambda v: v.capitalize(),
+            help="Threshold uses fractions of μ_max; tangent uses the tangent at μ_max to estimate exponential phase bounds.",
+        )
         lag_col, exp_col = st.columns(2)
         with lag_col:
             lag_cutoff = st.number_input(
@@ -1013,7 +1042,8 @@ def analysis_params_fragment():
                 float(params0.get("lag_cutoff", 0.5)),
                 0.01,
                 format="%.2f",
-                help="Fraction of maximum growth rate used to define the end of lag phase",
+                disabled=phase_boundary_method == "tangent",
+                help="Fraction of maximum growth rate used to define lag phase end (threshold mode).",
             )
         with exp_col:
             exp_cutoff = st.number_input(
@@ -1023,7 +1053,8 @@ def analysis_params_fragment():
                 float(params0.get("exp_cutoff", 0.5)),
                 0.01,
                 format="%.2f",
-                help="Fraction of maximum growth rate used to define the end of exponential phase",
+                disabled=phase_boundary_method == "tangent",
+                help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
             )
 
         st.write("")
@@ -1066,7 +1097,9 @@ def analysis_params_fragment():
     ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
     ss["step4_params"]["min_growth_rate"] = min_growth_rate
     ss["step4_params"]["growth_method"] = growth_method
+    ss["step4_params"]["model_family"] = model_family
     ss["step4_params"]["model_type"] = model_type
+    ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
     ss["step4_params"]["spline_s"] = spline_s
 
 
@@ -1096,7 +1129,9 @@ def analyse_button_fragment():
     min_signal_to_noise = step4_params.get("min_signal_to_noise", 5.0)
     min_growth_rate = step4_params.get("min_growth_rate", 0.001)
     growth_method = step4_params.get("growth_method", "Sliding Window")
-    model_type = step4_params.get("model_type", "logistic")
+    model_family = step4_params.get("model_family", "mechanistic")
+    model_type = step4_params.get("model_type", "mech_logistic")
+    phase_boundary_method = step4_params.get("phase_boundary_method", "threshold")
     spline_s = step4_params.get("spline_s", None)
 
     # Build final params dict
@@ -1115,7 +1150,9 @@ def analyse_button_fragment():
         min_signal_to_noise=float(min_signal_to_noise),
         min_growth_rate=float(min_growth_rate),
         growth_method=str(growth_method),
+        model_family=str(model_family),
         model_type=str(model_type),
+        phase_boundary_method=str(phase_boundary_method),
         spline_s=float(spline_s) if spline_s is not None else None,
     )
 

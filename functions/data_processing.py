@@ -11,17 +11,39 @@ from scipy.signal import savgol_filter
 # Import all growth fitting functions from growthcurves package
 from growthcurves.parametric import fit_parametric
 from growthcurves.non_parametric import fit_non_parametric
-from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats_from_fit
+from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
+
+LEGACY_MODEL_TYPE_MAP = {
+    "logistic": "mech_logistic",
+    "gompertz": "mech_gompertz",
+    "richards": "mech_richards",
+    "baranyi": "mech_baranyi",
+}
 
 
 # ---------- small utilities ----------
 def _as_float(x):
     """Convert array-like input to a float NumPy array."""
     return np.asarray(x, dtype=float)
+
+
+def normalize_model_type(model_type: str | None, model_family: str | None = None) -> str:
+    """Normalize legacy model identifiers to growthcurves' current API names."""
+    mt = str(model_type or "").strip()
+    if mt in LEGACY_MODEL_TYPE_MAP:
+        if model_family == "phenomenological":
+            return {
+                "logistic": "phenom_logistic",
+                "gompertz": "phenom_gompertz",
+                "richards": "phenom_richards",
+                "baranyi": "mech_baranyi",
+            }[mt]
+        return LEGACY_MODEL_TYPE_MAP[mt]
+    return mt or "mech_logistic"
 
 
 @st.cache_data
@@ -372,20 +394,29 @@ def analyse_plate(record: dict):
             lag_frac = float(p.get("lag_cutoff", 0.15))
             exp_frac = float(p.get("exp_cutoff", 0.15))
 
+            phase_boundary_method = str(
+                p.get("phase_boundary_method", "threshold")
+            ).lower()
+
             if growth_method == "Model Fitting":
                 # Use parametric model fitting
+                model_type = normalize_model_type(
+                    p.get("model_type", "mech_logistic"),
+                    p.get("model_family", "mechanistic"),
+                )
                 fit_result = fit_parametric(
                     t_arr,
                     y_arr,
-                    method=p.get("model_type", "logistic"),
+                    method=model_type,
                 )
                 if fit_result is not None:
-                    fit = extract_stats_from_fit(
+                    fit = extract_stats(
                         fit_result,
                         t_arr,
                         y_arr,
                         lag_frac=lag_frac,
                         exp_frac=exp_frac,
+                        phase_boundary_method=phase_boundary_method,
                     )
                     # Store model parameters
                     for param_name, param_val in fit_result["params"].items():
@@ -405,12 +436,13 @@ def analyse_plate(record: dict):
                     sg_poly=int(p.get("sg_poly", 1)),
                 )
                 if fit_result is not None:
-                    fit = extract_stats_from_fit(
+                    fit = extract_stats(
                         fit_result,
                         t_arr,
                         y_arr,
                         lag_frac=lag_frac,
                         exp_frac=exp_frac,
+                        phase_boundary_method=phase_boundary_method,
                     )
                     fit["spline_s"] = p.get("spline_s", None)
                 else:
@@ -428,12 +460,13 @@ def analyse_plate(record: dict):
                     sg_poly=int(p.get("sg_poly", 1)),
                 )
                 if fit_result is not None:
-                    fit = extract_stats_from_fit(
+                    fit = extract_stats(
                         fit_result,
                         t_arr,
                         y_arr,
                         lag_frac=lag_frac,
                         exp_frac=exp_frac,
+                        phase_boundary_method=phase_boundary_method,
                     )
                     fit["window_points"] = int(p["window_points"])
                 else:
@@ -452,6 +485,8 @@ def analyse_plate(record: dict):
                 fit = bad_fit_stats()
                 fit["no_growth_reason"] = no_growth_result["reason"]
                 fit_result = None  # Clear fit result for no-growth cases
+            else:
+                fit["phase_boundary_method"] = phase_boundary_method
 
         except Exception:
             fit = bad_fit_stats()
@@ -502,7 +537,7 @@ def compute_window_fits(
             )
 
             if fit_result is not None:
-                fit = extract_stats_from_fit(
+                fit = extract_stats(
                     fit_result,
                     t_arr,
                     y_arr,

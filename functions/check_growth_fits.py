@@ -7,13 +7,14 @@ import streamlit as st
 
 from growthcurves.parametric import fit_parametric
 from growthcurves.non_parametric import fit_non_parametric
-from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats_from_fit
+from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 import growthcurves.plot as gc_plot
 from functions.plotting_functions import (
     is_bad_fit,
     plot_derivative_metric,
     _finite_sorted_xy,
 )
+from functions.data_processing import normalize_model_type
 
 
 # ---------------- Gatekeeper ----------------
@@ -188,21 +189,30 @@ def _analyse_series_with_plate_params(
         lag_frac = float(params.get("lag_cutoff", 0.15))
         exp_frac = float(params.get("exp_cutoff", 0.15))
 
+        phase_boundary_method = str(
+            params.get("phase_boundary_method", "threshold")
+        ).lower()
+
         fit_result = None
         if growth_method == "Model Fitting":
             # Use parametric model fitting
+            model_type = normalize_model_type(
+                params.get("model_type", "mech_logistic"),
+                params.get("model_family", "mechanistic"),
+            )
             fit_result = fit_parametric(
                 t_arr,
                 y_arr,
-                method=params.get("model_type", "logistic"),
+                method=model_type,
             )
             if fit_result is not None:
-                fit = extract_stats_from_fit(
+                fit = extract_stats(
                     fit_result,
                     t_arr,
                     y_arr,
                     lag_frac=lag_frac,
                     exp_frac=exp_frac,
+                    phase_boundary_method=phase_boundary_method,
                 )
                 # Store model parameters
                 for param_name, param_val in fit_result["params"].items():
@@ -222,12 +232,13 @@ def _analyse_series_with_plate_params(
                 sg_poly=int(params.get("sg_poly", 1)),
             )
             if fit_result is not None:
-                fit = extract_stats_from_fit(
+                fit = extract_stats(
                     fit_result,
                     t_arr,
                     y_arr,
                     lag_frac=lag_frac,
                     exp_frac=exp_frac,
+                    phase_boundary_method=phase_boundary_method,
                 )
                 fit["spline_s"] = params.get("spline_s", None)
             else:
@@ -245,12 +256,13 @@ def _analyse_series_with_plate_params(
                 sg_poly=int(params.get("sg_poly", 1)),
             )
             if fit_result is not None:
-                fit = extract_stats_from_fit(
+                fit = extract_stats(
                     fit_result,
                     t_arr,
                     y_arr,
                     lag_frac=lag_frac,
                     exp_frac=exp_frac,
+                    phase_boundary_method=phase_boundary_method,
                 )
                 fit["window_points"] = int(params.get("window_points", 15))
             else:
@@ -271,6 +283,8 @@ def _analyse_series_with_plate_params(
             fit = bad_fit_stats()
             fit["no_growth_reason"] = no_growth_result["reason"]
             fit_result = None
+        else:
+            fit["phase_boundary_method"] = phase_boundary_method
     except Exception:
         fit = bad_fit_stats()
         fit_result = None
@@ -384,14 +398,18 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
         return pd.DataFrame({"Metric": ["No growth detected"], "Value": ["--"]})
 
     # Define metrics to display with nice labels and formatting
-    # Keys from python_package.py
     metrics = [
         ("fit_method", "Fit Method", lambda x: str(x) if x else "sliding_window"),
         ("model_rmse", "RMSE", lambda x: f"{float(x):.5f}" if pd.notna(x) else "--"),
         ("max_od", "Maximum OD", lambda x: f"{float(x):.4f}" if pd.notna(x) else "--"),
         (
-            "specific_growth_rate",
+            "mu_max",
             "Maximum Growth Rate (1/h)",
+            lambda x: f"{float(x):.4f}" if pd.notna(x) else "--",
+        ),
+        (
+            "intrinsic_growth_rate",
+            "Intrinsic Growth Rate (1/h)",
             lambda x: f"{float(x):.4f}" if pd.notna(x) else "--",
         ),
         (
@@ -424,11 +442,19 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
             "Analysis Window End (h)",
             lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
         ),
+        (
+            "phase_boundary_method",
+            "Phase Boundary Method",
+            lambda x: str(x) if x else "--",
+        ),
     ]
 
     rows = []
     for key, label, formatter in metrics:
         value = gs.get(key)
+        # Backward compatibility for previously exported/serialized stats.
+        if key == "mu_max" and value is None:
+            value = gs.get("specific_growth_rate")
         try:
             formatted_value = formatter(value) if value is not None else "--"
         except (ValueError, TypeError):
@@ -675,7 +701,7 @@ def ui_window_fits_well_editor(plates: dict):
         # Include all key metrics that change during lasso selection
         table_key = (
             f"stats_table_{plate_id}_{well}_"
-            f"{gs.get('specific_growth_rate', 0)}_"
+            f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
             f"{gs.get('max_od', 0)}_"
             f"{gs.get('exp_phase_start', 0)}_"
             f"{gs.get('exp_phase_end', 0)}_"
@@ -685,14 +711,6 @@ def ui_window_fits_well_editor(plates: dict):
         st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
 
     st.divider()
-
-    # Check which fitting method was used
-    fit_method = gs.get("fit_method", "sliding_window")
-    # Only treat logistic, gompertz, richards, and baranyi as parametric model fits
-    fit_method and any(
-        model in str(fit_method)
-        for model in ["logistic", "gompertz", "richards", "baranyi"]
-    )
 
     chart_key = f"lasso_fit_{plate_id}_{well}"
 
