@@ -1079,18 +1079,22 @@ def analysis_params_fragment():
                 stored_model_type = f"mech_{stored_model_type}"
 
         # Two columns: Model options | Phase boundary options
-        model_col, boundary_col = st.columns(2, gap="large")
+        model_col, boundary_col = st.columns((5, 4), gap="large")
 
         with model_col:
             st.markdown("**Growth Descriptor Calculation Method**")
 
-            # Model family selector
-            model_family = st.selectbox(
-                "Model family",
-                options=["Phenomenological", "Mechanistic"],
-                index=1 if stored_model_family == "mechanistic" else 0,
-                help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
-            )
+            # Create three columns for model family, growth descriptor method, and method-specific parameters
+            family_col, method_col, param_col = st.columns(3)
+
+            with family_col:
+                # Model family selector
+                model_family = st.selectbox(
+                    "Model family",
+                    options=["Phenomenological", "Mechanistic"],
+                    index=1 if stored_model_family == "mechanistic" else 0,
+                    help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
+                )
 
             # Convert display name to internal value
             model_family_internal = (
@@ -1144,13 +1148,14 @@ def analysis_params_fragment():
                         default_idx = i
                         break
 
-            # Growth descriptor method selector
-            selected_method_label = st.selectbox(
-                "Growth descriptor method",
-                options=[m[0] for m in method_options],
-                index=default_idx,
-                help="Choose between non-parametric (data-driven) or parametric (model-based) approaches.",
-            )
+            with method_col:
+                # Growth descriptor method selector
+                selected_method_label = st.selectbox(
+                    "Growth descriptor method",
+                    options=[m[0] for m in method_options],
+                    index=default_idx,
+                    help="Choose between non-parametric (data-driven) or parametric (model-based) approaches.",
+                )
 
             # Extract the internal codes
             selected_method_code = None
@@ -1166,42 +1171,72 @@ def analysis_params_fragment():
 
             model_family = model_family_internal
 
-            # Method-specific parameters
-            st.write("")
+            # Method-specific parameters in the third column
             default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
             if default_spline_s is None:
                 default_spline_s = 1.0
 
-            if growth_method == "Sliding Window":
-                window_points = st.number_input(
-                    "Window size (points)",
-                    5,
-                    200,
-                    int(params0["window_points"]),
-                    1,
-                    help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
-                )
-                spline_s = float(default_spline_s)
-            elif growth_method == "Spline":
-                window_points = int(params0["window_points"])
-                spline_s = float(default_spline_s)
-            else:
-                # Model Fitting - no additional parameters needed (model already selected)
-                window_points = int(params0["window_points"])
-                spline_s = float(default_spline_s)
-                if model_family == "mechanistic":
-                    st.info(
-                        "Mechanistic models return both μ_max and intrinsic growth rate μ."
+            with param_col:
+                if growth_method == "Sliding Window":
+                    window_points = st.number_input(
+                        "Window size (points)",
+                        5,
+                        200,
+                        int(params0["window_points"]),
+                        1,
+                        help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
                     )
+                    spline_s = float(default_spline_s)
+                elif growth_method == "Spline":
+                    window_points = int(params0["window_points"])
+                    spline_s = st.number_input(
+                        "Spline smoothing factor (s)",
+                        0.01,
+                        100.0,
+                        float(default_spline_s),
+                        0.1,
+                        help="Lower values follow noise more closely; higher values produce smoother fits.",
+                    )
+                else:
+                    # Model Fitting - no additional parameters needed (model already selected)
+                    window_points = int(params0["window_points"])
+                    spline_s = float(default_spline_s)
 
-            spline_s = st.number_input(
-                "Spline smoothing factor (s)",
-                0.01,
-                100.0,
-                float(spline_s),
+            # Info message for mechanistic models (outside columns)
+            if growth_method == "Model Fitting" and model_family == "mechanistic":
+                st.info(
+                    "Mechanistic models return both μ_max and intrinsic growth rate μ."
+                )
+
+            st.write("")
+            st.markdown("**'No Growth' Thresholds**")
+            st.caption("Wells failing these criteria will be marked as no growth")
+
+            col1, col2, col3 = st.columns(3)
+            min_data_points = col1.number_input(
+                "Minimum data points",
+                1,
+                100,
+                int(params0.get("min_data_points", 5)),
+                1,
+                help="Minimum number of valid data points required for growth analysis",
+            )
+            min_signal_to_noise = col2.number_input(
+                "Minimum signal-to-noise ratio",
                 0.1,
-                disabled=(growth_method != "Spline"),
-                help="Used when Non-parametric method is Spline. Lower values follow noise more closely; higher values produce smoother fits.",
+                100.0,
+                float(params0.get("min_signal_to_noise", 5.0)),
+                0.1,
+                help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
+            )
+            min_growth_rate = col3.number_input(
+                "Minimum growth rate (1/h)",
+                0.0,
+                1.0,
+                float(params0.get("min_growth_rate", 0.001)),
+                0.0001,
+                format="%.4f",
+                help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
             )
 
         with boundary_col:
@@ -1237,37 +1272,6 @@ def analysis_params_fragment():
                 disabled=phase_boundary_method == "tangent",
                 help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
             )
-
-        st.write("")
-        st.markdown("**'No Growth' Thresholds**")
-        st.caption("Wells failing these criteria will be marked as no growth")
-
-        col1, col2, col3 = st.columns(3)
-        min_data_points = col1.number_input(
-            "Minimum data points",
-            1,
-            100,
-            int(params0.get("min_data_points", 5)),
-            1,
-            help="Minimum number of valid data points required for growth analysis",
-        )
-        min_signal_to_noise = col2.number_input(
-            "Minimum signal-to-noise ratio",
-            0.1,
-            100.0,
-            float(params0.get("min_signal_to_noise", 5.0)),
-            0.1,
-            help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
-        )
-        min_growth_rate = col3.number_input(
-            "Minimum growth rate (1/h)",
-            0.0,
-            1.0,
-            float(params0.get("min_growth_rate", 0.001)),
-            0.0001,
-            format="%.4f",
-            help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
-        )
 
     # Store analysis parameters in session state
     ss.setdefault("step4_params", {})
