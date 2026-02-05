@@ -547,7 +547,6 @@ def analysis_params_fragment():
         model_col, boundary_col = st.columns((5, 4), gap="large")
 
         with model_col:
-            st.markdown("**Growth Descriptor Calculation Method**")
 
             # Create three columns for model family, growth descriptor method, and method-specific parameters
             family_col, method_col, param_col = st.columns(3)
@@ -702,7 +701,9 @@ def analysis_params_fragment():
             is_parametric = growth_method == "Model Fitting"
 
         with boundary_col:
-            st.markdown("**Phase Boundary Detection**")
+            st.caption(
+                "Phase boundaries define when the lag phase ends and when the exponential phase ends. Different methods are available for calculating these boundaries:"
+            )
             phase_boundary_method = st.selectbox(
                 "Phase boundary calculation",
                 options=["threshold", "tangent"],
@@ -742,7 +743,6 @@ def analysis_params_fragment():
         help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
 
         with help_model_col:
-            st.markdown("**Growth Descriptor Calculation Method**")
             # Show non-parametric methods if selected
             if is_nonparametric:
                 if growth_method == "Sliding Window":
@@ -1006,17 +1006,19 @@ def analysis_params_fragment():
                 elif "baranyi" in str(model_type):
                     st.markdown("**Baranyi-Roberts** (Currently Selected)")
                     st.latex(
-                        r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(h_0)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
+                        r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(\lambda)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
                     )
                     st.caption(
-                        "Baranyi-Roberts model with physiological lag parameter h₀. Mechanistic model accounting for cell adaptation during lag phase."
+                        "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
                     )
-                    h0 = 5.0
+                    lag_lambda = 5.0
                     mu_max_b = 0.15
                     K_b = 1.0
                     y0_b = 0.05
                     A_t = t + (1.0 / mu_max_b) * np.log(
-                        np.exp(-mu_max_b * t) + np.exp(-h0) - np.exp(-mu_max_b * t - h0)
+                        np.exp(-mu_max_b * t)
+                        + np.exp(-lag_lambda)
+                        - np.exp(-mu_max_b * t - lag_lambda)
                     )
                     y_baranyi = K_b / (
                         1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t)
@@ -1042,12 +1044,6 @@ def analysis_params_fragment():
                     )
 
         with help_boundary_col:
-            st.markdown("**Phase Boundary Detection**")
-            st.markdown(
-                """
-Phase boundaries define when the lag phase ends and when the exponential phase ends. Different methods are available for calculating these boundaries:
-                """
-            )
 
             # Show the currently selected method first
             if phase_boundary_method == "threshold":
@@ -1278,26 +1274,29 @@ Phase boundaries define when the lag phase ends and when the exponential phase e
                 )
 
         if growth_method == "Model Fitting":
-            mu_max_calc = "fitted μmax"
+            mu_max_calc = "μ(max)"
             model_rmse_calc = "RMSE over model fit window (entire curve)"
             max_od_calc = "Maximum OD from fitted model over valid data range"
         else:
-            mu_max_calc = "Max of d(ln N)/dt from local fit"
-            max_od_calc = "Maximum raw OD over valid data range"
+            max_od_calc = "Maximum raw OD"
             if growth_method == "Sliding Window":
+                mu_max_calc = "b"
                 model_rmse_calc = "RMSE over sliding-window fit window"
             else:
+                mu_max_calc = "Max spline derivative"
                 model_rmse_calc = "RMSE over spline fit window (log phase)"
 
         if growth_method == "Model Fitting" and model_family == "mechanistic":
             intrinsic_calc = "Fitted intrinsic μ"
         else:
-            intrinsic_calc = "None"
+            intrinsic_calc = "N.a."
 
         if phase_boundary_method == "threshold":
-            boundary_calc = "From threshold phase-boundary method"
+            boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ(max)"
+            exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ(max)"
         else:
-            boundary_calc = "From tangent phase-boundary method"
+            boundary_calc = "μ(max) tangent intersect with OD baseline"
+            exp_phase_end_calc = "μ(max) tangent intersec with OD(max)"
 
         if growth_method == "Model Fitting" and model_type in {
             "phenom_logistic",
@@ -1305,17 +1304,31 @@ Phase boundaries define when the lag phase ends and when the exponential phase e
             "phenom_gompertz_modified",
             "phenom_richards",
         }:
-            lag_time_calc = "λ (fitted lag parameter)"
+            lag_time_calc = "λ"
         else:
             lag_time_calc = boundary_calc
 
         st.markdown("**Growth parameter calculations (selected method)**")
         st.markdown(
             f"""
-| max_od | mu_max | intrinsic_growth_rate | doubling_time | lag_time | time_at_umax | od_at_umax | exp_phase_end | model_rmse |
+<style>
+.growth-param-table table {{
+    width: 100%;
+}}
+.growth-param-table th, .growth-param-table td {{
+    text-align: center !important;
+    vertical-align: middle !important;
+}}
+</style>
+<div class="growth-param-table">
+
+| OD(max) | μ(max) | Intrinsic Growth Rate | Doubling Time | Lag Time | μ(max) Time | μ(max) OD | Exponential End Time | RMSE |
 |---|---|---|---|---|---|---|---|---|
-| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / mu_max | {lag_time_calc} | Time where mu_max is maximal | Model-predicted OD at time_at_umax | {boundary_calc} | {model_rmse_calc} |
-"""
+| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / μ(max) | {lag_time_calc} | Time at μ(max) | OD at μ(max) | {exp_phase_end_calc} | {model_rmse_calc} |
+
+</div>
+""",
+            unsafe_allow_html=True,
         )
 
     # Store analysis parameters in session state
