@@ -698,21 +698,33 @@ def ui_window_fits_well_editor(plates: dict):
     fit_parameters = plate.get("fit_parameters") or {}
     gs = growth_stats.get(well) or {}
 
-    # Display growth stats table in an expander
-    with st.expander(f"Growth Statistics for Well {well}"):
-        stats_df = _format_growth_stats_table(gs)
-        # Use a key based on growth stats values to force update when they change
-        # Include all key metrics that change during lasso selection
-        table_key = (
-            f"stats_table_{plate_id}_{well}_"
-            f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
-            f"{gs.get('max_od', 0)}_"
-            f"{gs.get('exp_phase_start', 0)}_"
-            f"{gs.get('exp_phase_end', 0)}_"
-            f"{gs.get('model_rmse', 0)}_"
-            f"{gs.get('_lasso_update_time', '')}"
-        )
-        st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
+    # Display growth status indicator and stats table
+    status_col, expander_col = st.columns([1, 3])
+
+    with status_col:
+        # Visual indicator for growth detection
+        if is_bad_fit(gs):
+            reason = gs.get("no_growth_reason", "No growth detected")
+            st.container(border=True).error(f"**No Growth**\n\n{reason}")
+        else:
+            st.container(border=True).success("**Growth Detected**")
+
+    with expander_col:
+        # Display growth stats table in an expander
+        with st.expander(f"Growth Statistics for Well {well}"):
+            stats_df = _format_growth_stats_table(gs)
+            # Use a key based on growth stats values to force update when they change
+            # Include all key metrics that change during lasso selection
+            table_key = (
+                f"stats_table_{plate_id}_{well}_"
+                f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
+                f"{gs.get('max_od', 0)}_"
+                f"{gs.get('exp_phase_start', 0)}_"
+                f"{gs.get('exp_phase_end', 0)}_"
+                f"{gs.get('model_rmse', 0)}_"
+                f"{gs.get('_lasso_update_time', '')}"
+            )
+            st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
 
     st.divider()
 
