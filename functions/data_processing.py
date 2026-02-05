@@ -379,7 +379,7 @@ def analyse_plate(record: dict):
 
     # Get no-growth detection thresholds from params
     min_data_points = int(p.get("min_data_points", 5))
-    min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
+    min_signal_to_noise = float(p.get("min_signal_to_noise", 1.0))
     min_od_increase = float(p.get("min_od_increase", 0.05))
     min_growth_rate = float(p.get("min_growth_rate", 0.001))
 
@@ -513,7 +513,7 @@ def compute_window_fits(
     lag_frac=0.10,
     exp_frac=0.10,
     min_data_points=5,
-    min_signal_to_noise=5.0,
+    min_signal_to_noise=1.0,
 ):
     """
     Recompute stats and write them back into plates[*]["processed_data"][well] in-place.

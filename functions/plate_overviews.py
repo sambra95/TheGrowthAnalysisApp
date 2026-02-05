@@ -2,9 +2,12 @@
 
 import streamlit as st
 
-from functions.plotting_functions import (plot_baseline,
-                                          plot_replicates_by_sample,
-                                          plot_rmse_heatmap, plot_window_plate)
+from functions.plotting_functions import (
+    plot_baseline,
+    plot_replicates_by_sample,
+    plot_rmse_heatmap,
+    plot_window_plate,
+)
 
 
 # ---------------- Gatekeeper ----------------
@@ -22,6 +25,7 @@ def require_plates() -> dict:
 def ui_replicates(plates: dict):
     """Render a grid of replicate plots by sample."""
     st.subheader("Sample Replicates")
+    st.caption("View replicates grouped by sample. Hover over points for details.")
     st.plotly_chart(plot_replicates_by_sample(plates), width="stretch")
 
 
@@ -30,12 +34,17 @@ def ui_window_fits_plate_overview(plates: dict):
     """Render baseline and plate-window fits for a selected plate."""
     plate_id = st.selectbox("Plate", sorted(plates), key="winfit_plate_overview")
     st.subheader("Plate Blanks")
+    st.caption("Baseline values from blank wells. Hover over points for details.")
     plate = plates[plate_id]
     st.plotly_chart(
         plot_baseline(plate["baseline"], name_by_well=plate.get("name", {}))
     )
 
     st.subheader("Plate Fits Overview")
+    st.caption(
+        "Growth curve model fits for all wells in the selected plate. "
+        "Hover over points for details."
+    )
     st.plotly_chart(
         plot_window_plate(plates[plate_id]),
         width="stretch",

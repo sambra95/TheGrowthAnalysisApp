@@ -26,7 +26,7 @@ DEFAULT_PARAMS = dict(
     sg_window=15,
     sg_poly=2,
     min_data_points=5,
-    min_signal_to_noise=5.0,
+    min_signal_to_noise=1.0,
     min_od_increase=0.05,
     min_growth_rate=0.001,
     growth_method="Sliding Window",
@@ -470,7 +470,7 @@ def preprocessing_params_fragment():
                         sg_poly=int(params0.get("sg_poly", 2)),
                         min_data_points=int(params0.get("min_data_points", 5)),
                         min_signal_to_noise=float(
-                            params0.get("min_signal_to_noise", 5.0)
+                            params0.get("min_signal_to_noise", 1.0)
                         ),
                         min_od_increase=float(params0.get("min_od_increase", 0.05)),
                         min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
@@ -682,7 +682,7 @@ def analysis_params_fragment():
                 "Minimum signal-to-noise ratio",
                 0.1,
                 100.0,
-                float(params0.get("min_signal_to_noise", 5.0)),
+                float(params0.get("min_signal_to_noise", 1.0)),
                 0.1,
                 help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
             )
@@ -1384,7 +1384,7 @@ def analyse_button_fragment():
     lag_cutoff = step4_params.get("lag_cutoff", 0.5)
     exp_cutoff = step4_params.get("exp_cutoff", 0.5)
     min_data_points = step4_params.get("min_data_points", 5)
-    min_signal_to_noise = step4_params.get("min_signal_to_noise", 5.0)
+    min_signal_to_noise = step4_params.get("min_signal_to_noise", 1.0)
     min_od_increase = step4_params.get("min_od_increase", 0.05)
     min_growth_rate = step4_params.get("min_growth_rate", 0.001)
     growth_method = step4_params.get("growth_method", "Sliding Window")
