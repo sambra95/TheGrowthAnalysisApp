@@ -10,8 +10,11 @@ from growthcurves.parametric import fit_parametric
 from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 
 from functions.data_processing import normalize_model_type
-from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
-                                          plot_derivative_metric)
+from functions.plotting_functions import (
+    _finite_sorted_xy,
+    is_bad_fit,
+    plot_derivative_metric,
+)
 
 
 # ---------------- Gatekeeper ----------------
@@ -396,10 +399,9 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     if not gs or is_bad_fit(gs):
         # Check if there's a reason for the fit failure
         reason = gs.get("no_growth_reason", "--") if gs else "--"
-        return pd.DataFrame({
-            "Metric": ["No growth detected", "Reason"],
-            "Value": ["--", reason]
-        })
+        return pd.DataFrame(
+            {"Metric": ["No growth detected", "Reason"], "Value": ["--", reason]}
+        )
 
     # Define metrics to display with nice labels and formatting
     metrics = [
@@ -725,6 +727,11 @@ def ui_window_fits_well_editor(plates: dict):
                 f"{gs.get('_lasso_update_time', '')}"
             )
             st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
+
+        st.caption(
+            "💡 **Tip:** Click and drag on the growth curve plot below to select a subset of data points. "
+            "The analysis will be automatically rerun using only the selected points to recalculate growth parameters."
+        )
 
     st.divider()
 

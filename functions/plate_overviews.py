@@ -45,10 +45,11 @@ def ui_window_fits_plate_overview(plates: dict):
         "Growth curve model fits for all wells in the selected plate. "
         "Hover over points for details."
     )
-    st.plotly_chart(
-        plot_window_plate(plates[plate_id]),
-        width="stretch",
-    )
+    with st.spinner("Creating Plate Fits Overview..."):
+        st.plotly_chart(
+            plot_window_plate(plates[plate_id]),
+            width="stretch",
+        )
 
     # Show RMSE heatmap if growth stats are available
     growth_stats = plate.get("growth_stats", {})
