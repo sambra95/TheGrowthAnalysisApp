@@ -183,40 +183,69 @@ def build_export_zip(
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
 
         # ---- Tables (GLOBAL) ----
-        for pid, p in plates.items():
-            if include_baseline_corrected:
+        # Combine all plates into single tables with a Plate column
+        if include_baseline_corrected:
+            all_baseline_corrected = []
+            for pid, p in plates.items():
                 wide = _processed_wide_for_plate(p, value_col="baseline_corrected")
                 if not wide.empty:
-                    zf.writestr(
-                        f"tables/{pid}_processed_baseline_corrected.csv",
-                        wide.to_csv(index=False),
-                    )
+                    wide.insert(0, "Plate", pid)
+                    all_baseline_corrected.append(wide)
+            if all_baseline_corrected:
+                combined_baseline = pd.concat(all_baseline_corrected, ignore_index=True)
+                zf.writestr(
+                    "tables/processed_baseline_corrected.csv",
+                    combined_baseline.to_csv(index=False),
+                )
 
-            if include_stats_per_well:
+        if include_stats_per_well:
+            all_stats_per_well = []
+            for pid, p in plates.items():
                 per_well_df = _growth_stats_per_well_df(p)
                 if not per_well_df.empty:
-                    zf.writestr(
-                        f"tables/{pid}_growth_stats_per_well.csv",
-                        per_well_df.to_csv(index=False),
-                    )
+                    per_well_df.insert(0, "Plate", pid)
+                    all_stats_per_well.append(per_well_df)
+            if all_stats_per_well:
+                combined_stats_per_well = pd.concat(all_stats_per_well, ignore_index=True)
+                zf.writestr(
+                    "tables/growth_stats_per_well.csv",
+                    combined_stats_per_well.to_csv(index=False),
+                )
 
-            if include_stats_per_sample:
+        if include_stats_per_sample:
+            all_stats_per_sample = []
+            for pid, p in plates.items():
                 mean_df = _growth_stats_mean_for_sample_df(p)
                 if not mean_df.empty:
-                    zf.writestr(
-                        f"tables/{pid}_growth_stats_mean_for_sample.csv",
-                        mean_df.to_csv(index=False),
-                    )
+                    mean_df.insert(0, "Plate", pid)
+                    all_stats_per_sample.append(mean_df)
+            if all_stats_per_sample:
+                combined_stats_per_sample = pd.concat(all_stats_per_sample, ignore_index=True)
+                zf.writestr(
+                    "tables/growth_stats_mean_for_sample.csv",
+                    combined_stats_per_sample.to_csv(index=False),
+                )
 
         # ---- Analysis Parameters ----
         if include_params:
+            all_params = []
             for pid, p in plates.items():
                 params_df = _analysis_params_df(p)
                 if not params_df.empty:
-                    zf.writestr(
-                        f"tables/{pid}_analysis_parameters.csv",
-                        params_df.to_csv(index=False),
+                    # Rename "Value" column to the plate ID
+                    params_df = params_df.rename(columns={"Value": pid})
+                    all_params.append(params_df)
+            if all_params:
+                # Merge all plates horizontally on the Parameter column
+                combined_params = all_params[0]
+                for params_df in all_params[1:]:
+                    combined_params = combined_params.merge(
+                        params_df, on="Parameter", how="outer"
                     )
+                zf.writestr(
+                    "tables/analysis_parameters.csv",
+                    combined_params.to_csv(index=False),
+                )
 
         # ---- Baseline plots (GLOBAL) ----
         if include_baseline_plots:
