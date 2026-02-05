@@ -392,7 +392,12 @@ def analyse_well(plate: dict, well: str) -> dict:
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     """Format growth stats into a displayable table."""
     if not gs or is_bad_fit(gs):
-        return pd.DataFrame({"Metric": ["No growth detected"], "Value": ["--"]})
+        # Check if there's a reason for the fit failure
+        reason = gs.get("no_growth_reason", "--") if gs else "--"
+        return pd.DataFrame({
+            "Metric": ["No growth detected", "Reason"],
+            "Value": ["--", reason]
+        })
 
     # Define metrics to display with nice labels and formatting
     metrics = [
