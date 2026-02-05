@@ -607,7 +607,9 @@ def ui_window_fits_well_editor(plates: dict):
     """Render the well editor UI for interactive window fit adjustments."""
     plate_ids = sorted(plates)
 
-    st.session_state.setdefault("winfit_plate", plate_ids[0])
+    # Initialize plate selection if not set
+    if "winfit_plate" not in st.session_state:
+        st.session_state["winfit_plate"] = plate_ids[0]
 
     # Get wells with data from the current plate
     current_plate_id = st.session_state.get("winfit_plate", plate_ids[0])
@@ -623,12 +625,9 @@ def ui_window_fits_well_editor(plates: dict):
         wells = all_standard_wells
 
     # Ensure the selected well exists in the current plate's wells
-    current_well = st.session_state.get("winfit_well", wells[0])
-    if current_well not in wells:
-        current_well = wells[0]
-        st.session_state["winfit_well"] = current_well
-
-    st.session_state.setdefault("winfit_well", wells[0])
+    if "winfit_well" not in st.session_state or st.session_state["winfit_well"] not in wells:
+        st.session_state["winfit_well"] = wells[0]
+    current_well = st.session_state["winfit_well"]
 
     def _move_well(step: int):
         """Move the active well forward/backward."""

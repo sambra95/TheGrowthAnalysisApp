@@ -835,12 +835,13 @@ def plot_growth_stats(
 
 
 # --- window fits ----------------------------------------------------------------
-def plot_window_plate(plate: dict, time_unit: str = "hours"):
+def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True):
     """Plot a full 96-well plate overview with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+        sharey: Whether to share y-axes across subplots (default: True)
     """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
@@ -853,7 +854,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
         horizontal_spacing=0.004,
         vertical_spacing=0.02,
         shared_xaxes=True,
-        shared_yaxes=True,
+        shared_yaxes=sharey,
     )
 
     # Check if there's any data
@@ -1014,7 +1015,13 @@ def plot_window_plate(plate: dict, time_unit: str = "hours"):
 
     fig.update_layout(height=900, margin=dict(t=20), showlegend=False)
     fig.update_xaxes(showgrid=False, range=x_range, matches="x")
-    fig.update_yaxes(showgrid=False, range=y_range, matches="y")
+
+    # Only apply shared y-axis range and matching if sharey is True
+    if sharey:
+        fig.update_yaxes(showgrid=False, range=y_range, matches="y")
+    else:
+        fig.update_yaxes(showgrid=False)
+
     return fig
 
 
