@@ -132,13 +132,15 @@ with title_col:
 with popover_col:
     st.write("")
     with st.popover("Help", width="stretch"):
-        st.markdown("""
+        st.markdown(
+            """
 **Workflow Summary:**
 
 This page guides you through uploading your plate reader data and analyzing growth curves. Follow the steps in order: upload your data files and plate maps, configure preprocessing parameters, select analysis settings, and run the analysis.
 
 💡 **Tip:** The plate preview updates automatically to help you verify your setup before running the full analysis.
-""")
+"""
+        )
 
         with st.expander("File Upload Requirements"):
             st.markdown("**Data File Format:**")
@@ -173,13 +175,15 @@ This page guides you through uploading your plate reader data and analyzing grow
 
             st.markdown("**Plate Map Format:**")
             st.markdown("Excel file (.xlsx or .xls) with sample layout")
-            st.markdown("""
+            st.markdown(
+                """
 - 96-well plate format (rows A-H, columns 1-12)
 - Samples with the same name will be assigned as replicates
 - Use 'BLANK' for blank wells
 - Leave cells empty for wells to ignore
 - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visualizations' page.
-""")
+"""
+            )
 
             example_map = pd.DataFrame(
                 {
@@ -218,7 +222,8 @@ This page guides you through uploading your plate reader data and analyzing grow
                 )
 
         with st.expander("Growth Descriptor Metrics"):
-            st.markdown("""
+            st.markdown(
+                """
 All methods output the same set of growth descriptors:
 
 | Metric | Description |
@@ -232,16 +237,20 @@ All methods output the same set of growth descriptors:
 | **Max OD** | Maximum OD reached (carrying capacity) |
 | **Fit window** | Start and end times of the fitting window (h) |
 | **RMSE** | Root mean square error of the fit |
-""")
+"""
+            )
             st.markdown("### Parametric Methods")
             st.caption("Currently selected model shown below")
-            st.markdown("""
+            st.markdown(
+                """
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
 3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-""")
-            st.markdown("""
+"""
+            )
+            st.markdown(
+                """
 **Spline method: How it works**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
@@ -257,17 +266,21 @@ All methods output the same set of growth descriptors:
 - Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
-""")
-            st.markdown("""
+"""
+            )
+            st.markdown(
+                """
 **Sliding window method: How it works**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
 3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The maximum slope across all windows is reported as μ_max
-""")
+"""
+            )
 
         with st.expander("Phase Boundary Method Comparison"):
-            st.markdown("""
+            st.markdown(
+                """
 | Method | Advantages | Threshold Parameters Used |
 |---|---|---|
 | **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
@@ -301,7 +314,8 @@ All methods output the same set of growth descriptors:
 - More consistent across different curve shapes
 - Default for non-parametric methods (Sliding Window, Spline)
 - Does not require threshold parameters
-""")
+"""
+            )
 
 st.divider()
 
@@ -534,6 +548,8 @@ def analysis_params_fragment():
 
         with model_col:
 
+            st.caption("Select the model family and growth descriptor method:")
+
             # Create three columns for model family, growth descriptor method, and method-specific parameters
             family_col, method_col, param_col = st.columns(3)
 
@@ -647,7 +663,8 @@ def analysis_params_fragment():
                     spline_s = float(default_spline_s)
 
             st.write("")
-            st.markdown("**'No Growth' Thresholds**")
+            st.write("")
+
             st.caption("Wells failing these criteria will be marked as no growth")
 
             col1, col2, col3 = st.columns(3)
@@ -1261,13 +1278,13 @@ def analysis_params_fragment():
 
         if growth_method == "Model Fitting":
             mu_max_calc = "μ(max)"
-            model_rmse_calc = "RMSE over model fit window (entire curve)"
-            max_od_calc = "Maximum OD from fitted model over valid data range"
+            model_rmse_calc = "RMSE over entire curve"
+            max_od_calc = "Maximum OD from fitted model"
         else:
             max_od_calc = "Maximum raw OD"
             if growth_method == "Sliding Window":
                 mu_max_calc = "b"
-                model_rmse_calc = "RMSE over sliding-window fit window"
+                model_rmse_calc = f"RMSE over {window_points} point sliding-window"
             else:
                 mu_max_calc = "Max spline derivative"
                 model_rmse_calc = "RMSE over spline fit window (log phase)"
