@@ -3,14 +3,12 @@
 import numpy as np
 import pandas as pd
 import streamlit as st
-from streamlit_sortables import sort_items
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from streamlit_sortables import sort_items
 
-from functions.plotting_functions import (
-    plot_single_growth_stat,
-    plot_mean_growth,
-    plot_replicates_scatter,
-)
+from functions.plotting_functions import (plot_mean_growth,
+                                          plot_replicates_scatter,
+                                          plot_single_growth_stat)
 
 
 # ---------------- Gatekeeper ----------------

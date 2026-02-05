@@ -1,34 +1,25 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
+import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from growthcurves.models import (mech_baranyi_model, mech_gompertz_model,
+                                 mech_logistic_model, mech_richards_model,
+                                 phenom_gompertz_model,
+                                 phenom_gompertz_modified_model,
+                                 phenom_logistic_model, phenom_richards_model,
+                                 spline_from_params)
+from growthcurves.utils import is_no_growth
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-from functions.data_processing import (
-    ALL_WELLS,
-    compute_first_derivative,
-    compute_second_derivative,
-    compute_specific_growth_rate,
-    compute_sliding_window_growth_rate,
-    smooth,
-)
-from growthcurves.models import (
-    mech_baranyi_model,
-    mech_gompertz_model,
-    mech_logistic_model,
-    mech_richards_model,
-    phenom_gompertz_model,
-    phenom_gompertz_modified_model,
-    phenom_logistic_model,
-    phenom_richards_model,
-    spline_from_params,
-)
-from growthcurves.utils import is_no_growth
-import growthcurves.plot as gc_plot
+from functions.data_processing import (ALL_WELLS, compute_first_derivative,
+                                       compute_second_derivative,
+                                       compute_sliding_window_growth_rate,
+                                       compute_specific_growth_rate, smooth)
 
 
 # --- time unit helpers --------------------------------------------------------

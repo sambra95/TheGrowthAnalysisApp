@@ -5,9 +5,10 @@ popovers throughout the application. Run this script directly to regenerate
 all info plots.
 """
 
-import numpy as np
 from pathlib import Path
+
 import growthcurves.plot as gc_plot
+import numpy as np
 from growthcurves.parametric import fit_parametric
 from growthcurves.utils import extract_stats
 

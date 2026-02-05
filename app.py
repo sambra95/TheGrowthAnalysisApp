@@ -1,5 +1,6 @@
 import streamlit as st
-from styling import red_buttons, green_gradient, green_navbar
+
+from styling import green_gradient, green_navbar, red_buttons
 
 st.set_page_config(
     page_title="TheGrowthAnalysisApp", layout="wide", page_icon="logo.svg"

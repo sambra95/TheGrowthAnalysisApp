@@ -2,12 +2,9 @@
 
 import streamlit as st
 
-from functions.plotting_functions import (
-    plot_baseline,
-    plot_replicates_by_sample,
-    plot_rmse_heatmap,
-    plot_window_plate,
-)
+from functions.plotting_functions import (plot_baseline,
+                                          plot_replicates_by_sample,
+                                          plot_rmse_heatmap, plot_window_plate)
 
 
 # ---------------- Gatekeeper ----------------

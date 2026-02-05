@@ -5,13 +5,12 @@ import io
 import numpy as np
 import pandas as pd
 import streamlit as st
-from scipy.optimize import curve_fit
-from scipy.signal import savgol_filter
-
+from growthcurves.non_parametric import fit_non_parametric
 # Import all growth fitting functions from growthcurves package
 from growthcurves.parametric import fit_parametric
-from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
+from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
 
 ROWS = "ABCDEFGH"
 COLS = range(1, 13)
@@ -31,7 +30,9 @@ def _as_float(x):
     return np.asarray(x, dtype=float)
 
 
-def normalize_model_type(model_type: str | None, model_family: str | None = None) -> str:
+def normalize_model_type(
+    model_type: str | None, model_family: str | None = None
+) -> str:
     """Normalize legacy model identifiers to growthcurves' current API names."""
     mt = str(model_type or "").strip()
     if mt in LEGACY_MODEL_TYPE_MAP:
