@@ -397,7 +397,7 @@ def analyse_plate(record: dict):
             exp_frac = float(p.get("exp_cutoff", 0.15))
 
             phase_boundary_method = str(
-                p.get("phase_boundary_method", "threshold")
+                p.get("phase_boundary_method", "tangent")
             ).lower()
 
             if growth_method == "Model Fitting":

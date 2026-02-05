@@ -187,7 +187,7 @@ def _analyse_series_with_plate_params(
         exp_frac = float(params.get("exp_cutoff", 0.15))
 
         phase_boundary_method = str(
-            params.get("phase_boundary_method", "threshold")
+            params.get("phase_boundary_method", "tangent")
         ).lower()
 
         fit_result = None

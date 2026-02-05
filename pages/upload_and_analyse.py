@@ -32,7 +32,7 @@ DEFAULT_PARAMS = dict(
     growth_method="Sliding Window",
     model_family="phenomenological",
     model_type="phenom_logistic",
-    phase_boundary_method="threshold",
+    phase_boundary_method="tangent",
     spline_s=1.0,
 )
 
@@ -480,7 +480,7 @@ def preprocessing_params_fragment():
                         model_family=str(params0.get("model_family", "mechanistic")),
                         model_type=str(params0.get("model_type", "mech_logistic")),
                         phase_boundary_method=str(
-                            params0.get("phase_boundary_method", "threshold")
+                            params0.get("phase_boundary_method", "tangent")
                         ),
                     )
                     tmp = {"uploads": rec["uploads"], "params": preview_params}
@@ -723,7 +723,7 @@ def analysis_params_fragment():
                 options=["threshold", "tangent"],
                 index=(
                     0
-                    if params0.get("phase_boundary_method", "threshold") == "threshold"
+                    if params0.get("phase_boundary_method", "tangent") == "threshold"
                     else 1
                 ),
                 format_func=lambda v: v.capitalize(),
@@ -1390,7 +1390,7 @@ def analyse_button_fragment():
     growth_method = step4_params.get("growth_method", "Sliding Window")
     model_family = step4_params.get("model_family", "mechanistic")
     model_type = step4_params.get("model_type", "mech_logistic")
-    phase_boundary_method = step4_params.get("phase_boundary_method", "threshold")
+    phase_boundary_method = step4_params.get("phase_boundary_method", "tangent")
     spline_s = step4_params.get("spline_s", None)
 
     # Build final params dict
