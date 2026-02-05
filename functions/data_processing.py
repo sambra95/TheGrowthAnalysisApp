@@ -380,6 +380,7 @@ def analyse_plate(record: dict):
     # Get no-growth detection thresholds from params
     min_data_points = int(p.get("min_data_points", 5))
     min_signal_to_noise = float(p.get("min_signal_to_noise", 5.0))
+    min_od_increase = float(p.get("min_od_increase", 0.05))
     min_growth_rate = float(p.get("min_growth_rate", 0.001))
 
     for well, g in long.groupby("well", sort=False):
@@ -480,6 +481,7 @@ def analyse_plate(record: dict):
                 growth_stats=fit,
                 min_data_points=min_data_points,
                 min_signal_to_noise=min_signal_to_noise,
+                min_od_increase=min_od_increase,
                 min_growth_rate=min_growth_rate,
             )
             if no_growth_result["is_no_growth"]:

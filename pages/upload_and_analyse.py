@@ -27,6 +27,7 @@ DEFAULT_PARAMS = dict(
     sg_poly=2,
     min_data_points=5,
     min_signal_to_noise=5.0,
+    min_od_increase=0.05,
     min_growth_rate=0.001,
     growth_method="Sliding Window",
     model_family="phenomenological",
@@ -471,6 +472,7 @@ def preprocessing_params_fragment():
                         min_signal_to_noise=float(
                             params0.get("min_signal_to_noise", 5.0)
                         ),
+                        min_od_increase=float(params0.get("min_od_increase", 0.05)),
                         min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
                         growth_method=str(
                             params0.get("growth_method", "Sliding Window")
@@ -651,10 +653,10 @@ def analysis_params_fragment():
                     window_points = int(params0["window_points"])
                     spline_s = st.number_input(
                         "Spline smoothing factor (s)",
-                        0.01,
-                        100.0,
+                        0.001,
+                        None,
                         float(default_spline_s),
-                        0.1,
+                        0.001,
                         help="Lower values follow noise more closely; higher values produce smoother fits.",
                     )
                 else:
@@ -667,7 +669,7 @@ def analysis_params_fragment():
 
             st.caption("Wells failing these criteria will be marked as no growth")
 
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             min_data_points = col1.number_input(
                 "Minimum data points",
                 1,
@@ -684,10 +686,19 @@ def analysis_params_fragment():
                 0.1,
                 help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
             )
-            min_growth_rate = col3.number_input(
+            min_od_increase = col3.number_input(
+                "Minimum OD increase",
+                0.0,
+                None,
+                float(params0.get("min_od_increase", 0.05)),
+                0.001,
+                format="%.3f",
+                help="Minimum absolute increase in OD600 from baseline to be considered growth",
+            )
+            min_growth_rate = col4.number_input(
                 "Minimum growth rate (1/h)",
                 0.0,
-                1.0,
+                None,
                 float(params0.get("min_growth_rate", 0.001)),
                 0.0001,
                 format="%.4f",
@@ -1341,6 +1352,7 @@ def analysis_params_fragment():
     ss["step4_params"]["exp_cutoff"] = exp_cutoff
     ss["step4_params"]["min_data_points"] = min_data_points
     ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
+    ss["step4_params"]["min_od_increase"] = min_od_increase
     ss["step4_params"]["min_growth_rate"] = min_growth_rate
     ss["step4_params"]["growth_method"] = growth_method
     ss["step4_params"]["model_family"] = model_family
@@ -1373,6 +1385,7 @@ def analyse_button_fragment():
     exp_cutoff = step4_params.get("exp_cutoff", 0.5)
     min_data_points = step4_params.get("min_data_points", 5)
     min_signal_to_noise = step4_params.get("min_signal_to_noise", 5.0)
+    min_od_increase = step4_params.get("min_od_increase", 0.05)
     min_growth_rate = step4_params.get("min_growth_rate", 0.001)
     growth_method = step4_params.get("growth_method", "Sliding Window")
     model_family = step4_params.get("model_family", "mechanistic")
@@ -1394,6 +1407,7 @@ def analyse_button_fragment():
         sg_poly=int(params0.get("sg_poly", 2)),
         min_data_points=int(min_data_points),
         min_signal_to_noise=float(min_signal_to_noise),
+        min_od_increase=float(min_od_increase),
         min_growth_rate=float(min_growth_rate),
         growth_method=str(growth_method),
         model_family=str(model_family),

@@ -267,6 +267,7 @@ def _analyse_series_with_plate_params(
 
         min_data_points = int(params.get("min_data_points", 5))
         min_signal_to_noise = float(params.get("min_signal_to_noise", 5.0))
+        min_od_increase = float(params.get("min_od_increase", 0.05))
         min_growth_rate = float(params.get("min_growth_rate", 0.001))
         no_growth_result = detect_no_growth(
             t_arr,
@@ -274,6 +275,7 @@ def _analyse_series_with_plate_params(
             growth_stats=fit,
             min_data_points=min_data_points,
             min_signal_to_noise=min_signal_to_noise,
+            min_od_increase=min_od_increase,
             min_growth_rate=min_growth_rate,
         )
         if no_growth_result["is_no_growth"]:
