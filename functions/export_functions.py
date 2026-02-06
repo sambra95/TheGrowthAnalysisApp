@@ -158,10 +158,10 @@ def build_export_zip(
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
     annot_phase: bool = True,
-    annot_time_umax: bool = True,
-    annot_od_umax: bool = True,
-    annot_od_max: bool = True,
     annot_umax_point: bool = True,
+    annot_od_max: bool = True,
+    annot_baseline_od: bool = True,
+    annot_tangent: bool = False,
     annot_fitted_model: bool = True,
     scale: int = 2,
     baseline_width: int = 1200,
@@ -345,33 +345,22 @@ def build_export_zip(
 
                                 # Annotate plot if requested
                                 if add_annotations and not is_bad_fit(gs) and gs:
-                                    # Prepare stats dictionary for annotations
-                                    stats_dict = {
-                                        "exp_phase_start": gs.get("exp_phase_start"),
-                                        "exp_phase_end": gs.get("exp_phase_end"),
-                                        "time_at_umax": gs.get("time_at_umax"),
-                                        "od_at_umax": gs.get("od_at_umax"),
-                                        "max_od": gs.get("max_od"),
-                                    }
+                                    # Get fit result from stored parameters
+                                    fit_result = fit_parameters.get(well)
 
-                                    fit_result = (
-                                        fit_parameters.get(well)
-                                        if annot_fitted_model
-                                        else None
-                                    )
-
-                                    # Annotate plot with selected annotations using new API
+                                    # Pass the stored growth stats and fit result directly
+                                    # No need to reconstruct - use the original values from the fit
                                     fig = gc_plot.annotate_plot(
                                         fig,
                                         fit_result=fit_result,
-                                        stats=stats_dict,
+                                        stats=gs,
                                         show_fitted_curve=annot_fitted_model,
                                         show_phase_boundaries=annot_phase,
-                                        show_crosshairs=annot_time_umax or annot_od_umax,
+                                        show_crosshairs=annot_umax_point,
                                         show_od_max_line=annot_od_max,
-                                        show_n0_line=False,
+                                        show_n0_line=annot_baseline_od,
                                         show_umax_marker=annot_umax_point,
-                                        show_tangent=False,
+                                        show_tangent=annot_tangent,
                                         scale="linear",
                                     )
 
@@ -543,7 +532,7 @@ def ui_export(plates: dict):
 
                     with plot_col:
                         # Show pre-generated demo plot image
-                        st.image("info_plots/annotation_demo.png", width="stretch")
+                        st.image("info_plots/.png", width="stretch")
 
                     with checkbox_col:
                         annot_phase = st.checkbox(
@@ -551,25 +540,25 @@ def ui_export(plates: dict):
                             value=True,
                             key="annot_phase_boundaries",
                         )
-                        annot_time_umax = st.checkbox(
-                            "Time at μmax",
+                        annot_umax_point = st.checkbox(
+                            "Max growth rate point",
                             value=True,
-                            key="annot_time_umax",
-                        )
-                        annot_od_umax = st.checkbox(
-                            "OD at μmax",
-                            value=True,
-                            key="annot_od_umax",
+                            key="annot_umax_point",
                         )
                         annot_od_max = st.checkbox(
                             "Max OD",
                             value=True,
                             key="annot_od_max",
                         )
-                        annot_umax_point = st.checkbox(
-                            "μmax point",
+                        annot_baseline_od = st.checkbox(
+                            "Baseline OD",
                             value=True,
-                            key="annot_umax_point",
+                            key="annot_baseline_od",
+                        )
+                        annot_tangent = st.checkbox(
+                            "Tangent line at max growth",
+                            value=False,
+                            key="annot_tangent",
                         )
                         annot_fitted_model = st.checkbox(
                             "Fitted model curve",
@@ -646,10 +635,10 @@ def ui_export(plates: dict):
                 # Set defaults when well plots are not included
                 c_add_annotations = True
                 annot_phase = True
-                annot_time_umax = True
-                annot_od_umax = True
-                annot_od_max = True
                 annot_umax_point = True
+                annot_od_max = True
+                annot_baseline_od = True
+                annot_tangent = False
                 annot_fitted_model = True
                 well_width = 1200
                 well_height = 800
@@ -723,10 +712,10 @@ def ui_export(plates: dict):
         wells_tuple,
         add_annotations,
         annot_phase,
-        annot_time_umax,
-        annot_od_umax,
-        annot_od_max,
         annot_umax_point,
+        annot_od_max,
+        annot_baseline_od,
+        annot_tangent,
         annot_fitted_model,
         global_w,
         global_h,
@@ -755,10 +744,10 @@ def ui_export(plates: dict):
             wells_by_plate=wells_dict,
             add_annotations=add_annotations,
             annot_phase=annot_phase,
-            annot_time_umax=annot_time_umax,
-            annot_od_umax=annot_od_umax,
-            annot_od_max=annot_od_max,
             annot_umax_point=annot_umax_point,
+            annot_od_max=annot_od_max,
+            annot_baseline_od=annot_baseline_od,
+            annot_tangent=annot_tangent,
             annot_fitted_model=annot_fitted_model,
             baseline_width=global_w,
             baseline_height=global_h,
@@ -789,10 +778,10 @@ def ui_export(plates: dict):
             wells_tuple,
             c_add_annotations,
             annot_phase,
-            annot_time_umax,
-            annot_od_umax,
-            annot_od_max,
             annot_umax_point,
+            annot_od_max,
+            annot_baseline_od,
+            annot_tangent,
             annot_fitted_model,
             global_width,
             global_height,

@@ -60,122 +60,126 @@ def create_annotation_demo_plot_png(save_path: Path):
 
     # Add text annotations/labels to highlight each feature
     # Build annotations dynamically based on what's available
+    # Position labels to avoid overlaps
     annotations = []
 
-    if exp_start is not None:
+    # 1. Phase boundaries - label the shaded green region
+    if exp_start is not None and exp_end is not None:
         annotations.append(
             {
-                "x": exp_start,
-                "y": od_max if od_max else 0.95,
-                "text": "Phase boundary<br>(exp start)",
+                "x": (exp_start + exp_end) / 2,
+                "y": od_max * 0.95 if od_max else 0.95,
+                "text": "Phase boundaries",
                 "showarrow": False,
-                "xanchor": "left",
+                "xanchor": "center",
                 "yanchor": "top",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bgcolor": "rgba(255, 255, 255, 0.9)",
                 "bordercolor": "black",
                 "borderwidth": 1,
+                "font": dict(size=11),
             }
         )
 
-    if exp_end is not None:
-        annotations.append(
-            {
-                "x": exp_end,
-                "y": od_max if od_max else 0.95,
-                "text": "Phase boundary<br>(exp end)",
-                "showarrow": False,
-                "xanchor": "right",
-                "yanchor": "top",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
-                "bordercolor": "black",
-                "borderwidth": 1,
-            }
-        )
-
-    if time_umax is not None:
+    # 2. Max growth rate point - label the green dot with arrow
+    if time_umax is not None and od_umax is not None:
         annotations.append(
             {
                 "x": time_umax,
-                "y": 0.1 if od_max else 0.1,
-                "text": "Time at μmax",
-                "showarrow": False,
-                "xanchor": "center",
-                "yanchor": "bottom",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
-                "bordercolor": "black",
-                "borderwidth": 1,
-            }
-        )
-
-    if od_umax is not None:
-        annotations.append(
-            {
-                "x": 0.5,
                 "y": od_umax,
-                "text": "OD at μmax",
-                "showarrow": False,
-                "xanchor": "left",
-                "yanchor": "middle",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "text": "Max growth<br>rate point",
+                "showarrow": True,
+                "arrowhead": 2,
+                "arrowsize": 1,
+                "arrowwidth": 2,
+                "arrowcolor": "#66BB6A",
+                "ax": -60,
+                "ay": -50,
+                "axref": "pixel",
+                "ayref": "pixel",
+                "bgcolor": "rgba(255, 255, 255, 0.9)",
                 "bordercolor": "black",
                 "borderwidth": 1,
+                "font": dict(size=11),
             }
         )
 
+    # 3. Max OD - label the horizontal line at top right
     if od_max is not None:
         annotations.append(
             {
-                "x": 19.5,
+                "x": 19,
                 "y": od_max,
                 "text": "Max OD",
                 "showarrow": False,
                 "xanchor": "right",
-                "yanchor": "middle",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "yanchor": "bottom",
+                "bgcolor": "rgba(255, 255, 255, 0.9)",
                 "bordercolor": "black",
                 "borderwidth": 1,
+                "font": dict(size=11),
             }
         )
 
+    # 4. Baseline OD (N0) - label the horizontal line at bottom left
+    n0 = growth_stats.get("N0")
+    if n0 is not None:
+        annotations.append(
+            {
+                "x": 1,
+                "y": n0,
+                "text": "Baseline OD",
+                "showarrow": False,
+                "xanchor": "left",
+                "yanchor": "top",
+                "bgcolor": "rgba(255, 255, 255, 0.9)",
+                "bordercolor": "black",
+                "borderwidth": 1,
+                "font": dict(size=11),
+            }
+        )
+
+    # 5. Tangent line - label the green dashed line
     if time_umax is not None and od_umax is not None:
         annotations.append(
             {
-                "x": time_umax - 2,
-                "y": od_umax - (0.15 if od_max else 0.15),
-                "text": "μmax point",
+                "x": time_umax + 2,
+                "y": od_umax * 1.4,
+                "text": "Tangent line",
                 "showarrow": True,
                 "arrowhead": 2,
                 "arrowsize": 1,
-                "arrowwidth": 1.5,
-                "arrowcolor": "red",
-                "ax": 0,
-                "ay": 0,
+                "arrowwidth": 2,
+                "arrowcolor": "green",
+                "ax": 40,
+                "ay": 20,
                 "axref": "pixel",
                 "ayref": "pixel",
-                "bgcolor": "rgba(255, 255, 255, 0.8)",
+                "bgcolor": "rgba(255, 255, 255, 0.9)",
                 "bordercolor": "black",
                 "borderwidth": 1,
+                "font": dict(size=11),
             }
         )
 
-    # Add fitted model curve label
+    # 6. Fitted model curve - label the blue curve
     annotations.append(
         {
-            "x": 10,
-            "y": 0.85 if od_max else 0.85,
-            "text": "Fitted model curve",
+            "x": 11,
+            "y": 0.78,
+            "text": "Fitted model<br>curve",
             "showarrow": True,
             "arrowhead": 2,
             "arrowsize": 1,
-            "arrowwidth": 1.5,
-            "arrowcolor": "black",
+            "arrowwidth": 2,
+            "arrowcolor": "blue",
             "ax": 0,
-            "ay": -30,
+            "ay": -40,
             "axref": "pixel",
             "ayref": "pixel",
-            "bgcolor": "rgba(255, 255, 255, 0.8)",
+            "bgcolor": "rgba(255, 255, 255, 0.9)",
             "bordercolor": "black",
             "borderwidth": 1,
+            "font": dict(size=11),
         }
     )
 
