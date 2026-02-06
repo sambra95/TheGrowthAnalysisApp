@@ -345,29 +345,14 @@ def build_export_zip(
 
                                 # Annotate plot if requested
                                 if add_annotations and not is_bad_fit(gs) and gs:
-                                    # Get stats from dictionary
-                                    exp_phase_start = gs.get("exp_phase_start")
-                                    exp_phase_end = gs.get("exp_phase_end")
-                                    time_at_umax = gs.get("time_at_umax")
-                                    od_at_umax = gs.get("od_at_umax")
-                                    max_od = gs.get("max_od")
-
-                                    # Convert time values to display units
-                                    if exp_phase_start is not None:
-                                        exp_phase_start = exp_phase_start
-                                    if exp_phase_end is not None:
-                                        exp_phase_end = exp_phase_end
-                                    if time_at_umax is not None:
-                                        time_at_umax = time_at_umax
-
-                                    # Prepare umax point
-                                    umax_point = None
-                                    if (
-                                        time_at_umax is not None
-                                        and od_at_umax is not None
-                                        and annot_umax_point
-                                    ):
-                                        umax_point = (time_at_umax, od_at_umax)
+                                    # Prepare stats dictionary for annotations
+                                    stats_dict = {
+                                        "exp_phase_start": gs.get("exp_phase_start"),
+                                        "exp_phase_end": gs.get("exp_phase_end"),
+                                        "time_at_umax": gs.get("time_at_umax"),
+                                        "od_at_umax": gs.get("od_at_umax"),
+                                        "max_od": gs.get("max_od"),
+                                    }
 
                                     fit_result = (
                                         fit_parameters.get(well)
@@ -375,23 +360,18 @@ def build_export_zip(
                                         else None
                                     )
 
-                                    # Annotate plot with selected annotations
+                                    # Annotate plot with selected annotations using new API
                                     fig = gc_plot.annotate_plot(
                                         fig,
-                                        phase_boundaries=(
-                                            (exp_phase_start, exp_phase_end)
-                                            if exp_phase_start
-                                            and exp_phase_end
-                                            and annot_phase
-                                            else None
-                                        ),
-                                        time_umax=(
-                                            time_at_umax if annot_time_umax else None
-                                        ),
-                                        od_umax=od_at_umax if annot_od_umax else None,
-                                        od_max=max_od if annot_od_max else None,
-                                        umax_point=umax_point,
-                                        fitted_model=fit_result,
+                                        fit_result=fit_result,
+                                        stats=stats_dict,
+                                        show_fitted_curve=annot_fitted_model,
+                                        show_phase_boundaries=annot_phase,
+                                        show_crosshairs=annot_time_umax or annot_od_umax,
+                                        show_od_max_line=annot_od_max,
+                                        show_n0_line=False,
+                                        show_umax_marker=annot_umax_point,
+                                        show_tangent=False,
                                         scale="linear",
                                     )
 

@@ -46,12 +46,15 @@ def create_annotation_demo_plot_png(save_path: Path):
     # Annotate plot with all features
     fig = gc_plot.annotate_plot(
         fig,
-        phase_boundaries=(exp_start, exp_end) if exp_start and exp_end else None,
-        time_umax=time_umax,
-        od_umax=od_umax,
-        od_max=od_max,
-        umax_point=(time_umax, od_umax) if time_umax and od_umax else None,
-        fitted_model=fit_result,
+        fit_result=fit_result,
+        stats=growth_stats,
+        show_fitted_curve=True,
+        show_phase_boundaries=True,
+        show_crosshairs=True,
+        show_od_max_line=True,
+        show_n0_line=True,
+        show_umax_marker=True,
+        show_tangent=True,
         scale="linear",
     )
 

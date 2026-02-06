@@ -941,32 +941,22 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
 
         # Step 3: Annotate subplot with annotate_plot
         # Prepare annotation parameters from growth stats
-        phase_boundaries = None
-        time_umax = None
-        od_umax = None
-        od_max = None
+        stats_converted = None
         fitted_model = None
 
         if not is_bad_fit(gs):
-            exp_start = gs.get("exp_phase_start")
-            exp_end = gs.get("exp_phase_end")
-            if exp_start is not None and exp_end is not None:
-                phase_boundaries = (
-                    convert_hours_to_unit(float(exp_start), time_unit),
-                    convert_hours_to_unit(float(exp_end), time_unit),
-                )
+            # Create a copy of growth stats with time values converted to display unit
+            stats_converted = {}
 
-            t_umax = gs.get("time_at_umax")
-            y_umax = gs.get("od_at_umax")
-            if t_umax is not None and np.isfinite(t_umax):
-                time_umax = convert_hours_to_unit(float(t_umax), time_unit)
-            if y_umax is not None and np.isfinite(y_umax):
-                od_umax = float(y_umax)
+            # Convert time-based stats
+            for key in ["exp_phase_start", "exp_phase_end", "time_at_umax", "lag_time"]:
+                if key in gs and gs[key] is not None and np.isfinite(gs[key]):
+                    stats_converted[key] = convert_hours_to_unit(float(gs[key]), time_unit)
 
-            # Get max OD
-            max_od_value = gs.get("max_od")
-            if max_od_value is not None and np.isfinite(max_od_value):
-                od_max = float(max_od_value)
+            # Copy OD-based stats without conversion
+            for key in ["od_at_umax", "max_od", "N0", "mu_max"]:
+                if key in gs and gs[key] is not None:
+                    stats_converted[key] = gs[key]
 
             # Use the stored fit result directly if available
             if fit_result is not None:
@@ -988,12 +978,15 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
         # Apply annotations to the subplot
         fig = gc_plot.annotate_plot(
             fig=fig,
-            phase_boundaries=phase_boundaries,
-            time_umax=time_umax,
-            od_umax=od_umax,
-            od_max=od_max,
-            umax_point=None,  # Don't show green dot for umax
-            fitted_model=fitted_model,
+            fit_result=fitted_model,
+            stats=stats_converted,
+            show_fitted_curve=True,
+            show_phase_boundaries=True,
+            show_crosshairs=True,
+            show_od_max_line=True,
+            show_n0_line=True,
+            show_umax_marker=False,  # Don't show green dot for umax
+            show_tangent=True,
             scale="linear",
             row=r,
             col=c,
@@ -1297,25 +1290,28 @@ def plot_derivative_metric(
             )
 
     # Add phase boundary annotations
-    phase_boundaries = None
+    stats_converted = None
     if gs and not is_bad_fit(gs):
         exp_start = gs.get("exp_phase_start")
         exp_end = gs.get("exp_phase_end")
         if exp_start is not None and exp_end is not None:
-            phase_boundaries = (
-                convert_hours_to_unit(float(exp_start), time_unit),
-                convert_hours_to_unit(float(exp_end), time_unit),
-            )
+            stats_converted = {
+                "exp_phase_start": convert_hours_to_unit(float(exp_start), time_unit),
+                "exp_phase_end": convert_hours_to_unit(float(exp_end), time_unit),
+            }
 
-    if phase_boundaries is not None:
+    if stats_converted is not None:
         fig = gc_plot.annotate_plot(
             fig=fig,
-            phase_boundaries=phase_boundaries,
-            time_umax=None,
-            od_umax=None,
-            od_max=None,
-            umax_point=None,
-            fitted_model=None,
+            fit_result=None,
+            stats=stats_converted,
+            show_fitted_curve=False,
+            show_phase_boundaries=True,
+            show_crosshairs=False,
+            show_od_max_line=False,
+            show_n0_line=False,
+            show_umax_marker=False,
+            show_tangent=False,
             scale="linear",
             row=None,
             col=None,

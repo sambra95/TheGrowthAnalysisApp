@@ -642,23 +642,50 @@ def ui_window_fits_well_editor(plates: dict):
     col1, col2 = st.columns(2, gap="large")
     with col1:
         with st.container(border=True):
-            plate_col, toggle_col1, toggle_col2 = st.columns(
-                [2, 0.9, 1.1], vertical_alignment="bottom", gap="small"
+            plate_col, popover_col, toggle_col1 = st.columns(
+                [2, 0.9, 0.9], vertical_alignment="bottom", gap="small"
             )
             with plate_col:
                 plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
+            with popover_col:
+                with st.popover("Annotations", use_container_width=True):
+                    show_phase_boundaries = st.toggle(
+                        "Phase boundaries",
+                        value=st.session_state.get("show_phase_boundaries_toggle", True),
+                        key="show_phase_boundaries_toggle",
+                    )
+                    show_umax_point = st.toggle(
+                        "Max growth rate point",
+                        value=st.session_state.get("show_umax_point_toggle", True),
+                        key="show_umax_point_toggle",
+                    )
+                    show_max_od = st.toggle(
+                        "Max OD",
+                        value=st.session_state.get("show_max_od_toggle", True),
+                        key="show_max_od_toggle",
+                    )
+                    show_baseline_od = st.toggle(
+                        "Baseline OD",
+                        value=st.session_state.get("show_baseline_od_toggle", True),
+                        key="show_baseline_od_toggle",
+                    )
+                    show_tangent = st.toggle(
+                        "Tangent line at max growth",
+                        value=st.session_state.get("show_tangent_toggle", False),
+                        key="show_tangent_toggle",
+                    )
+                    show_fitted_model = st.toggle(
+                        "Fitted model curve",
+                        value=st.session_state.get("show_fitted_model_toggle", True),
+                        key="show_fitted_model_toggle",
+                    )
             with toggle_col1:
                 log_scale = st.toggle(
                     "Log scale",
                     value=st.session_state.get("log_scale_toggle", False),
                     key="log_scale_toggle",
                 )
-            with toggle_col2:
-                show_annotations = st.toggle(
-                    "Show annotations",
-                    value=st.session_state.get("show_annotations_toggle", True),
-                    key="show_annotations_toggle",
-                )
+
             prev, mid, next_ = st.columns([2, 4, 2], vertical_alignment="bottom")
             with prev:
                 st.button(
@@ -770,38 +797,24 @@ def ui_window_fits_well_editor(plates: dict):
                 scale=scale,
             )
 
-            # Annotate plot with growth stats if available and annotations are enabled
-            if show_annotations and not is_bad_fit(gs) and gs:
-                # Get stats from dictionary
-                exp_phase_start = _as_finite_float(gs.get("exp_phase_start"))
-                exp_phase_end = _as_finite_float(gs.get("exp_phase_end"))
-                time_at_umax = _as_finite_float(gs.get("time_at_umax"))
-                od_at_umax = _as_finite_float(gs.get("od_at_umax"))
-                max_od = _as_finite_float(gs.get("max_od"))
-
-                # Prepare umax point - use original OD values (not log-transformed)
-                umax_point = (
-                    (time_at_umax, od_at_umax)
-                    if time_at_umax is not None and od_at_umax is not None
-                    else None
-                )
-
+            # Annotate plot with growth stats if available
+            if not is_bad_fit(gs) and gs:
                 # Get fit result from session state
                 fit_result = fit_parameters.get(well)
 
-                # Annotate plot - exact pattern from notebook example
+                # Pass the stored growth stats and fit result directly
+                # No need to reconstruct - use the original values from the fit
                 fig_main = gc_plot.annotate_plot(
                     fig_main,
-                    phase_boundaries=(
-                        (exp_phase_start, exp_phase_end)
-                        if exp_phase_start is not None and exp_phase_end is not None
-                        else None
-                    ),
-                    time_umax=time_at_umax,
-                    od_umax=od_at_umax,
-                    od_max=max_od,
-                    umax_point=umax_point,
-                    fitted_model=fit_result,
+                    fit_result=fit_result,
+                    stats=gs,
+                    show_fitted_curve=show_fitted_model,
+                    show_phase_boundaries=show_phase_boundaries,
+                    show_crosshairs=show_umax_point,
+                    show_od_max_line=show_max_od,
+                    show_n0_line=show_baseline_od,
+                    show_umax_marker=show_umax_point,
+                    show_tangent=show_tangent,
                     scale=scale,
                 )
 
