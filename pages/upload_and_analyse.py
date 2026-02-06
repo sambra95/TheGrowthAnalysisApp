@@ -78,6 +78,100 @@ def build_symbol_grid(
     return grid
 
 
+def validate_data_file(file_bytes):
+    """Validate that the data file has the correct format and data types.
+
+    Returns:
+        tuple: (is_valid: bool, error_message: str or None)
+    """
+    try:
+        # Try to read the Excel file
+        df = pd.read_excel(file_bytes)
+    except Exception as e:
+        return False, f"Failed to read Excel file: {str(e)}"
+
+    # Check if DataFrame is empty
+    if df.empty:
+        return False, "Data file is empty"
+
+    # Check for 'Time' column (case-insensitive)
+    time_col = None
+    for col in df.columns:
+        if str(col).strip().lower() == 'time':
+            time_col = col
+            break
+
+    if time_col is None:
+        return False, "Data file must contain a 'Time' column"
+
+    # Check if Time column has numeric values
+    try:
+        time_values = pd.to_numeric(df[time_col], errors='coerce')
+        if time_values.isna().all():
+            return False, "Time column must contain numeric values (integers or decimals)"
+        if time_values.isna().any():
+            return False, "Time column contains non-numeric values"
+    except Exception:
+        return False, "Failed to validate Time column data type"
+
+    # Check that there are other columns besides Time (well data)
+    if len(df.columns) < 2:
+        return False, "Data file must contain well columns in addition to Time column"
+
+    return True, None
+
+
+def validate_plate_map_file(file_bytes):
+    """Validate that the plate map file has the correct format and structure.
+
+    Returns:
+        tuple: (is_valid: bool, error_message: str or None)
+    """
+    try:
+        # Try to read the Excel file
+        df = pd.read_excel(file_bytes)
+    except Exception as e:
+        return False, f"Failed to read Excel file: {str(e)}"
+
+    # Check if DataFrame is empty
+    if df.empty:
+        return False, "Plate map file is empty"
+
+    # Check for 'rows' column (case-insensitive)
+    rows_col = None
+    for col in df.columns:
+        if str(col).strip().lower() == 'rows':
+            rows_col = col
+            break
+
+    if rows_col is None:
+        return False, "Plate map must contain a 'rows' column"
+
+    # Check that rows column contains expected row labels (A-H)
+    expected_rows = set(list("ABCDEFGH"))
+    actual_rows = set(df[rows_col].astype(str).str.strip().str.upper())
+
+    if not expected_rows.issubset(actual_rows):
+        missing_rows = expected_rows - actual_rows
+        return False, f"Plate map must contain rows A-H. Missing rows: {', '.join(sorted(missing_rows))}"
+
+    # Check that there are column headers for wells (1-12)
+    numeric_cols = []
+    for col in df.columns:
+        if col != rows_col:
+            try:
+                col_num = int(str(col).strip())
+                if 1 <= col_num <= 12:
+                    numeric_cols.append(col_num)
+            except (ValueError, TypeError):
+                pass
+
+    if len(numeric_cols) < 12:
+        return False, "Plate map must contain columns 1-12 for a 96-well plate format"
+
+    return True, None
+
+
 @st.cache_data
 def render_plate_table(grid: pd.DataFrame):
     """Render an HTML table showing the plate status grid."""
@@ -327,13 +421,40 @@ def upload_files_fragment():
     u1, u2 = st.columns(2)
     with u1:
         with st.container(border=True):
-            st.header("Step 1. Upload data file")
+            # Header row with requirements in top right
+            header_col, req_col = st.columns([3, 1])
+            with header_col:
+                st.header("Step 1. Upload data file")
+            with req_col:
+                with st.popover("ℹ️ Requirements", use_container_width=True):
+                    st.markdown("**Format:**")
+                    st.markdown("- Excel file (.xlsx or .xls)")
+                    st.markdown("**Required columns:**")
+                    st.markdown("- **Time** column with numeric values")
+                    st.markdown("**Time units:**")
+                    st.markdown("- Select unit (seconds, minutes, hours) in Step 3")
+
             data_file = st.file_uploader(
                 "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
             )
     with u2:
         with st.container(border=True):
-            st.header("Step 2. Upload plate map")
+            # Header row with requirements in top right
+            header_col, req_col = st.columns([3, 1])
+            with header_col:
+                st.header("Step 2. Upload plate map")
+            with req_col:
+                with st.popover("ℹ️ Requirements", use_container_width=True):
+                    st.markdown("**Format:**")
+                    st.markdown("- Excel file (.xlsx or .xls)")
+                    st.markdown("**Required structure:**")
+                    st.markdown("- **'rows'** column with labels A-H")
+                    st.markdown("- Columns **1-12** for wells")
+                    st.markdown("**Well labels:**")
+                    st.markdown("- Same name = replicates")
+                    st.markdown("- 'BLANK' for blank wells")
+                    st.markdown("- Empty cells = ignore well")
+
             map_file = st.file_uploader(
                 "Plate map (.xls/.xlsx) with 'rows' column",
                 ["xlsx", "xls"],
@@ -346,6 +467,19 @@ def upload_files_fragment():
         width="stretch",
         disabled=not (data_file and map_file),
     ):
+        # Validate data file
+        is_valid_data, data_error = validate_data_file(data_file.getvalue())
+        if not is_valid_data:
+            st.toast(f"❌ Data file validation failed: {data_error}", icon="🚫")
+            st.stop()
+
+        # Validate plate map file
+        is_valid_map, map_error = validate_plate_map_file(map_file.getvalue())
+        if not is_valid_map:
+            st.toast(f"❌ Plate map validation failed: {map_error}", icon="🚫")
+            st.stop()
+
+        # If both validations pass, load the plate
         plate_id = (
             data_file.name.rsplit(".", 1)[0]
             if getattr(data_file, "name", None)
@@ -358,7 +492,7 @@ def upload_files_fragment():
             plate_bytes=map_file.getvalue(),
             params=DEFAULT_PARAMS,
         )
-        st.toast(f"Saved uploads for {plate_id}")
+        st.toast(f"✅ Successfully loaded {plate_id}")
 
 
 upload_files_fragment()
@@ -1072,13 +1206,13 @@ def analysis_params_fragment():
                 st.markdown("**Threshold Method** (Currently Selected)")
 
                 # Show pre-generated demo plot image
-                st.image("info_plots/threshold_demo.png", use_container_width=True)
+                st.image("info_plots/threshold_demo.png", width="stretch")
 
             else:  # tangent method
                 st.markdown("**Tangent Method** (Currently Selected)")
 
                 # Show pre-generated demo plot image
-                st.image("info_plots/tangent_demo.png", use_container_width=True)
+                st.image("info_plots/tangent_demo.png", width="stretch")
 
         if growth_method == "Model Fitting":
             mu_max_calc = "μ(max)"

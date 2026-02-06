@@ -9,10 +9,13 @@ import streamlit as st
 from growthcurves.plot import plot_derivative_metric
 
 from functions.check_growth_fits import _add_lasso_selected_points
-from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
-                                          plot_baseline,
-                                          plot_replicates_by_sample,
-                                          plot_window_plate)
+from functions.plotting_functions import (
+    _finite_sorted_xy,
+    is_bad_fit,
+    plot_baseline,
+    plot_replicates_by_sample,
+    plot_window_plate,
+)
 
 
 # ---------------- Gatekeeper ----------------
@@ -522,9 +525,7 @@ def ui_export(plates: dict):
                     True  # Always add annotations when well plots are enabled
                 )
 
-                with st.popover(
-                    "Choose annotations to include", use_container_width=True
-                ):
+                with st.popover("Choose annotations to include", width="stretch"):
                     st.caption("Choose which annotations to include on well plots:")
 
                     # Create two columns: plot on left, checkboxes on right

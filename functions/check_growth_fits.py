@@ -648,10 +648,12 @@ def ui_window_fits_well_editor(plates: dict):
             with plate_col:
                 plate_id = st.selectbox("Plate", plate_ids, key="winfit_plate")
             with popover_col:
-                with st.popover("Annotations", use_container_width=True):
+                with st.popover("Annotations", width="stretch"):
                     show_phase_boundaries = st.toggle(
                         "Phase boundaries",
-                        value=st.session_state.get("show_phase_boundaries_toggle", True),
+                        value=st.session_state.get(
+                            "show_phase_boundaries_toggle", True
+                        ),
                         key="show_phase_boundaries_toggle",
                     )
                     show_umax_point = st.toggle(
