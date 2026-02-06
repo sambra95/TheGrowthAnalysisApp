@@ -97,7 +97,7 @@ def validate_data_file(file_bytes):
     # Check for 'Time' column (case-insensitive)
     time_col = None
     for col in df.columns:
-        if str(col).strip().lower() == 'time':
+        if str(col).strip().lower() == "time":
             time_col = col
             break
 
@@ -106,9 +106,12 @@ def validate_data_file(file_bytes):
 
     # Check if Time column has numeric values
     try:
-        time_values = pd.to_numeric(df[time_col], errors='coerce')
+        time_values = pd.to_numeric(df[time_col], errors="coerce")
         if time_values.isna().all():
-            return False, "Time column must contain numeric values (integers or decimals)"
+            return (
+                False,
+                "Time column must contain numeric values (integers or decimals)",
+            )
         if time_values.isna().any():
             return False, "Time column contains non-numeric values"
     except Exception:
@@ -140,7 +143,7 @@ def validate_plate_map_file(file_bytes):
     # Check for 'rows' column (case-insensitive)
     rows_col = None
     for col in df.columns:
-        if str(col).strip().lower() == 'rows':
+        if str(col).strip().lower() == "rows":
             rows_col = col
             break
 
@@ -153,7 +156,10 @@ def validate_plate_map_file(file_bytes):
 
     if not expected_rows.issubset(actual_rows):
         missing_rows = expected_rows - actual_rows
-        return False, f"Plate map must contain rows A-H. Missing rows: {', '.join(sorted(missing_rows))}"
+        return (
+            False,
+            f"Plate map must contain rows A-H. Missing rows: {', '.join(sorted(missing_rows))}",
+        )
 
     # Check that there are column headers for wells (1-12)
     numeric_cols = []
@@ -426,13 +432,44 @@ def upload_files_fragment():
             with header_col:
                 st.header("Step 1. Upload data file")
             with req_col:
-                with st.popover("ℹ️ Requirements", use_container_width=True):
+                with st.popover("Requirements", width="stretch"):
                     st.markdown("**Format:**")
                     st.markdown("- Excel file (.xlsx or .xls)")
+                    st.markdown("- Time series data with **Time** column")
+
                     st.markdown("**Required columns:**")
-                    st.markdown("- **Time** column with numeric values")
+                    st.markdown(
+                        "- **Time** column with numeric values (integers or decimals)"
+                    )
+                    st.markdown("- Well columns (e.g., A1, A2, B1, etc.)")
+
                     st.markdown("**Time units:**")
-                    st.markdown("- Select unit (seconds, minutes, hours) in Step 3")
+                    st.markdown("- Select unit (seconds, minutes, or hours) in Step 3")
+
+                    st.divider()
+                    st.markdown("**Example format:**")
+
+                    example_data = pd.DataFrame(
+                        {
+                            "Time": [0, 12, 24, 36],
+                            "A1": [0.05, 0.08, 0.15, 0.28],
+                            "A2": [0.06, 0.09, 0.18, 0.32],
+                            "B1": [0.05, 0.07, 0.14, 0.26],
+                            "...": ["...", "...", "...", "..."],
+                        }
+                    )
+                    st.dataframe(example_data, hide_index=True, width="stretch")
+
+                    st.markdown("")
+                    with open("example_data.xlsx", "rb") as f:
+                        st.download_button(
+                            "Download example data file",
+                            data=f.read(),
+                            file_name="example_data.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            width="stretch",
+                            type="primary",
+                        )
 
             data_file = st.file_uploader(
                 "Plate reader Excel (.xlsx/.xls)", ["xlsx", "xls"], key="data_up"
@@ -444,16 +481,60 @@ def upload_files_fragment():
             with header_col:
                 st.header("Step 2. Upload plate map")
             with req_col:
-                with st.popover("ℹ️ Requirements", use_container_width=True):
+                with st.popover("Requirements", width="stretch"):
                     st.markdown("**Format:**")
                     st.markdown("- Excel file (.xlsx or .xls)")
+                    st.markdown("- 96-well plate layout")
+
                     st.markdown("**Required structure:**")
                     st.markdown("- **'rows'** column with labels A-H")
-                    st.markdown("- Columns **1-12** for wells")
+                    st.markdown("- Columns **1-12** for well positions")
+
                     st.markdown("**Well labels:**")
-                    st.markdown("- Same name = replicates")
-                    st.markdown("- 'BLANK' for blank wells")
-                    st.markdown("- Empty cells = ignore well")
+                    st.markdown("- Samples with the same name = replicates")
+                    st.markdown("- Use **'BLANK'** for blank wells")
+                    st.markdown("- Empty cells = wells to ignore")
+                    st.markdown("- First **'_'** splits strain and condition labels")
+
+                    st.divider()
+                    st.markdown("**Example format:**")
+
+                    example_map = pd.DataFrame(
+                        {
+                            "rows": ["A", "B", "C", "D"],
+                            "1": [
+                                "Sample1_Condition1",
+                                "Sample3_Condition2",
+                                "",
+                                "Sample6_Condition3",
+                            ],
+                            "2": [
+                                "Sample1_Condition2",
+                                "BLANK",
+                                "Sample5_Condition2",
+                                "Sample7_Condition2",
+                            ],
+                            "3": [
+                                "Sample2_Condition1",
+                                "Sample4_Condition3",
+                                "Sample5_Condition2",
+                                "BLANK",
+                            ],
+                            "...": ["...", "...", "...", "..."],
+                        }
+                    )
+                    st.dataframe(example_map, hide_index=True, width="stretch")
+
+                    st.markdown("")
+                    with open("example_plate_map.xls", "rb") as f:
+                        st.download_button(
+                            "Download example plate map",
+                            data=f.read(),
+                            file_name="example_plate_map.xls",
+                            mime="application/vnd.ms-excel",
+                            width="stretch",
+                            type="primary",
+                        )
 
             map_file = st.file_uploader(
                 "Plate map (.xls/.xlsx) with 'rows' column",
