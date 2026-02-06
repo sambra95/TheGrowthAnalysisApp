@@ -10,8 +10,11 @@ from growthcurves.parametric import fit_parametric
 from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 
 from functions.data_processing import normalize_model_type
-from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
-                                          plot_derivative_metric)
+from functions.plotting_functions import (
+    _finite_sorted_xy,
+    is_bad_fit,
+    plot_derivative_metric,
+)
 
 
 # ---------------- Gatekeeper ----------------
@@ -538,6 +541,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     def _on_no_growth():
         """Mark the well as no-growth and reset widgets."""
         growth_stats.update(bad_fit_stats())
+        growth_stats["no_growth_reason"] = "manually assigned"
         # Clear lasso-specific keys
         growth_stats.pop("_used_fit_times", None)
         growth_stats.pop("_lasso_update_time", None)
@@ -700,13 +704,13 @@ def ui_window_fits_well_editor(plates: dict):
     gs = growth_stats.get(well) or {}
 
     # Display growth status indicator and stats table
-    status_col, expander_col = st.columns([1, 3])
+    status_col, expander_col = st.columns([2, 5])
 
     with status_col:
         # Visual indicator for growth detection
         if is_bad_fit(gs):
             reason = gs.get("no_growth_reason", "No growth detected")
-            st.container(border=True).error(f"**No Growth**\n\n{reason}")
+            st.container(border=True).error(f"**No Growth:** {reason}")
         else:
             st.container(border=True).success("**Growth Detected**")
 
