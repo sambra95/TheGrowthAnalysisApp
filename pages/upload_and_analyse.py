@@ -433,22 +433,6 @@ def upload_files_fragment():
                 st.header("Step 1. Upload data file")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
-                    st.markdown("**Format:**")
-                    st.markdown("- Excel file (.xlsx or .xls)")
-                    st.markdown("- Time series data with **Time** column")
-
-                    st.markdown("**Required columns:**")
-                    st.markdown(
-                        "- **Time** column with numeric values (integers or decimals)"
-                    )
-                    st.markdown("- Well columns (e.g., A1, A2, B1, etc.)")
-
-                    st.markdown("**Time units:**")
-                    st.markdown("- Select unit (seconds, minutes, or hours) in Step 3")
-
-                    st.divider()
-                    st.markdown("**Example format:**")
-
                     example_data = pd.DataFrame(
                         {
                             "Time": [0, 12, 24, 36],
@@ -469,6 +453,7 @@ def upload_files_fragment():
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             width="stretch",
                             type="primary",
+                            key="download_example_data",
                         )
 
             data_file = st.file_uploader(
@@ -534,6 +519,7 @@ def upload_files_fragment():
                             mime="application/vnd.ms-excel",
                             width="stretch",
                             type="primary",
+                            key="download_example_plate_map",
                         )
 
             map_file = st.file_uploader(
