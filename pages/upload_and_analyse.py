@@ -133,15 +133,13 @@ with title_col:
 with popover_col:
     st.write("")
     with st.popover("Help", width="stretch"):
-        st.markdown(
-            """
+        st.markdown("""
 **Workflow Summary:**
 
 This page guides you through uploading your plate reader data and analyzing growth curves. Follow the steps in order: upload your data files and plate maps, configure preprocessing parameters, select analysis settings, and run the analysis.
 
 💡 **Tip:** The plate preview updates automatically to help you verify your setup before running the full analysis.
-"""
-        )
+""")
 
         with st.expander("File Upload Requirements"):
             st.markdown("**Data File Format:**")
@@ -176,15 +174,13 @@ This page guides you through uploading your plate reader data and analyzing grow
 
             st.markdown("**Plate Map Format:**")
             st.markdown("Excel file (.xlsx or .xls) with sample layout")
-            st.markdown(
-                """
+            st.markdown("""
 - 96-well plate format (rows A-H, columns 1-12)
 - Samples with the same name will be assigned as replicates
 - Use 'BLANK' for blank wells
 - Leave cells empty for wells to ignore
 - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visualizations' page.
-"""
-            )
+""")
 
             example_map = pd.DataFrame(
                 {
@@ -223,8 +219,7 @@ This page guides you through uploading your plate reader data and analyzing grow
                 )
 
         with st.expander("Growth Descriptor Metrics"):
-            st.markdown(
-                """
+            st.markdown("""
 All methods output the same set of growth descriptors:
 
 | Metric | Description |
@@ -238,20 +233,16 @@ All methods output the same set of growth descriptors:
 | **Max OD** | Maximum OD reached (carrying capacity) |
 | **Fit window** | Start and end times of the fitting window (h) |
 | **RMSE** | Root mean square error of the fit |
-"""
-            )
+""")
             st.markdown("### Parametric Methods")
             st.caption("Currently selected model shown below")
-            st.markdown(
-                """
+            st.markdown("""
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
 3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-"""
-            )
-            st.markdown(
-                """
+""")
+            st.markdown("""
 **Spline method: How it works**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
@@ -267,21 +258,17 @@ All methods output the same set of growth descriptors:
 - Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
-"""
-            )
-            st.markdown(
-                """
+""")
+            st.markdown("""
 **Sliding window method: How it works**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
 3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The maximum slope across all windows is reported as μ_max
-"""
-            )
+""")
 
         with st.expander("Phase Boundary Method Comparison"):
-            st.markdown(
-                """
+            st.markdown("""
 | Method | Advantages | Threshold Parameters Used |
 |---|---|---|
 | **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
@@ -315,8 +302,7 @@ All methods output the same set of growth descriptors:
 - More consistent across different curve shapes
 - Default for non-parametric methods (Sliding Window, Spline)
 - Does not require threshold parameters
-"""
-            )
+""")
 
 st.divider()
 
@@ -620,12 +606,10 @@ def analysis_params_fragment():
                 )
 
             # Extract the internal codes
-            selected_method_code = None
             growth_method = None
             model_type = None
             for label, code, method in method_options:
                 if label == selected_method_label:
-                    selected_method_code = code
                     growth_method = method
                     if method == "Model Fitting":
                         model_type = code

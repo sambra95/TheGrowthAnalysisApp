@@ -10,11 +10,8 @@ from growthcurves.parametric import fit_parametric
 from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 
 from functions.data_processing import normalize_model_type
-from functions.plotting_functions import (
-    _finite_sorted_xy,
-    is_bad_fit,
-    plot_derivative_metric,
-)
+from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+                                          plot_derivative_metric)
 
 
 # ---------------- Gatekeeper ----------------
@@ -625,9 +622,12 @@ def ui_window_fits_well_editor(plates: dict):
         wells = all_standard_wells
 
     # Ensure the selected well exists in the current plate's wells
-    if "winfit_well" not in st.session_state or st.session_state["winfit_well"] not in wells:
+    if (
+        "winfit_well" not in st.session_state
+        or st.session_state["winfit_well"] not in wells
+    ):
         st.session_state["winfit_well"] = wells[0]
-    current_well = st.session_state["winfit_well"]
+    st.session_state["winfit_well"]
 
     def _move_well(step: int):
         """Move the active well forward/backward."""

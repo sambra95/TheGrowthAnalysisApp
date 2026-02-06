@@ -206,7 +206,9 @@ def build_export_zip(
                     per_well_df.insert(0, "Plate", pid)
                     all_stats_per_well.append(per_well_df)
             if all_stats_per_well:
-                combined_stats_per_well = pd.concat(all_stats_per_well, ignore_index=True)
+                combined_stats_per_well = pd.concat(
+                    all_stats_per_well, ignore_index=True
+                )
                 zf.writestr(
                     "tables/growth_stats_per_well.csv",
                     combined_stats_per_well.to_csv(index=False),
@@ -220,7 +222,9 @@ def build_export_zip(
                     mean_df.insert(0, "Plate", pid)
                     all_stats_per_sample.append(mean_df)
             if all_stats_per_sample:
-                combined_stats_per_sample = pd.concat(all_stats_per_sample, ignore_index=True)
+                combined_stats_per_sample = pd.concat(
+                    all_stats_per_sample, ignore_index=True
+                )
                 zf.writestr(
                     "tables/growth_stats_mean_for_sample.csv",
                     combined_stats_per_sample.to_csv(index=False),
