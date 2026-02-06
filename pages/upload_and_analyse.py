@@ -878,7 +878,7 @@ def analysis_params_fragment():
                 help="Minimum number of valid data points required for growth analysis",
             )
             min_signal_to_noise = col2.number_input(
-                "Minimum signal-to-noise ratio",
+                "Minimum signal:noise",
                 0.1,
                 100.0,
                 float(params0.get("min_signal_to_noise", 1.0)),
@@ -895,7 +895,7 @@ def analysis_params_fragment():
                 help="Minimum absolute increase in OD600 from baseline to be considered growth",
             )
             min_growth_rate = col4.number_input(
-                "Minimum growth rate (1/h)",
+                "Minimum growth rate",
                 0.0,
                 None,
                 float(params0.get("min_growth_rate", 0.001)),
