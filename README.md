@@ -271,11 +271,11 @@ See `requirements.txt` or `environment.yaml` for specific versions.
 
 ## License
 
-[Add your license information here]
+MIT
 
 ## Citation
 
-[Add citation information if applicable]
+t.b.d
 
 ## Support
 
