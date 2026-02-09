@@ -178,7 +178,41 @@ def validate_plate_map_file(file_bytes):
     return True, None
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Loading plate preview...")
+def get_plate_preview_data(plate_bytes: bytes, data_bytes: bytes):
+    """Get plate map and present wells without full analysis.
+
+    This lightweight function only loads the necessary data for the preview
+    without running expensive growth curve analysis.
+
+    Args:
+        plate_bytes: Bytes of the plate map Excel file
+        data_bytes: Bytes of the data Excel file
+
+    Returns:
+        tuple: (plate_map DataFrame, set of present wells)
+    """
+    from io import BytesIO
+
+    # Load plate map
+    plate_map = pd.read_excel(BytesIO(plate_bytes), index_col=0)
+
+    # Load data and check which wells exist
+    data_df = pd.read_excel(BytesIO(data_bytes))
+
+    # Find Time column (case-insensitive)
+    time_col = None
+    for col in data_df.columns:
+        if str(col).strip().lower() == "time":
+            time_col = col
+            break
+
+    # Present wells are all columns except Time
+    present = set(data_df.columns) - {time_col} if time_col else set(data_df.columns)
+
+    return plate_map, present
+
+
 def render_plate_table(grid: pd.DataFrame):
     """Render an HTML table showing the plate status grid."""
     css = """
@@ -233,13 +267,15 @@ with title_col:
 with popover_col:
     st.write("")
     with st.popover("Help", width="stretch"):
-        st.markdown("""
+        st.markdown(
+            """
 **Workflow Summary:**
 
 This page guides you through uploading your plate reader data and analyzing growth curves. Follow the steps in order: upload your data files and plate maps, configure preprocessing parameters, select analysis settings, and run the analysis.
 
 💡 **Tip:** The plate preview updates automatically to help you verify your setup before running the full analysis.
-""")
+"""
+        )
 
         with st.expander("File Upload Requirements"):
             st.markdown("**Data File Format:**")
@@ -260,7 +296,7 @@ This page guides you through uploading your plate reader data and analyzing grow
             )
             st.dataframe(example_data, hide_index=True, width="stretch")
 
-            with open("example_data.xlsx", "rb") as f:
+            with open("example_data/example_data.xlsx", "rb") as f:
                 st.download_button(
                     "Download example data",
                     data=f.read(),
@@ -274,13 +310,15 @@ This page guides you through uploading your plate reader data and analyzing grow
 
             st.markdown("**Plate Map Format:**")
             st.markdown("Excel file (.xlsx or .xls) with sample layout")
-            st.markdown("""
+            st.markdown(
+                """
 - 96-well plate format (rows A-H, columns 1-12)
 - Samples with the same name will be assigned as replicates
 - Use 'BLANK' for blank wells
 - Leave cells empty for wells to ignore
 - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visualizations' page.
-""")
+"""
+            )
 
             example_map = pd.DataFrame(
                 {
@@ -308,7 +346,7 @@ This page guides you through uploading your plate reader data and analyzing grow
             )
             st.dataframe(example_map, hide_index=True, width="stretch")
 
-            with open("example_plate_map.xls", "rb") as f:
+            with open("example_data/example_plate_map.xls", "rb") as f:
                 st.download_button(
                     "Download example plate map",
                     data=f.read(),
@@ -319,7 +357,8 @@ This page guides you through uploading your plate reader data and analyzing grow
                 )
 
         with st.expander("Growth Descriptor Metrics"):
-            st.markdown("""
+            st.markdown(
+                """
 All methods output the same set of growth descriptors:
 
 | Metric | Description |
@@ -333,16 +372,20 @@ All methods output the same set of growth descriptors:
 | **Max OD** | Maximum OD reached (carrying capacity) |
 | **Fit window** | Start and end times of the fitting window (h) |
 | **RMSE** | Root mean square error of the fit |
-""")
+"""
+            )
             st.markdown("### Parametric Methods")
             st.caption("Currently selected model shown below")
-            st.markdown("""
+            st.markdown(
+                """
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
 3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-""")
-            st.markdown("""
+"""
+            )
+            st.markdown(
+                """
 **Spline method: How it works**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
@@ -358,17 +401,21 @@ All methods output the same set of growth descriptors:
 - Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
-""")
-            st.markdown("""
+"""
+            )
+            st.markdown(
+                """
 **Sliding window method: How it works**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
 3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The maximum slope across all windows is reported as μ_max
-""")
+"""
+            )
 
         with st.expander("Phase Boundary Method Comparison"):
-            st.markdown("""
+            st.markdown(
+                """
 | Method | Advantages | Threshold Parameters Used |
 |---|---|---|
 | **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
@@ -402,7 +449,8 @@ All methods output the same set of growth descriptors:
 - More consistent across different curve shapes
 - Default for non-parametric methods (Sliding Window, Spline)
 - Does not require threshold parameters
-""")
+"""
+            )
 
 st.divider()
 
@@ -431,7 +479,7 @@ def upload_files_fragment():
                     st.dataframe(example_data, hide_index=True, width="stretch")
 
                     st.markdown("")
-                    with open("example_data.xlsx", "rb") as f:
+                    with open("example_data/example_data.xlsx", "rb") as f:
                         st.download_button(
                             "Download example data file",
                             data=f.read(),
@@ -497,7 +545,7 @@ def upload_files_fragment():
                     st.dataframe(example_map, hide_index=True, width="stretch")
 
                     st.markdown("")
-                    with open("example_plate_map.xls", "rb") as f:
+                    with open("example_data/example_plate_map.xls", "rb") as f:
                         st.download_button(
                             "Download example plate map",
                             data=f.read(),
@@ -643,42 +691,18 @@ def preprocessing_params_fragment():
             if plate_id:
                 rec = ss.plates.get(plate_id, {})
                 if rec.get("uploads"):
-                    # Build a temporary params dict for preview (will be completed in Step 4)
-                    preview_params = dict(
-                        time_unit=str(time_unit),
-                        pathlength_cm_=float(pl_cm),
-                        clip_time_series=clip_time_series,
-                        remove_wells=remove_wells,
-                        blank=bool(blank),
-                        window_points=int(params0.get("window_points", 15)),
-                        lag_cutoff=float(params0.get("lag_cutoff", 0.1)),
-                        exp_cutoff=float(params0.get("exp_cutoff", 0.1)),
-                        sg_window=int(params0.get("sg_window", 15)),
-                        sg_poly=int(params0.get("sg_poly", 2)),
-                        min_data_points=int(params0.get("min_data_points", 5)),
-                        min_signal_to_noise=float(
-                            params0.get("min_signal_to_noise", 1.0)
-                        ),
-                        min_od_increase=float(params0.get("min_od_increase", 0.05)),
-                        min_growth_rate=float(params0.get("min_growth_rate", 0.001)),
-                        growth_method=str(
-                            params0.get("growth_method", "Sliding Window")
-                        ),
-                        model_family=str(params0.get("model_family", "mechanistic")),
-                        model_type=str(params0.get("model_type", "mech_logistic")),
-                        phase_boundary_method=str(
-                            params0.get("phase_boundary_method", "tangent")
-                        ),
+                    # Use lightweight preview function instead of full analysis
+                    uploads = rec["uploads"]
+                    plate_map, present = get_plate_preview_data(
+                        plate_bytes=uploads["plate_bytes"],
+                        data_bytes=uploads["data_bytes"],
                     )
-                    tmp = {"uploads": rec["uploads"], "params": preview_params}
-                    plate_preview = analyse_plate(tmp)
-                    present = set(plate_preview.get("growth_stats", {}).keys())
 
                     grid = build_symbol_grid(
-                        plate_map=plate_preview["plate_map"],
+                        plate_map=plate_map,
                         present=present,
-                        remove_wells=preview_params["remove_wells"],
-                        blank=preview_params["blank"],
+                        remove_wells=remove_wells,
+                        blank=blank,
                     )
 
                     st.subheader(plate_id)
@@ -941,6 +965,10 @@ def analysis_params_fragment():
         st.write("")
         help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
 
+        # Store which figure to show (will be rendered after text descriptions)
+        model_fig = None
+        boundary_image = None
+
         with help_model_col:
             # Show non-parametric methods if selected
             if is_nonparametric:
@@ -1037,9 +1065,7 @@ def analysis_params_fragment():
                         yaxis_title="ln(OD)",
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_sw, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_sw
 
                 elif growth_method == "Spline":
                     st.markdown("**Spline Method** (Currently Selected)")
@@ -1091,9 +1117,7 @@ def analysis_params_fragment():
                         yaxis_title="ln(OD)",
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_spline, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_spline
 
             # Show parametric methods if selected
             elif is_parametric:
@@ -1129,9 +1153,7 @@ def analysis_params_fragment():
                         yaxis=dict(range=[0, 1.1]),
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_log, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_log
 
                 elif "gompertz" in str(model_type):
                     model_name = (
@@ -1171,9 +1193,7 @@ def analysis_params_fragment():
                         yaxis=dict(range=[0, 1.1]),
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_gom, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_gom
 
                 elif "richards" in str(model_type):
                     st.markdown("**Richards** (Currently Selected)")
@@ -1207,9 +1227,7 @@ def analysis_params_fragment():
                         yaxis=dict(range=[0, 1.1]),
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_ric, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_ric
 
                 elif "baranyi" in str(model_type):
                     st.markdown("**Baranyi-Roberts** (Currently Selected)")
@@ -1248,24 +1266,41 @@ def analysis_params_fragment():
                         yaxis=dict(range=[0, 1.1]),
                         showlegend=False,
                     )
-                    st.plotly_chart(
-                        fig_bar, width="stretch", config={"staticPlot": True}
-                    )
+                    model_fig = fig_bar
 
         with help_boundary_col:
 
             # Show the currently selected method first
             if phase_boundary_method == "threshold":
                 st.markdown("**Threshold Method** (Currently Selected)")
-
-                # Show pre-generated demo plot image
-                st.image("info_plots/threshold_demo.png", width="stretch")
+                st.latex(r"\text{Lag end: } \mu(t) > f_{\text{lag}} \cdot \mu_{\max}")
+                st.caption(
+                    "Uses threshold fractions of μ_max to identify phase transitions. Adjustable sensitivity via cutoff parameters."
+                )
+                boundary_image = "info_plots/threshold_demo.png"
 
             else:  # tangent method
                 st.markdown("**Tangent Method** (Currently Selected)")
+                st.latex(
+                    r"\text{Tangent at } \mu_{\max} \text{ intersects baseline and plateau}"
+                )
+                st.caption(
+                    "Geometric definition based on tangent line at maximum growth rate. No arbitrary thresholds required."
+                )
+                boundary_image = "info_plots/tangent_demo.png"
 
-                # Show pre-generated demo plot image
-                st.image("info_plots/tangent_demo.png", width="stretch")
+        # Create new columns for the graphs to align them at the same height
+        graph_col_model, graph_col_boundary = st.columns((5, 4), gap="large")
+
+        with graph_col_model:
+            if model_fig is not None:
+                st.plotly_chart(
+                    model_fig, use_container_width=True, config={"staticPlot": True}
+                )
+
+        with graph_col_boundary:
+            if boundary_image is not None:
+                st.image(boundary_image, use_container_width=True)
 
         if growth_method == "Model Fitting":
             mu_max_calc = "μ(max)"
