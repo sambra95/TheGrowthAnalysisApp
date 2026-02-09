@@ -10,7 +10,7 @@ from pathlib import Path
 import growthcurves.plot as gc_plot
 import numpy as np
 from growthcurves.parametric import fit_parametric
-from growthcurves.utils import extract_stats
+from growthcurves.inference import extract_stats
 
 
 def create_annotation_demo_plot_png(save_path: Path):

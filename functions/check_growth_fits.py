@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.parametric import fit_parametric
-from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
+from growthcurves.inference import bad_fit_stats, detect_no_growth, extract_stats
 
 from functions.data_processing import normalize_model_type
 from functions.plotting_functions import (

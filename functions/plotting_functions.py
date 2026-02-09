@@ -6,20 +6,29 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.models import (mech_baranyi_model, mech_gompertz_model,
-                                 mech_logistic_model, mech_richards_model,
-                                 phenom_gompertz_model,
-                                 phenom_gompertz_modified_model,
-                                 phenom_logistic_model, phenom_richards_model,
-                                 spline_from_params)
-from growthcurves.utils import is_no_growth
+from growthcurves.models import (
+    mech_baranyi_model,
+    mech_gompertz_model,
+    mech_logistic_model,
+    mech_richards_model,
+    phenom_gompertz_model,
+    phenom_gompertz_modified_model,
+    phenom_logistic_model,
+    phenom_richards_model,
+    spline_from_params,
+)
+from growthcurves.inference import is_no_growth
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-from functions.data_processing import (ALL_WELLS, compute_first_derivative,
-                                       compute_second_derivative,
-                                       compute_sliding_window_growth_rate,
-                                       compute_specific_growth_rate, smooth)
+from functions.data_processing import (
+    ALL_WELLS,
+    compute_first_derivative,
+    compute_second_derivative,
+    compute_sliding_window_growth_rate,
+    compute_specific_growth_rate,
+    smooth,
+)
 
 
 # --- time unit helpers --------------------------------------------------------
@@ -951,7 +960,9 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
             # Convert time-based stats
             for key in ["exp_phase_start", "exp_phase_end", "time_at_umax", "lag_time"]:
                 if key in gs and gs[key] is not None and np.isfinite(gs[key]):
-                    stats_converted[key] = convert_hours_to_unit(float(gs[key]), time_unit)
+                    stats_converted[key] = convert_hours_to_unit(
+                        float(gs[key]), time_unit
+                    )
 
             # Copy OD-based stats without conversion
             for key in ["od_at_umax", "max_od", "N0", "mu_max"]:
