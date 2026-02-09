@@ -8,6 +8,7 @@ import streamlit as st
 from growthcurves.non_parametric import fit_non_parametric
 # Import all growth fitting functions from growthcurves package
 from growthcurves.parametric import fit_parametric
+from growthcurves.preprocessing import blank_subtraction, path_correct
 from growthcurves.utils import bad_fit_stats, detect_no_growth, extract_stats
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
@@ -342,7 +343,8 @@ def analyse_plate(record: dict):
     if rm:
         long = long[~long["well"].isin([w.upper() for w in rm])].copy()
 
-    long["od_1cm"] = long["value"] / float(p["pathlength_cm_"])
+    # Path length correction using growthcurves preprocessing function
+    long["od_1cm"] = path_correct(long["value"], float(p["pathlength_cm_"]))
 
     baseline = pd.DataFrame()
     if p.get("blank", True):
@@ -367,9 +369,11 @@ def analyse_plate(record: dict):
 
         long = long.query("name != 'BLANK'").copy()
 
+    # Blank subtraction using growthcurves preprocessing function
     if not baseline.empty:
         base = baseline["Mean"].to_dict()
-        long["baseline_corrected"] = long["od_1cm"] - long["Time"].map(base).fillna(0.0)
+        blank_values = long["Time"].map(base).fillna(0.0)
+        long["baseline_corrected"] = blank_subtraction(long["od_1cm"], blank_values)
     else:
         long["baseline_corrected"] = long["od_1cm"]
 
