@@ -5,16 +5,14 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from growthcurves.inference import (bad_fit_stats, detect_no_growth,
+                                    extract_stats)
 from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.parametric import fit_parametric
-from growthcurves.inference import bad_fit_stats, detect_no_growth, extract_stats
 
 from functions.data_processing import normalize_model_type
-from functions.plotting_functions import (
-    _finite_sorted_xy,
-    is_bad_fit,
-    plot_derivative_metric,
-)
+from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+                                          plot_derivative_metric)
 
 
 # ---------------- Gatekeeper ----------------

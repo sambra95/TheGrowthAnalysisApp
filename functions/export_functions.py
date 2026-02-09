@@ -9,13 +9,10 @@ import streamlit as st
 from growthcurves.plot import plot_derivative_metric
 
 from functions.check_growth_fits import _add_lasso_selected_points
-from functions.plotting_functions import (
-    _finite_sorted_xy,
-    is_bad_fit,
-    plot_baseline,
-    plot_replicates_by_sample,
-    plot_window_plate,
-)
+from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+                                          plot_baseline,
+                                          plot_replicates_by_sample,
+                                          plot_window_plate)
 
 
 # ---------------- Gatekeeper ----------------

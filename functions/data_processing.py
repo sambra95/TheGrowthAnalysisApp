@@ -5,12 +5,12 @@ import io
 import numpy as np
 import pandas as pd
 import streamlit as st
+from growthcurves.inference import (bad_fit_stats, detect_no_growth,
+                                    extract_stats)
 from growthcurves.non_parametric import fit_non_parametric
-
 # Import all growth fitting functions from growthcurves package
 from growthcurves.parametric import fit_parametric
 from growthcurves.preprocessing import blank_subtraction, path_correct
-from growthcurves.inference import bad_fit_stats, detect_no_growth, extract_stats
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
