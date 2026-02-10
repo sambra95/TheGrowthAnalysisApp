@@ -10,25 +10,6 @@ from growthcurves.inference import (bad_fit_stats, detect_no_growth,
 from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.parametric import fit_parametric
 
-from .constants import LEGACY_MODEL_TYPE_MAP
-
-
-def normalize_model_type(
-    model_type: str | None, model_family: str | None = None
-) -> str:
-    """Normalize legacy model identifiers to growthcurves' current API names."""
-    mt = str(model_type or "").strip()
-    if mt in LEGACY_MODEL_TYPE_MAP:
-        if model_family == "phenomenological":
-            return {
-                "logistic": "phenom_logistic",
-                "gompertz": "phenom_gompertz",
-                "richards": "phenom_richards",
-                "baranyi": "mech_baranyi",
-            }[mt]
-        return LEGACY_MODEL_TYPE_MAP[mt]
-    return mt or "mech_logistic"
-
 
 def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     """
@@ -55,10 +36,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     # Method selection (parametric, spline, or sliding window)
     if growth_method == "Model Fitting":
         # Use parametric model fitting
-        model_type = normalize_model_type(
-            params.get("model_type", "mech_logistic"),
-            params.get("model_family", "mechanistic"),
-        )
+        model_type = params.get("model_type", "mech_logistic")
         fit_result = fit_parametric(t_arr, y_arr, method=model_type)
         if fit_result is not None:
             fit = extract_stats(

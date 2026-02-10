@@ -12,14 +12,6 @@ RED = "🟥"  # Excluded by user
 BLUE = "🟦"  # Blank well
 GRAY = "⬜"  # Not in plate map
 
-# Legacy model type mapping
-LEGACY_MODEL_TYPE_MAP = {
-    "logistic": "mech_logistic",
-    "gompertz": "mech_gompertz",
-    "richards": "mech_richards",
-    "baranyi": "mech_baranyi",
-}
-
 # Default parameters
 DEFAULT_PARAMS = {
     "time_unit": "minutes",

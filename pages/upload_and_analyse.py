@@ -2,6 +2,7 @@
 
 import pandas as pd
 import streamlit as st
+from growthcurves.models import MODEL_REGISTRY
 
 from functions.constants import DEFAULT_PARAMS
 from functions.data_processing import analyse_plate, load_plate
@@ -518,23 +519,28 @@ preprocessing_params_fragment()
 
 
 # Helper functions for analysis parameters
+def _get_model_display_name(model_code: str) -> str:
+    """Convert model code to display name."""
+    display_names = {
+        "mech_logistic": "Logistic (parametric)",
+        "mech_gompertz": "Gompertz (parametric)",
+        "mech_richards": "Richards (parametric)",
+        "mech_baranyi": "Baranyi-Roberts (parametric)",
+        "phenom_logistic": "Logistic (parametric)",
+        "phenom_gompertz": "Gompertz (parametric)",
+        "phenom_gompertz_modified": "Modified Gompertz (parametric)",
+        "phenom_richards": "Richards (parametric)",
+        "sliding_window": "Sliding Window (non-parametric)",
+        "spline": "Spline (non-parametric)",
+    }
+    return display_names.get(model_code, model_code)
+
+
 def _render_model_selection_ui(params0: dict):
     """Render model family and growth method selection UI."""
     stored_method = params0.get("growth_method", "Sliding Window")
     stored_model_family = params0.get("model_family", "mechanistic")
     stored_model_type = params0.get("model_type", "mech_logistic")
-
-    # Normalize legacy model types
-    if stored_model_type in {"logistic", "gompertz", "richards", "baranyi"}:
-        if stored_model_family == "phenomenological":
-            stored_model_type = {
-                "logistic": "phenom_logistic",
-                "gompertz": "phenom_gompertz",
-                "richards": "phenom_richards",
-                "baranyi": "mech_baranyi",
-            }[stored_model_type]
-        else:
-            stored_model_type = f"mech_{stored_model_type}"
 
     st.caption("Select the model family and growth descriptor method:")
 
@@ -552,27 +558,27 @@ def _render_model_selection_ui(params0: dict):
         "mechanistic" if model_family == "Mechanistic" else "phenomenological"
     )
 
-    # Build method options based on family
+    # Build method options from MODEL_REGISTRY
+    method_options = []
+
     if model_family == "Mechanistic":
-        method_options = [
-            ("Logistic (parametric)", "mech_logistic", "Model Fitting"),
-            ("Gompertz (parametric)", "mech_gompertz", "Model Fitting"),
-            ("Richards (parametric)", "mech_richards", "Model Fitting"),
-            ("Baranyi-Roberts (parametric)", "mech_baranyi", "Model Fitting"),
-        ]
+        # Add mechanistic parametric models
+        for model_code in MODEL_REGISTRY["mechanistic"]:
+            method_options.append(
+                (_get_model_display_name(model_code), model_code, "Model Fitting")
+            )
     else:  # Phenomenological
-        method_options = [
-            ("Sliding Window (non-parametric)", "sliding_window", "Sliding Window"),
-            ("Spline (non-parametric)", "spline", "Spline"),
-            ("Logistic (parametric)", "phenom_logistic", "Model Fitting"),
-            ("Gompertz (parametric)", "phenom_gompertz", "Model Fitting"),
-            (
-                "Modified Gompertz (parametric)",
-                "phenom_gompertz_modified",
-                "Model Fitting",
-            ),
-            ("Richards (parametric)", "phenom_richards", "Model Fitting"),
-        ]
+        # Add non-parametric methods first
+        for model_code in MODEL_REGISTRY["non_parametric"]:
+            growth_method = "Sliding Window" if model_code == "sliding_window" else "Spline"
+            method_options.append(
+                (_get_model_display_name(model_code), model_code, growth_method)
+            )
+        # Then add phenomenological parametric models
+        for model_code in MODEL_REGISTRY["phenomenological"]:
+            method_options.append(
+                (_get_model_display_name(model_code), model_code, "Model Fitting")
+            )
 
     # Determine default index
     default_idx = 0
