@@ -175,43 +175,6 @@ def compute_sliding_window_growth_rate(t, y, window_points=15):
     return t, mu
 
 
-def calculate_phase_ends(t, y_s, lag_frac=0.10, exp_frac=0.10):
-    """Estimate lag and exponential phase end times from a smoothed curve.
-
-    Args:
-        t: Time array
-        y_s: Smoothed OD600 values
-        lag_frac: Fraction of peak growth rate for lag phase end detection
-        exp_frac: Fraction of peak growth rate for exponential phase end detection
-
-    Returns:
-        Tuple of (lag_end, exp_end) times
-    """
-    t, y_s = _as_float(t), _as_float(y_s)
-    if t.size < 5 or np.ptp(t) <= 0:
-        a = float(t[0]) if t.size else np.nan
-        b = float(t[-1]) if t.size else np.nan
-        return a, b
-
-    p = fit_d1(t, np.gradient(y_s, t))
-    if p is None:
-        return float(t[0]), float(t[0])
-
-    dy_fit = d1_model(t, *p)
-    peak_i = int(np.nanargmax(dy_fit))
-    peak_val = dy_fit[peak_i]
-
-    lag_thr = float(lag_frac * peak_val)
-    exp_thr = float(exp_frac * peak_val)
-
-    lag_idx = np.where(dy_fit >= lag_thr)[0]
-    exp_idx = np.where((dy_fit <= exp_thr) & (np.arange(t.size) > peak_i))[0]
-
-    lag_end = float(t[lag_idx[0]]) if lag_idx.size else float(t[0])
-    exp_end = float(t[exp_idx[0]]) if exp_idx.size else float(t[-1])
-    return lag_end, max(exp_end, lag_end)
-
-
 # ---------- I/O + shaping ----------
 def _read_excel_bytes(b, **kw):
     """Read Excel bytes into a DataFrame."""
