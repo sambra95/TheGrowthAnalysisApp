@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+
 from src.functions.common import _iter_wells
 
 
@@ -136,4 +137,3 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
         )
 
     return pd.concat(rows, ignore_index=True)
-

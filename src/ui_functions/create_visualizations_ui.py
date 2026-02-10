@@ -157,9 +157,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
     }
 
 
-def ui_growth_stats_controls_container(
-    has_split: bool, sel_opt: pd.DataFrame
-) -> dict:
+def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -> dict:
     """Render growth stats controls and return form selections."""
     # -----------------------------
     # Order state (stats x-axis + legend)

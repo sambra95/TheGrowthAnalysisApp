@@ -7,20 +7,29 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import is_no_growth
-from growthcurves.models import (MODEL_REGISTRY, mech_baranyi_model,
-                                 mech_gompertz_model, mech_logistic_model,
-                                 mech_richards_model, phenom_gompertz_model,
-                                 phenom_gompertz_modified_model,
-                                 phenom_logistic_model, phenom_richards_model,
-                                 spline_from_params)
+from growthcurves.models import (
+    MODEL_REGISTRY,
+    mech_baranyi_model,
+    mech_gompertz_model,
+    mech_logistic_model,
+    mech_richards_model,
+    phenom_gompertz_model,
+    phenom_gompertz_modified_model,
+    phenom_logistic_model,
+    phenom_richards_model,
+    spline_from_params,
+)
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
-from src.functions.data_processing import (compute_first_derivative,
-                                       compute_sliding_window_growth_rate,
-                                       compute_specific_growth_rate, smooth)
+from src.functions.data_processing import (
+    compute_first_derivative,
+    compute_sliding_window_growth_rate,
+    compute_specific_growth_rate,
+    smooth,
+)
 
 
 # --- time unit helpers --------------------------------------------------------
@@ -966,8 +975,7 @@ def plot_derivative_metric(
                     )
 
             elif model_type in (
-                MODEL_REGISTRY["mechanistic"]
-                + MODEL_REGISTRY["phenomenological"]
+                MODEL_REGISTRY["mechanistic"] + MODEL_REGISTRY["phenomenological"]
             ):
                 # For parametric models, compute metric from the model
                 model_func = {

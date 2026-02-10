@@ -8,10 +8,13 @@ import pandas as pd
 from growthcurves.plot import plot_derivative_metric
 
 from src.functions.check_growth_fits import _add_lasso_selected_points
-from src.functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
-                                          plot_baseline,
-                                          plot_replicates_by_sample,
-                                          plot_window_plate)
+from src.functions.plotting_functions import (
+    _finite_sorted_xy,
+    is_bad_fit,
+    plot_baseline,
+    plot_replicates_by_sample,
+    plot_window_plate,
+)
 
 
 # ---------------- Export helpers ----------------
@@ -433,4 +436,3 @@ def build_export_zip(
 
     buf.seek(0)
     return buf.getvalue()
-

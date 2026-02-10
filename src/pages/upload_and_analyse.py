@@ -9,7 +9,6 @@ from src.ui_functions.uploads_ui import (
     ui_upload_files,
 )
 
-
 # ---------------- App ----------------
 ss = init_state()
 

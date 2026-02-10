@@ -1,9 +1,10 @@
 """UI helpers for the Check Growth Fits page."""
 
+import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
 import streamlit as st
-import growthcurves.plot as gc_plot
+import plotly.graph_objects as go
 from growthcurves.inference import bad_fit_stats
 
 from src.functions.check_growth_fits import (
@@ -15,7 +16,11 @@ from src.functions.check_growth_fits import (
     update_growth_stats_from_lasso,
     well_order_A1_to_H12,
 )
-from src.functions.plotting_functions import _finite_sorted_xy, is_bad_fit, plot_derivative_metric
+from src.functions.plotting_functions import (
+    _finite_sorted_xy,
+    is_bad_fit,
+    plot_derivative_metric,
+)
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:

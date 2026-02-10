@@ -5,8 +5,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from .constants import (BLUE, COLS, DEFAULT_PARAMS, GRAY, GREEN, ORANGE, RED,
-                        ROWS)
+from .constants import BLUE, COLS, DEFAULT_PARAMS, GRAY, GREEN, ORANGE, RED, ROWS
 
 
 def init_state():

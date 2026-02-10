@@ -8,6 +8,8 @@ from src.functions.plotting_functions import (
     plot_rmse_heatmap,
     plot_window_plate,
 )
+
+
 @st.fragment
 def ui_replicates(plates: dict):
     """Render a grid of replicate plots by sample."""
@@ -29,7 +31,9 @@ def ui_window_fits_plate_overview(plates: dict):
     st.subheader("Plate Blanks")
     st.caption("Baseline values from blank wells. Hover over points for details.")
     plate = plates[plate_id]
-    st.plotly_chart(plot_baseline(plate["baseline"], name_by_well=plate.get("name", {})))
+    st.plotly_chart(
+        plot_baseline(plate["baseline"], name_by_well=plate.get("name", {}))
+    )
 
     # Header with toggle for shared y-axis
     header_col, toggle_col = st.columns([1, 4], vertical_alignment="center")
