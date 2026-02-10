@@ -183,7 +183,7 @@ def render_parametric_model_viz(model_type: str):
     return fig
 
 
-def render_method_visualization(growth_method: str, model_type: str = None):
+def ui_method_visualization(growth_method: str, model_type: str = None):
     """
     Render visualization for selected growth method with description and equation.
 
@@ -270,7 +270,7 @@ def render_method_visualization(growth_method: str, model_type: str = None):
     return None
 
 
-def render_phase_boundary_visualization(phase_boundary_method: str):
+def ui_phase_boundary_visualization(phase_boundary_method: str):
     """
     Render phase boundary method visualization with description and equation.
 
