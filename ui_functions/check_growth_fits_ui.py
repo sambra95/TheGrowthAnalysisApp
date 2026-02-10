@@ -15,34 +15,7 @@ from functions.check_growth_fits import (
     update_growth_stats_from_lasso,
     well_order_A1_to_H12,
 )
-from functions.common import require_plates
 from functions.plotting_functions import _finite_sorted_xy, is_bad_fit, plot_derivative_metric
-from functions.ui_components import page_header_with_help
-
-
-def render_check_growth_fits_page():
-    """Render the full Check Growth Fits page UI."""
-    if not st.session_state.get("plates"):
-        st.info("Add data first by running **Upload and Analyze**.")
-        st.stop()
-
-    page_header_with_help(
-        "Check Growth Fits",
-        """
-**Use this page to review the analysis of individual wells**
-- Adjust the phase boundaries and Max OD prediction using the sliders
-- Click "Delete" to exclude wells from the analysis
-- Click "No growth" to set all growth descriptors to 0
-- Click "Re-analyze" to analyze the well with your previously selected settings
-- Click and drag on the graph select data points to re-calculate the maximum growth rate
-
-💡 **Tip:** You can download any plot by clicking the camera icon in the top right corner of the plot.
-""",
-    )
-
-    plates = require_plates()
-
-    ui_window_fits_well_editor(plates)
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:

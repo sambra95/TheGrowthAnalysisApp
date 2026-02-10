@@ -5,43 +5,17 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
-from functions.common import require_plates
 from functions.plotting_functions import (
     plot_mean_growth,
     plot_replicates_scatter,
     plot_single_growth_stat,
 )
-from functions.ui_components import page_header_with_help
 from functions.visualization_functions import (
     _build_growth_curves_long_df,
     _build_growth_stats_long_df,
     _max_time_hours,
     _unique_preserve_order,
 )
-
-
-def render_create_visualizations_page():
-    """Render the full Create Visualizations page UI."""
-    if not st.session_state.get("plates"):
-        st.info("Add data first by running **Upload and Analyze**.")
-        st.stop()
-
-    page_header_with_help(
-        "Create Visualizations",
-        """
-**Actions you can perform on this page:**
-- Create custom visualizations of growth parameters (max growth rate, lag time, yield, etc.)
-- Group and compare samples by strain or condition
-- Generate interactive plots with color-coded legends
-- Visualize statistical summaries across experimental conditions
-
-💡 **Tip:** You can download any plot by clicking the camera icon in the top right corner of the plot.
-""",
-    )
-
-    plates = require_plates()
-
-    ui_growth_summaries(plates)
 
 
 @st.fragment
