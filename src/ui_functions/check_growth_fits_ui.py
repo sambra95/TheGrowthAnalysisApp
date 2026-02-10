@@ -3,8 +3,8 @@
 import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 from growthcurves.inference import bad_fit_stats
 
 from src.functions.check_growth_fits import (
