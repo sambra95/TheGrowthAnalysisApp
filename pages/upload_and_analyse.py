@@ -3,214 +3,20 @@
 import pandas as pd
 import streamlit as st
 
+from functions.constants import DEFAULT_PARAMS
 from functions.data_processing import analyse_plate, load_plate
-
-ROWS = list("ABCDEFGH")
-COLS = list(range(1, 13))
-
-GREEN = "🟩"
-ORANGE = "🟧"
-RED = "🟥"
-BLUE = "🟦"
-GRAY = "⬜"
-
-DEFAULT_PARAMS = dict(
-    time_unit="minutes",  # "seconds", "minutes", or "hours"
-    pathlength_cm_=0.42,
-    clip_time_series=(0.0, 72.0),
-    remove_wells=False,
-    blank=True,
-    window_points=15,
-    lag_cutoff=0.5,
-    exp_cutoff=0.5,
-    sg_window=15,
-    sg_poly=2,
-    min_data_points=5,
-    min_signal_to_noise=1.0,
-    min_od_increase=0.05,
-    min_growth_rate=0.001,
-    growth_method="Sliding Window",
-    model_family="phenomenological",
-    model_type="phenom_logistic",
-    phase_boundary_method="tangent",
-    spline_s=1.0,
+from functions.ui_components import (
+    render_method_visualization,
+    render_phase_boundary_visualization,
 )
-
-
-def init_state():
-    """Ensure required session state keys exist."""
-    st.session_state.setdefault("plates", {})
-    return st.session_state
-
-
-def plate_params(ss, plate_id: str) -> dict:
-    """Return stored params for a plate or the defaults."""
-    return (ss.plates.get(plate_id, {}) or {}).get("params", DEFAULT_PARAMS)
-
-
-def build_symbol_grid(
-    *, plate_map: pd.DataFrame, present: set[str], remove_wells=False, blank=True
-):
-    """Build a grid of well status symbols for the plate preview."""
-    removed = {w.upper() for w in remove_wells} if remove_wells else set()
-    name_by_well = {f"{r}{c}": str(plate_map.loc[r, c]) for r in ROWS for c in COLS}
-    ignored = {w for w, nm in name_by_well.items() if nm == "False"}
-
-    grid = pd.DataFrame(index=ROWS, columns=COLS, dtype="object")
-    for r in ROWS:
-        for c in COLS:
-            w = f"{r}{c}"
-            nm = name_by_well.get(w, "")
-            is_blank = nm == "BLANK"
-
-            if w in removed:
-                sym = RED
-            elif w in present:
-                sym = GREEN
-            elif blank and is_blank:
-                sym = BLUE
-            elif w in ignored:
-                sym = GRAY
-            else:
-                sym = ORANGE
-
-            grid.loc[r, c] = sym
-    return grid
-
-
-def validate_data_file(file_bytes):
-    """Validate that the data file has the correct format and data types.
-
-    Returns:
-        tuple: (is_valid: bool, error_message: str or None)
-    """
-    try:
-        # Try to read the Excel file
-        df = pd.read_excel(file_bytes)
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
-    # Check if DataFrame is empty
-    if df.empty:
-        return False, "Data file is empty"
-
-    # Check for 'Time' column (case-insensitive)
-    time_col = None
-    for col in df.columns:
-        if str(col).strip().lower() == "time":
-            time_col = col
-            break
-
-    if time_col is None:
-        return False, "Data file must contain a 'Time' column"
-
-    # Check if Time column has numeric values
-    try:
-        time_values = pd.to_numeric(df[time_col], errors="coerce")
-        if time_values.isna().all():
-            return (
-                False,
-                "Time column must contain numeric values (integers or decimals)",
-            )
-        if time_values.isna().any():
-            return False, "Time column contains non-numeric values"
-    except Exception:
-        return False, "Failed to validate Time column data type"
-
-    # Check that there are other columns besides Time (well data)
-    if len(df.columns) < 2:
-        return False, "Data file must contain well columns in addition to Time column"
-
-    return True, None
-
-
-def validate_plate_map_file(file_bytes):
-    """Validate that the plate map file has the correct format and structure.
-
-    Returns:
-        tuple: (is_valid: bool, error_message: str or None)
-    """
-    try:
-        # Try to read the Excel file
-        df = pd.read_excel(file_bytes)
-    except Exception as e:
-        return False, f"Failed to read Excel file: {str(e)}"
-
-    # Check if DataFrame is empty
-    if df.empty:
-        return False, "Plate map file is empty"
-
-    # Check for 'rows' column (case-insensitive)
-    rows_col = None
-    for col in df.columns:
-        if str(col).strip().lower() == "rows":
-            rows_col = col
-            break
-
-    if rows_col is None:
-        return False, "Plate map must contain a 'rows' column"
-
-    # Check that rows column contains expected row labels (A-H)
-    expected_rows = set(list("ABCDEFGH"))
-    actual_rows = set(df[rows_col].astype(str).str.strip().str.upper())
-
-    if not expected_rows.issubset(actual_rows):
-        missing_rows = expected_rows - actual_rows
-        return (
-            False,
-            f"Plate map must contain rows A-H. Missing rows: {', '.join(sorted(missing_rows))}",
-        )
-
-    # Check that there are column headers for wells (1-12)
-    numeric_cols = []
-    for col in df.columns:
-        if col != rows_col:
-            try:
-                col_num = int(str(col).strip())
-                if 1 <= col_num <= 12:
-                    numeric_cols.append(col_num)
-            except (ValueError, TypeError):
-                pass
-
-    if len(numeric_cols) < 12:
-        return False, "Plate map must contain columns 1-12 for a 96-well plate format"
-
-    return True, None
-
-
-@st.cache_data(show_spinner="Loading plate preview...")
-def get_plate_preview_data(plate_bytes: bytes, data_bytes: bytes):
-    """Get plate map and present wells without full analysis.
-
-    This lightweight function only loads the necessary data for the preview
-    without running expensive growth curve analysis.
-
-    Args:
-        plate_bytes: Bytes of the plate map Excel file
-        data_bytes: Bytes of the data Excel file
-
-    Returns:
-        tuple: (plate_map DataFrame, set of present wells)
-    """
-    from io import BytesIO
-
-    # Load plate map
-    plate_map = pd.read_excel(BytesIO(plate_bytes), index_col=0)
-
-    # Load data and check which wells exist
-    data_df = pd.read_excel(BytesIO(data_bytes))
-
-    # Find Time column (case-insensitive)
-    time_col = None
-    for col in data_df.columns:
-        if str(col).strip().lower() == "time":
-            time_col = col
-            break
-
-    # Present wells are all columns except Time
-    present = set(data_df.columns) - {time_col} if time_col else set(data_df.columns)
-
-    return plate_map, present
+from functions.upload_functions import (
+    build_symbol_grid,
+    get_plate_preview_data,
+    init_state,
+    plate_params,
+    validate_data_file,
+    validate_plate_map_file,
+)
 
 
 def render_plate_table(grid: pd.DataFrame):
@@ -304,6 +110,7 @@ This page guides you through uploading your plate reader data and analyzing grow
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     width="stretch",
                     type="primary",
+                    key="help_download_example_data",
                 )
 
             st.divider()
@@ -354,6 +161,7 @@ This page guides you through uploading your plate reader data and analyzing grow
                     mime="application/vnd.ms-excel",
                     width="stretch",
                     type="primary",
+                    key="help_download_example_plate_map",
                 )
 
         with st.expander("Growth Descriptor Metrics"):
@@ -729,617 +537,256 @@ def preprocessing_params_fragment():
 preprocessing_params_fragment()
 
 
-# Step 4: Select analysis parameters
-@st.fragment
-def analysis_params_fragment():
-    """Fragment for analysis parameters."""
-    # Get values from Step 3
-    step3_params = ss.get("step3_params", {})
-    step4_prev = ss.get("step4_params", {})
-    params0 = step3_params.get("params0", DEFAULT_PARAMS)
+# Helper functions for analysis parameters
+def _render_model_selection_ui(params0: dict):
+    """Render model family and growth method selection UI."""
+    stored_method = params0.get("growth_method", "Sliding Window")
+    stored_model_family = params0.get("model_family", "mechanistic")
+    stored_model_type = params0.get("model_type", "mech_logistic")
 
-    with st.container(border=True):
-        st.header("Step 4. Select the analysis parameters")
+    # Normalize legacy model types
+    if stored_model_type in {"logistic", "gompertz", "richards", "baranyi"}:
+        if stored_model_family == "phenomenological":
+            stored_model_type = {
+                "logistic": "phenom_logistic",
+                "gompertz": "phenom_gompertz",
+                "richards": "phenom_richards",
+                "baranyi": "mech_baranyi",
+            }[stored_model_type]
+        else:
+            stored_model_type = f"mech_{stored_model_type}"
 
-        # Prepare stored parameters
-        stored_method = params0.get("growth_method", "Sliding Window")
-        stored_model_family = params0.get("model_family", "mechanistic")
-        stored_model_type = params0.get("model_type", "mech_logistic")
-        if stored_model_type in {"logistic", "gompertz", "richards", "baranyi"}:
-            if stored_model_family == "phenomenological":
-                stored_model_type = {
-                    "logistic": "phenom_logistic",
-                    "gompertz": "phenom_gompertz",
-                    "richards": "phenom_richards",
-                    "baranyi": "mech_baranyi",
-                }[stored_model_type]
-            else:
-                stored_model_type = f"mech_{stored_model_type}"
+    st.caption("Select the model family and growth descriptor method:")
 
-        # Two columns: Model options | Phase boundary options
-        model_col, boundary_col = st.columns((5, 4), gap="large")
+    family_col, method_col, param_col = st.columns(3)
 
-        with model_col:
+    with family_col:
+        model_family = st.selectbox(
+            "Model family",
+            options=["Phenomenological", "Mechanistic"],
+            index=1 if stored_model_family == "mechanistic" else 0,
+            help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
+        )
 
-            st.caption("Select the model family and growth descriptor method:")
+    model_family_internal = "mechanistic" if model_family == "Mechanistic" else "phenomenological"
 
-            # Create three columns for model family, growth descriptor method, and method-specific parameters
-            family_col, method_col, param_col = st.columns(3)
+    # Build method options based on family
+    if model_family == "Mechanistic":
+        method_options = [
+            ("Logistic (parametric)", "mech_logistic", "Model Fitting"),
+            ("Gompertz (parametric)", "mech_gompertz", "Model Fitting"),
+            ("Richards (parametric)", "mech_richards", "Model Fitting"),
+            ("Baranyi-Roberts (parametric)", "mech_baranyi", "Model Fitting"),
+        ]
+    else:  # Phenomenological
+        method_options = [
+            ("Sliding Window (non-parametric)", "sliding_window", "Sliding Window"),
+            ("Spline (non-parametric)", "spline", "Spline"),
+            ("Logistic (parametric)", "phenom_logistic", "Model Fitting"),
+            ("Gompertz (parametric)", "phenom_gompertz", "Model Fitting"),
+            ("Modified Gompertz (parametric)", "phenom_gompertz_modified", "Model Fitting"),
+            ("Richards (parametric)", "phenom_richards", "Model Fitting"),
+        ]
 
-            with family_col:
-                # Model family selector
-                model_family = st.selectbox(
-                    "Model family",
-                    options=["Phenomenological", "Mechanistic"],
-                    index=1 if stored_model_family == "mechanistic" else 0,
-                    help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
-                )
+    # Determine default index
+    default_idx = 0
+    for i, (label, code, method) in enumerate(method_options):
+        if stored_method in ["Sliding Window", "Spline"]:
+            if code == "sliding_window" and stored_method == "Sliding Window":
+                default_idx = i
+                break
+            elif code == "spline" and stored_method == "Spline":
+                default_idx = i
+                break
+        elif stored_method == "Model Fitting":
+            if code == stored_model_type:
+                default_idx = i
+                break
 
-            # Convert display name to internal value
-            model_family_internal = (
-                "mechanistic" if model_family == "Mechanistic" else "phenomenological"
-            )
+    with method_col:
+        selected_method_label = st.selectbox(
+            "Growth descriptor method",
+            options=[m[0] for m in method_options],
+            index=default_idx,
+            help="Choose between non-parametric (data-driven) or parametric (model-based) approaches.",
+        )
 
-            # Build combined method options for the selected family
-            if model_family == "Mechanistic":
-                method_options = [
-                    ("Logistic (parametric)", "mech_logistic", "Model Fitting"),
-                    ("Gompertz (parametric)", "mech_gompertz", "Model Fitting"),
-                    ("Richards (parametric)", "mech_richards", "Model Fitting"),
-                    ("Baranyi-Roberts (parametric)", "mech_baranyi", "Model Fitting"),
-                ]
-            else:  # Phenomenological
-                method_options = [
-                    (
-                        "Sliding Window (non-parametric)",
-                        "sliding_window",
-                        "Sliding Window",
-                    ),
-                    ("Spline (non-parametric)", "spline", "Spline"),
-                    ("Logistic (parametric)", "phenom_logistic", "Model Fitting"),
-                    ("Gompertz (parametric)", "phenom_gompertz", "Model Fitting"),
-                    (
-                        "Modified Gompertz (parametric)",
-                        "phenom_gompertz_modified",
-                        "Model Fitting",
-                    ),
-                    ("Richards (parametric)", "phenom_richards", "Model Fitting"),
-                ]
+    # Extract internal codes
+    growth_method = None
+    model_type = None
+    for label, code, method in method_options:
+        if label == selected_method_label:
+            growth_method = method
+            if method == "Model Fitting":
+                model_type = code
+            break
 
-            # Determine default index based on stored parameters
-            default_idx = 0
-            for i, (label, code, method) in enumerate(method_options):
-                if stored_method in ["Sliding Window", "Spline"]:
-                    if code == "sliding_window" and stored_method == "Sliding Window":
-                        default_idx = i
-                        break
-                    elif code == "spline" and stored_method == "Spline":
-                        default_idx = i
-                        break
-                elif stored_method == "Model Fitting":
-                    if code == stored_model_type:
-                        default_idx = i
-                        break
+    return model_family_internal, growth_method, model_type, param_col
 
-            with method_col:
-                # Growth descriptor method selector
-                selected_method_label = st.selectbox(
-                    "Growth descriptor method",
-                    options=[m[0] for m in method_options],
-                    index=default_idx,
-                    help="Choose between non-parametric (data-driven) or parametric (model-based) approaches.",
-                )
 
-            # Extract the internal codes
-            growth_method = None
-            model_type = None
-            for label, code, method in method_options:
-                if label == selected_method_label:
-                    growth_method = method
-                    if method == "Model Fitting":
-                        model_type = code
-                    break
+def _render_method_params_ui(growth_method: str, params0: dict, step4_prev: dict, param_col):
+    """Render method-specific parameters (window size or spline smoothing)."""
+    default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
+    if default_spline_s is None:
+        default_spline_s = 1.0
 
-            model_family = model_family_internal
-
-            # Method-specific parameters in the third column
-            default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
-            if default_spline_s is None:
-                default_spline_s = 1.0
-
-            with param_col:
-                if growth_method == "Sliding Window":
-                    window_points = st.number_input(
-                        "Window size (points)",
-                        5,
-                        200,
-                        int(params0["window_points"]),
-                        1,
-                        help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
-                    )
-                    spline_s = float(default_spline_s)
-                elif growth_method == "Spline":
-                    window_points = int(params0["window_points"])
-                    spline_s = st.number_input(
-                        "Spline smoothing factor (s)",
-                        0.001,
-                        None,
-                        float(default_spline_s),
-                        0.001,
-                        help="Lower values follow noise more closely; higher values produce smoother fits.",
-                    )
-                else:
-                    # Model Fitting - no additional parameters needed (model already selected)
-                    window_points = int(params0["window_points"])
-                    spline_s = float(default_spline_s)
-
-            st.write("")
-            st.write("")
-
-            st.caption("Wells failing these criteria will be marked as no growth")
-
-            col1, col2, col3, col4 = st.columns(4)
-            min_data_points = col1.number_input(
-                "Minimum data points",
+    with param_col:
+        if growth_method == "Sliding Window":
+            window_points = st.number_input(
+                "Window size (points)",
+                5,
+                200,
+                int(params0["window_points"]),
                 1,
-                100,
-                int(params0.get("min_data_points", 5)),
-                1,
-                help="Minimum number of valid data points required for growth analysis",
+                help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
             )
-            min_signal_to_noise = col2.number_input(
-                "Minimum signal:noise",
-                0.1,
-                100.0,
-                float(params0.get("min_signal_to_noise", 1.0)),
-                0.1,
-                help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
-            )
-            min_od_increase = col3.number_input(
-                "Minimum OD increase",
-                0.0,
-                None,
-                float(params0.get("min_od_increase", 0.05)),
+            spline_s = float(default_spline_s)
+        elif growth_method == "Spline":
+            window_points = int(params0["window_points"])
+            spline_s = st.number_input(
+                "Spline smoothing factor (s)",
                 0.001,
-                format="%.3f",
-                help="Minimum absolute increase in OD600 from baseline to be considered growth",
-            )
-            min_growth_rate = col4.number_input(
-                "Minimum growth rate",
-                0.0,
                 None,
-                float(params0.get("min_growth_rate", 0.001)),
-                0.0001,
-                format="%.4f",
-                help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
+                float(default_spline_s),
+                0.001,
+                help="Lower values follow noise more closely; higher values produce smoother fits.",
             )
+        else:  # Model Fitting
+            window_points = int(params0["window_points"])
+            spline_s = float(default_spline_s)
 
-            # Help section for growth descriptor methods
-            st.write("")
-            import numpy as np
-            import plotly.graph_objects as go
+    return window_points, spline_s
 
-            # Determine which help content to show based on selected method
-            is_nonparametric = growth_method in ["Sliding Window", "Spline"]
-            is_parametric = growth_method == "Model Fitting"
 
-        with boundary_col:
-            st.caption(
-                "Phase boundaries define when the lag phase ends and when the exponential phase ends. Different methods are available for calculating these boundaries:"
-            )
-            phase_boundary_method = st.selectbox(
-                "Phase boundary calculation",
-                options=["threshold", "tangent"],
-                index=(
-                    0
-                    if params0.get("phase_boundary_method", "tangent") == "threshold"
-                    else 1
-                ),
-                format_func=lambda v: v.capitalize(),
-                help="Threshold uses fractions of μ_max; tangent uses the tangent at μ_max to estimate exponential phase bounds.",
-            )
-            lag_cutoff = st.number_input(
-                "Lag phase cutoff",
-                0.01,
-                0.5,
-                float(params0.get("lag_cutoff", 0.5)),
-                0.01,
-                format="%.2f",
-                disabled=phase_boundary_method == "tangent",
-                help="Fraction of maximum growth rate used to define lag phase end (threshold mode).",
-            )
-            exp_cutoff = st.number_input(
-                "Exponential phase cutoff",
-                0.01,
-                0.5,
-                float(params0.get("exp_cutoff", 0.5)),
-                0.01,
-                format="%.2f",
-                disabled=phase_boundary_method == "tangent",
-                help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
-            )
+def _render_qc_filters_ui(params0: dict):
+    """Render quality control filter inputs."""
+    st.caption("Wells failing these criteria will be marked as no growth")
 
-            # Help section for phase boundary detection
-            st.write("")
+    col1, col2, col3, col4 = st.columns(4)
+    min_data_points = col1.number_input(
+        "Minimum data points",
+        1,
+        100,
+        int(params0.get("min_data_points", 5)),
+        1,
+        help="Minimum number of valid data points required for growth analysis",
+    )
+    min_signal_to_noise = col2.number_input(
+        "Minimum signal:noise",
+        0.1,
+        100.0,
+        float(params0.get("min_signal_to_noise", 1.0)),
+        0.1,
+        help="Minimum ratio of maximum to minimum OD600 signal (filters out flat curves)",
+    )
+    min_od_increase = col3.number_input(
+        "Minimum OD increase",
+        0.0,
+        None,
+        float(params0.get("min_od_increase", 0.05)),
+        0.001,
+        format="%.3f",
+        help="Minimum absolute increase in OD600 from baseline to be considered growth",
+    )
+    min_growth_rate = col4.number_input(
+        "Minimum growth rate",
+        0.0,
+        None,
+        float(params0.get("min_growth_rate", 0.001)),
+        0.0001,
+        format="%.4f",
+        help="Minimum specific growth rate to be considered growth (wells with lower rates are marked as no growth)",
+    )
 
-        st.write("")
-        help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
+    return min_data_points, min_signal_to_noise, min_od_increase, min_growth_rate
 
-        # Store which figure to show (will be rendered after text descriptions)
-        model_fig = None
-        boundary_image = None
 
-        with help_model_col:
-            # Show non-parametric methods if selected
-            if is_nonparametric:
-                if growth_method == "Sliding Window":
-                    st.markdown("**Sliding Window Method** (Currently Selected)")
-                    st.latex(r"\ln(N(t)) = N_0 + b\,t")
-                    st.caption(
-                        "Local linear regression in moving windows. Calculates growth rate from nearby data points without assuming global curve shape."
-                    )
+def _render_phase_boundary_ui(params0: dict):
+    """Render phase boundary method selection UI."""
+    st.caption(
+        "Phase boundaries define when the lag phase ends and when the exponential phase ends. Different methods are available for calculating these boundaries:"
+    )
+    phase_boundary_method = st.selectbox(
+        "Phase boundary calculation",
+        options=["threshold", "tangent"],
+        index=(
+            0 if params0.get("phase_boundary_method", "tangent") == "threshold" else 1
+        ),
+        format_func=lambda v: v.capitalize(),
+        help="Threshold uses fractions of μ_max; tangent uses the tangent at μ_max to estimate exponential phase bounds.",
+    )
+    lag_cutoff = st.number_input(
+        "Lag phase cutoff",
+        0.01,
+        0.5,
+        float(params0.get("lag_cutoff", 0.5)),
+        0.01,
+        format="%.2f",
+        disabled=phase_boundary_method == "tangent",
+        help="Fraction of maximum growth rate used to define lag phase end (threshold mode).",
+    )
+    exp_cutoff = st.number_input(
+        "Exponential phase cutoff",
+        0.01,
+        0.5,
+        float(params0.get("exp_cutoff", 0.5)),
+        0.01,
+        format="%.2f",
+        disabled=phase_boundary_method == "tangent",
+        help="Fraction of maximum growth rate used to define exponential phase end (threshold mode).",
+    )
 
-                    t_points = np.linspace(0, 48, 50)
-                    y_points = 0.05 + 0.95 / (1 + np.exp(-0.2 * (t_points - 24)))
+    return phase_boundary_method, lag_cutoff, exp_cutoff
 
-                    fig_sw = go.Figure()
-                    fig_sw.add_trace(
-                        go.Scatter(
-                            x=t_points,
-                            y=y_points,
-                            mode="markers",
-                            marker=dict(color="blue", size=6),
-                            name="Data points",
-                        )
-                    )
 
-                    window_center_t = 24
-                    window_half_width = 4
-                    win_x0 = window_center_t - window_half_width
-                    win_x1 = window_center_t + window_half_width
-
-                    y_at_win = 0.05 + 0.95 / (
-                        1 + np.exp(-0.2 * (np.array([win_x0, win_x1]) - 24))
-                    )
-                    box_y_min = min(y_at_win) - 0.08
-                    box_y_max = max(y_at_win) + 0.08
-
-                    fig_sw.add_shape(
-                        type="rect",
-                        x0=win_x0,
-                        x1=win_x1,
-                        y0=box_y_min,
-                        y1=box_y_max,
-                        fillcolor="rgba(0,200,0,0.2)",
-                        line=dict(color="green", width=2),
-                    )
-
-                    fig_sw.add_annotation(
-                        x=window_center_t,
-                        y=box_y_max + 0.08,
-                        text="Sliding Window",
-                        showarrow=False,
-                        font=dict(color="green", size=12),
-                    )
-
-                    arrow_y = box_y_min + (box_y_max - box_y_min) / 2
-
-                    fig_sw.add_annotation(
-                        x=win_x0 - 1,
-                        y=arrow_y,
-                        ax=win_x0 - 6,
-                        ay=arrow_y,
-                        xref="x",
-                        yref="y",
-                        axref="x",
-                        ayref="y",
-                        showarrow=True,
-                        arrowhead=2,
-                        arrowsize=1.5,
-                        arrowwidth=2,
-                        arrowcolor="gray",
-                        text="",
-                    )
-
-                    fig_sw.add_annotation(
-                        x=win_x1 + 6,
-                        y=arrow_y,
-                        ax=win_x1 + 1,
-                        ay=arrow_y,
-                        xref="x",
-                        yref="y",
-                        axref="x",
-                        ayref="y",
-                        showarrow=True,
-                        arrowhead=2,
-                        arrowsize=1.5,
-                        arrowwidth=2,
-                        arrowcolor="gray",
-                        text="",
-                    )
-
-                    fig_sw.update_layout(
-                        height=250,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="ln(OD)",
-                        showlegend=False,
-                    )
-                    model_fig = fig_sw
-
-                elif growth_method == "Spline":
-                    st.markdown("**Spline Method** (Currently Selected)")
-                    st.latex(r"\ln(N(t)) = \mathrm{spline}(t)")
-                    st.caption(
-                        "Fitted smoothed curve without underlying shape assumptions. Flexible non-parametric approach."
-                    )
-
-                    # Generate spline visualization
-                    t_spline_points = np.linspace(0, 48, 30)
-                    y_spline_points = np.log(
-                        0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_points - 24)))
-                    )
-
-                    # Generate smooth spline curve
-                    t_spline_smooth = np.linspace(0, 48, 200)
-                    y_spline_smooth = np.log(
-                        0.05 + 0.95 / (1 + np.exp(-0.2 * (t_spline_smooth - 24)))
-                    )
-
-                    fig_spline = go.Figure()
-
-                    # Add data points
-                    fig_spline.add_trace(
-                        go.Scatter(
-                            x=t_spline_points,
-                            y=y_spline_points,
-                            mode="markers",
-                            marker=dict(color="blue", size=6),
-                            name="Data points",
-                        )
-                    )
-
-                    # Add smooth spline fit
-                    fig_spline.add_trace(
-                        go.Scatter(
-                            x=t_spline_smooth,
-                            y=y_spline_smooth,
-                            mode="lines",
-                            line=dict(color="green", width=3),
-                            name="Spline fit",
-                        )
-                    )
-
-                    fig_spline.update_layout(
-                        height=250,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="ln(OD)",
-                        showlegend=False,
-                    )
-                    model_fig = fig_spline
-
-            # Show parametric methods if selected
-            elif is_parametric:
-                t = np.linspace(0, 48, 200)
-
-                # Show the currently selected model
-                if "logistic" in str(model_type):
-                    st.markdown("**Logistic** (Currently Selected)")
-                    if str(model_type).startswith("mech_"):
-                        st.latex(r"\frac{dN}{dt} = \mu\left(1-\frac{N}{K}\right)N")
-                    else:
-                        st.latex(
-                            r"\ln\!\left(\frac{N(t)}{N_0}\right) = \frac{A}{1+\exp\!\left(\frac{4\mu_{\max}(\lambda-t)}{A}+2\right)}"
-                        )
-                    st.caption(
-                        "Classic S-shaped curve with symmetric inflection point. Most commonly used for microbial growth."
-                    )
-                    y_logistic = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
-                    fig_log = go.Figure()
-                    fig_log.add_trace(
-                        go.Scatter(
-                            x=t,
-                            y=y_logistic,
-                            mode="lines",
-                            line=dict(color="blue", width=3),
-                        )
-                    )
-                    fig_log.update_layout(
-                        height=200,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="OD600",
-                        yaxis=dict(range=[0, 1.1]),
-                        showlegend=False,
-                    )
-                    model_fig = fig_log
-
-                elif "gompertz" in str(model_type):
-                    model_name = (
-                        "Modified Gompertz"
-                        if "modified" in str(model_type)
-                        else "Gompertz"
-                    )
-                    st.markdown(f"**{model_name}** (Currently Selected)")
-                    if str(model_type).startswith("mech_"):
-                        st.latex(r"\frac{dN}{dt} = \mu\log\!\left(\frac{K}{N}\right)N")
-                    elif "modified" in str(model_type):
-                        st.latex(
-                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]+A\exp\!\left(\alpha(t-t_{\mathrm{shift}})\right)"
-                        )
-                    else:
-                        st.latex(
-                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\exp\!\left[-\exp\!\left(\frac{\mu_{\max}\exp(1)(\lambda-t)}{A}+1\right)\right]"
-                        )
-                    st.caption(
-                        "Modified Gompertz with baseline offset y₀ and amplitude A = K − y₀. Asymmetric S-curve; often fits bacterial growth better than logistic."
-                    )
-                    y_gompertz = 1.0 * np.exp(-np.exp(-0.15 * (t - 24)))
-                    fig_gom = go.Figure()
-                    fig_gom.add_trace(
-                        go.Scatter(
-                            x=t,
-                            y=y_gompertz,
-                            mode="lines",
-                            line=dict(color="blue", width=3),
-                        )
-                    )
-                    fig_gom.update_layout(
-                        height=200,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="OD600",
-                        yaxis=dict(range=[0, 1.1]),
-                        showlegend=False,
-                    )
-                    model_fig = fig_gom
-
-                elif "richards" in str(model_type):
-                    st.markdown("**Richards** (Currently Selected)")
-                    if str(model_type).startswith("mech_"):
-                        st.latex(
-                            r"\frac{dN}{dt}=\mu\left(1-\left(\frac{N}{K}\right)^{\beta}\right)N"
-                        )
-                    else:
-                        st.latex(
-                            r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
-                        )
-                    st.caption(
-                        "Generalized logistic with shape parameter ν. Most flexible - use when other models don't fit well."
-                    )
-                    nu = 2.0
-                    y_richards = 1.0 / (1 + nu * np.exp(-0.15 * (t - 24))) ** (1 / nu)
-                    fig_ric = go.Figure()
-                    fig_ric.add_trace(
-                        go.Scatter(
-                            x=t,
-                            y=y_richards,
-                            mode="lines",
-                            line=dict(color="blue", width=3),
-                        )
-                    )
-                    fig_ric.update_layout(
-                        height=200,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="OD600",
-                        yaxis=dict(range=[0, 1.1]),
-                        showlegend=False,
-                    )
-                    model_fig = fig_ric
-
-                elif "baranyi" in str(model_type):
-                    st.markdown("**Baranyi-Roberts** (Currently Selected)")
-                    st.latex(
-                        r"\frac{dN}{dt}=\mu\frac{\exp(\mu t)}{\exp(\lambda)-1+\exp(\mu t)}\left(1-\frac{N}{K}\right)N"
-                    )
-                    st.caption(
-                        "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
-                    )
-                    lag_lambda = 5.0
-                    mu_max_b = 0.15
-                    K_b = 1.0
-                    y0_b = 0.05
-                    A_t = t + (1.0 / mu_max_b) * np.log(
-                        np.exp(-mu_max_b * t)
-                        + np.exp(-lag_lambda)
-                        - np.exp(-mu_max_b * t - lag_lambda)
-                    )
-                    y_baranyi = K_b / (
-                        1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t)
-                    )
-                    fig_bar = go.Figure()
-                    fig_bar.add_trace(
-                        go.Scatter(
-                            x=t,
-                            y=y_baranyi,
-                            mode="lines",
-                            line=dict(color="blue", width=3),
-                        )
-                    )
-                    fig_bar.update_layout(
-                        height=200,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        xaxis_title="Time (h)",
-                        yaxis_title="OD600",
-                        yaxis=dict(range=[0, 1.1]),
-                        showlegend=False,
-                    )
-                    model_fig = fig_bar
-
-        with help_boundary_col:
-
-            # Show the currently selected method first
-            if phase_boundary_method == "threshold":
-                st.markdown("**Threshold Method** (Currently Selected)")
-                st.latex(r"\text{Lag end: } \mu(t) > f_{\text{lag}} \cdot \mu_{\max}")
-                st.caption(
-                    "Uses threshold fractions of μ_max to identify phase transitions. Adjustable sensitivity via cutoff parameters."
-                )
-                boundary_image = "info_plots/threshold_demo.png"
-
-            else:  # tangent method
-                st.markdown("**Tangent Method** (Currently Selected)")
-                st.latex(
-                    r"\text{Tangent at } \mu_{\max} \text{ intersects baseline and plateau}"
-                )
-                st.caption(
-                    "Geometric definition based on tangent line at maximum growth rate. No arbitrary thresholds required."
-                )
-                boundary_image = "info_plots/tangent_demo.png"
-
-        # Create new columns for the graphs to align them at the same height
-        graph_col_model, graph_col_boundary = st.columns((5, 4), gap="large")
-
-        with graph_col_model:
-            if model_fig is not None:
-                st.plotly_chart(
-                    model_fig, use_container_width=True, config={"staticPlot": True}
-                )
-
-        with graph_col_boundary:
-            if boundary_image is not None:
-                st.image(boundary_image, use_container_width=True)
-
-        if growth_method == "Model Fitting":
-            mu_max_calc = "μ(max)"
-            model_rmse_calc = "RMSE over entire curve"
-            max_od_calc = "Maximum OD from fitted model"
+def _render_calculation_table(
+    growth_method: str,
+    model_type: str,
+    model_family: str,
+    phase_boundary_method: str,
+    lag_cutoff: float,
+    exp_cutoff: float,
+    window_points: int,
+):
+    """Render the growth parameter calculations table."""
+    if growth_method == "Model Fitting":
+        mu_max_calc = "μ(max)"
+        model_rmse_calc = "RMSE over entire curve"
+        max_od_calc = "Maximum OD from fitted model"
+    else:
+        max_od_calc = "Maximum raw OD"
+        if growth_method == "Sliding Window":
+            mu_max_calc = "b"
+            model_rmse_calc = f"RMSE over {window_points} point sliding-window"
         else:
-            max_od_calc = "Maximum raw OD"
-            if growth_method == "Sliding Window":
-                mu_max_calc = "b"
-                model_rmse_calc = f"RMSE over {window_points} point sliding-window"
-            else:
-                mu_max_calc = "Max spline derivative"
-                model_rmse_calc = "RMSE over spline fit window (log phase)"
+            mu_max_calc = "Max spline derivative"
+            model_rmse_calc = "RMSE over spline fit window (log phase)"
 
-        if growth_method == "Model Fitting" and model_family == "mechanistic":
-            intrinsic_calc = "Fitted intrinsic μ"
-        else:
-            intrinsic_calc = "N.a."
+    if growth_method == "Model Fitting" and model_family == "mechanistic":
+        intrinsic_calc = "Fitted intrinsic μ"
+    else:
+        intrinsic_calc = "N.a."
 
-        if phase_boundary_method == "threshold":
-            boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ(max)"
-            exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ(max)"
-        else:
-            boundary_calc = "μ(max) tangent intersect with OD baseline"
-            exp_phase_end_calc = "μ(max) tangent intersec with OD(max)"
+    if phase_boundary_method == "threshold":
+        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ(max)"
+        exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ(max)"
+    else:
+        boundary_calc = "μ(max) tangent intersect with OD baseline"
+        exp_phase_end_calc = "μ(max) tangent intersec with OD(max)"
 
-        if growth_method == "Model Fitting" and model_type in {
-            "phenom_logistic",
-            "phenom_gompertz",
-            "phenom_gompertz_modified",
-            "phenom_richards",
-        }:
-            lag_time_calc = "λ"
-        else:
-            lag_time_calc = boundary_calc
+    if growth_method == "Model Fitting" and model_type in {
+        "phenom_logistic",
+        "phenom_gompertz",
+        "phenom_gompertz_modified",
+        "phenom_richards",
+    }:
+        lag_time_calc = "λ"
+    else:
+        lag_time_calc = boundary_calc
 
-        st.markdown("**Growth parameter calculations for selected methods:**")
-        st.markdown(
-            f"""
+    st.markdown("**Growth parameter calculations for selected methods:**")
+    st.markdown(
+        f"""
 <style>
 .growth-param-table table {{
     width: 100%;
@@ -1357,7 +804,79 @@ def analysis_params_fragment():
 
 </div>
 """,
-            unsafe_allow_html=True,
+        unsafe_allow_html=True,
+    )
+
+
+# Step 4: Select analysis parameters
+@st.fragment
+def analysis_params_fragment():
+    """Fragment for analysis parameters (refactored from 646 to ~100 lines)."""
+    step3_params = ss.get("step3_params", {})
+    step4_prev = ss.get("step4_params", {})
+    params0 = step3_params.get("params0", DEFAULT_PARAMS)
+
+    with st.container(border=True):
+        st.header("Step 4. Select the analysis parameters")
+
+        # Two columns: Model options | Phase boundary options
+        model_col, boundary_col = st.columns((5, 4), gap="large")
+
+        with model_col:
+            # Model selection
+            model_family, growth_method, model_type, param_col = _render_model_selection_ui(params0)
+
+            # Method-specific parameters
+            window_points, spline_s = _render_method_params_ui(
+                growth_method, params0, step4_prev, param_col
+            )
+
+            st.write("")
+            st.write("")
+
+            # Quality control filters
+            min_data_points, min_signal_to_noise, min_od_increase, min_growth_rate = (
+                _render_qc_filters_ui(params0)
+            )
+
+            st.write("")
+
+        with boundary_col:
+            # Phase boundary selection
+            phase_boundary_method, lag_cutoff, exp_cutoff = _render_phase_boundary_ui(params0)
+            st.write("")
+
+        st.write("")
+
+        # Visualization columns
+        help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
+
+        with help_model_col:
+            model_fig = render_method_visualization(growth_method, model_type)
+
+        with help_boundary_col:
+            boundary_image = render_phase_boundary_visualization(phase_boundary_method)
+
+        # Render the visualizations
+        graph_col_model, graph_col_boundary = st.columns((5, 4), gap="large")
+
+        with graph_col_model:
+            if model_fig is not None:
+                st.plotly_chart(model_fig, use_container_width=True, config={"staticPlot": True})
+
+        with graph_col_boundary:
+            if boundary_image is not None:
+                st.image(boundary_image, use_container_width=True)
+
+        # Growth parameter calculations table
+        _render_calculation_table(
+            growth_method,
+            model_type,
+            model_family,
+            phase_boundary_method,
+            lag_cutoff,
+            exp_cutoff,
+            window_points,
         )
 
     # Store analysis parameters in session state

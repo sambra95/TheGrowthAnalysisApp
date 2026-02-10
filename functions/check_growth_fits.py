@@ -5,24 +5,12 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.inference import (bad_fit_stats, detect_no_growth,
-                                    extract_stats)
-from growthcurves.non_parametric import fit_non_parametric
-from growthcurves.parametric import fit_parametric
+from growthcurves.inference import bad_fit_stats
 
-from functions.data_processing import normalize_model_type
+from functions.common import require_plates
+from functions.fitting_pipeline import fit_growth_series
 from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
                                           plot_derivative_metric)
-
-
-# ---------------- Gatekeeper ----------------
-def require_plates() -> dict:
-    """Return plates from session state, or stop with a warning."""
-    plates = st.session_state.get("plates") or {}
-    if not plates:
-        st.info("No results yet. Run **Upload + Analyse** first.")
-        st.stop()
-    return plates
 
 
 # ---------------- Selection + stats helpers ----------------
@@ -183,113 +171,10 @@ def _analyse_series_with_plate_params(
         return bad_fit_stats(), None
 
     try:
-        growth_method = params.get("growth_method", "Sliding Window")
-        lag_frac = float(params.get("lag_cutoff", 0.15))
-        exp_frac = float(params.get("exp_cutoff", 0.15))
-
-        phase_boundary_method = str(
-            params.get("phase_boundary_method", "tangent")
-        ).lower()
-
-        fit_result = None
-        if growth_method == "Model Fitting":
-            # Use parametric model fitting
-            model_type = normalize_model_type(
-                params.get("model_type", "mech_logistic"),
-                params.get("model_family", "mechanistic"),
-            )
-            fit_result = fit_parametric(
-                t_arr,
-                y_arr,
-                method=model_type,
-            )
-            if fit_result is not None:
-                fit = extract_stats(
-                    fit_result,
-                    t_arr,
-                    y_arr,
-                    lag_frac=lag_frac,
-                    exp_frac=exp_frac,
-                    phase_boundary_method=phase_boundary_method,
-                )
-                # Store model parameters
-                for param_name, param_val in fit_result["params"].items():
-                    fit[f"fit_param_{param_name}"] = float(param_val)
-            else:
-                fit = bad_fit_stats()
-        elif growth_method == "Spline":
-            # Use non-parametric spline method
-            fit_result = fit_non_parametric(
-                t_arr,
-                y_arr,
-                method="spline",
-                spline_s=params.get("spline_s", None),
-                exp_start=lag_frac,
-                exp_end=exp_frac,
-                sg_window=int(params.get("sg_window", 11)),
-                sg_poly=int(params.get("sg_poly", 1)),
-            )
-            if fit_result is not None:
-                fit = extract_stats(
-                    fit_result,
-                    t_arr,
-                    y_arr,
-                    lag_frac=lag_frac,
-                    exp_frac=exp_frac,
-                    phase_boundary_method=phase_boundary_method,
-                )
-                fit["spline_s"] = params.get("spline_s", None)
-            else:
-                fit = bad_fit_stats()
-        else:
-            # Use non-parametric sliding window method
-            fit_result = fit_non_parametric(
-                t_arr,
-                y_arr,
-                method="sliding_window",
-                window_points=int(params.get("window_points", 15)),
-                exp_start=lag_frac,
-                exp_end=exp_frac,
-                sg_window=int(params.get("sg_window", 11)),
-                sg_poly=int(params.get("sg_poly", 1)),
-            )
-            if fit_result is not None:
-                fit = extract_stats(
-                    fit_result,
-                    t_arr,
-                    y_arr,
-                    lag_frac=lag_frac,
-                    exp_frac=exp_frac,
-                    phase_boundary_method=phase_boundary_method,
-                )
-                fit["window_points"] = int(params.get("window_points", 15))
-            else:
-                fit = bad_fit_stats()
-
-        min_data_points = int(params.get("min_data_points", 5))
-        min_signal_to_noise = float(params.get("min_signal_to_noise", 1.0))
-        min_od_increase = float(params.get("min_od_increase", 0.05))
-        min_growth_rate = float(params.get("min_growth_rate", 0.001))
-        no_growth_result = detect_no_growth(
-            t_arr,
-            y_arr,
-            growth_stats=fit,
-            min_data_points=min_data_points,
-            min_signal_to_noise=min_signal_to_noise,
-            min_od_increase=min_od_increase,
-            min_growth_rate=min_growth_rate,
-        )
-        if no_growth_result["is_no_growth"]:
-            fit = bad_fit_stats()
-            fit["no_growth_reason"] = no_growth_result["reason"]
-            fit_result = None
-        else:
-            fit["phase_boundary_method"] = phase_boundary_method
+        # Use unified fitting pipeline
+        return fit_growth_series(t_arr, y_arr, params)
     except Exception:
-        fit = bad_fit_stats()
-        fit_result = None
-
-    return fit, fit_result
+        return bad_fit_stats(), None
 
 
 # ---------------- Plot helpers ----------------

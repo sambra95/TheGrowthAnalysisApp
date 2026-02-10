@@ -5,48 +5,18 @@ import io
 import numpy as np
 import pandas as pd
 import streamlit as st
-from growthcurves.inference import (bad_fit_stats, detect_no_growth,
-                                    extract_stats)
-from growthcurves.non_parametric import fit_non_parametric
-# Import all growth fitting functions from growthcurves package
-from growthcurves.parametric import fit_parametric
 from growthcurves.preprocessing import blank_subtraction, path_correct
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
-ROWS = "ABCDEFGH"
-COLS = range(1, 13)
-ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
-
-LEGACY_MODEL_TYPE_MAP = {
-    "logistic": "mech_logistic",
-    "gompertz": "mech_gompertz",
-    "richards": "mech_richards",
-    "baranyi": "mech_baranyi",
-}
+from .constants import ALL_WELLS, COLS, ROWS
+from .fitting_pipeline import fit_growth_series
 
 
 # ---------- small utilities ----------
 def _as_float(x):
     """Convert array-like input to a float NumPy array."""
     return np.asarray(x, dtype=float)
-
-
-def normalize_model_type(
-    model_type: str | None, model_family: str | None = None
-) -> str:
-    """Normalize legacy model identifiers to growthcurves' current API names."""
-    mt = str(model_type or "").strip()
-    if mt in LEGACY_MODEL_TYPE_MAP:
-        if model_family == "phenomenological":
-            return {
-                "logistic": "phenom_logistic",
-                "gompertz": "phenom_gompertz",
-                "richards": "phenom_richards",
-                "baranyi": "mech_baranyi",
-            }[mt]
-        return LEGACY_MODEL_TYPE_MAP[mt]
-    return mt or "mech_logistic"
 
 
 @st.cache_data
@@ -382,121 +352,16 @@ def analyse_plate(record: dict):
     plate["baseline"] = baseline
     plate["plate_map"] = plate_map
 
-    # Get no-growth detection thresholds from params
-    min_data_points = int(p.get("min_data_points", 5))
-    min_signal_to_noise = float(p.get("min_signal_to_noise", 1.0))
-    min_od_increase = float(p.get("min_od_increase", 0.05))
-    min_growth_rate = float(p.get("min_growth_rate", 0.001))
-
     for well, g in long.groupby("well", sort=False):
         processed = g[["Time", "baseline_corrected"]].reset_index(drop=True)
 
-        fit_result = None  # Initialize fit result
         try:
-            # Choose method based on user selection
-            # Uses growthcurves package functions for growth statistics calculation
-            growth_method = p.get("growth_method", "Sliding Window")
+            # Use unified fitting pipeline
             t_arr = processed["Time"].to_numpy(float)
             y_arr = processed["baseline_corrected"].to_numpy(float)
-            lag_frac = float(p.get("lag_cutoff", 0.15))
-            exp_frac = float(p.get("exp_cutoff", 0.15))
-
-            phase_boundary_method = str(
-                p.get("phase_boundary_method", "tangent")
-            ).lower()
-
-            if growth_method == "Model Fitting":
-                # Use parametric model fitting
-                model_type = normalize_model_type(
-                    p.get("model_type", "mech_logistic"),
-                    p.get("model_family", "mechanistic"),
-                )
-                fit_result = fit_parametric(
-                    t_arr,
-                    y_arr,
-                    method=model_type,
-                )
-                if fit_result is not None:
-                    fit = extract_stats(
-                        fit_result,
-                        t_arr,
-                        y_arr,
-                        lag_frac=lag_frac,
-                        exp_frac=exp_frac,
-                        phase_boundary_method=phase_boundary_method,
-                    )
-                    # Store model parameters
-                    for param_name, param_val in fit_result["params"].items():
-                        fit[f"fit_param_{param_name}"] = float(param_val)
-                else:
-                    fit = bad_fit_stats()
-            elif growth_method == "Spline":
-                # Use non-parametric spline method
-                fit_result = fit_non_parametric(
-                    t_arr,
-                    y_arr,
-                    method="spline",
-                    spline_s=p.get("spline_s", None),
-                    exp_start=lag_frac,
-                    exp_end=exp_frac,
-                    sg_window=int(p.get("sg_window", 11)),
-                    sg_poly=int(p.get("sg_poly", 1)),
-                )
-                if fit_result is not None:
-                    fit = extract_stats(
-                        fit_result,
-                        t_arr,
-                        y_arr,
-                        lag_frac=lag_frac,
-                        exp_frac=exp_frac,
-                        phase_boundary_method=phase_boundary_method,
-                    )
-                    fit["spline_s"] = p.get("spline_s", None)
-                else:
-                    fit = bad_fit_stats()
-            else:
-                # Use non-parametric sliding window method
-                fit_result = fit_non_parametric(
-                    t_arr,
-                    y_arr,
-                    method="sliding_window",
-                    window_points=int(p["window_points"]),
-                    exp_start=lag_frac,
-                    exp_end=exp_frac,
-                    sg_window=int(p.get("sg_window", 11)),
-                    sg_poly=int(p.get("sg_poly", 1)),
-                )
-                if fit_result is not None:
-                    fit = extract_stats(
-                        fit_result,
-                        t_arr,
-                        y_arr,
-                        lag_frac=lag_frac,
-                        exp_frac=exp_frac,
-                        phase_boundary_method=phase_boundary_method,
-                    )
-                    fit["window_points"] = int(p["window_points"])
-                else:
-                    fit = bad_fit_stats()
-
-            # Check for no growth using consolidated detection function
-            no_growth_result = detect_no_growth(
-                t_arr,
-                y_arr,
-                growth_stats=fit,
-                min_data_points=min_data_points,
-                min_signal_to_noise=min_signal_to_noise,
-                min_od_increase=min_od_increase,
-                min_growth_rate=min_growth_rate,
-            )
-            if no_growth_result["is_no_growth"]:
-                fit = bad_fit_stats()
-                fit["no_growth_reason"] = no_growth_result["reason"]
-                fit_result = None  # Clear fit result for no-growth cases
-            else:
-                fit["phase_boundary_method"] = phase_boundary_method
-
+            fit, fit_result = fit_growth_series(t_arr, y_arr, p)
         except Exception:
+            from growthcurves.inference import bad_fit_stats
             fit = bad_fit_stats()
             fit_result = None
 
@@ -504,7 +369,7 @@ def analyse_plate(record: dict):
         plate["raw_data"][well] = g[["Time", "value", "od_1cm"]].reset_index(drop=True)
         plate["processed_data"][well] = processed
         plate["growth_stats"][well] = fit
-        plate["fit_parameters"][well] = fit_result  # Store the fit result
+        plate["fit_parameters"][well] = fit_result
 
     record.update(plate)
     return record

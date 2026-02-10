@@ -2,19 +2,10 @@
 
 import streamlit as st
 
+from functions.common import require_plates
 from functions.plotting_functions import (plot_baseline,
                                           plot_replicates_by_sample,
                                           plot_rmse_heatmap, plot_window_plate)
-
-
-# ---------------- Gatekeeper ----------------
-def require_plates() -> dict:
-    """Return plates from session state, or stop with a warning."""
-    plates = st.session_state.get("plates") or {}
-    if not plates:
-        st.info("No results yet. Run **Upload + Analyse** first.")
-        st.stop()
-    return plates
 
 
 # ---------------- Fragments used by pages ----------------

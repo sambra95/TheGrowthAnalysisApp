@@ -16,7 +16,9 @@ from growthcurves.models import (mech_baranyi_model, mech_gompertz_model,
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-from functions.data_processing import (ALL_WELLS, compute_first_derivative,
+from functions.common import _iter_wells
+from functions.constants import ALL_WELLS
+from functions.data_processing import (compute_first_derivative,
                                        compute_second_derivative,
                                        compute_sliding_window_growth_rate,
                                        compute_specific_growth_rate, smooth)
@@ -74,18 +76,6 @@ def _model_type_from_fit_method(fit_method: str | None) -> str | None:
     if "model_fitting_" in fit_method:
         return fit_method.split("model_fitting_", 1)[1].strip()
     return None
-
-
-def _iter_wells(plates: dict):
-    """Yield (plate_id, plate, well, name, processed_df, growth_stats)."""
-    for pid, p in plates.items():
-        nm_by_well = p.get("name") or {}
-        proc = p.get("processed_data") or {}
-        gs_all = p.get("growth_stats") or {}
-        for well, d in proc.items():
-            yield pid, p, well, (nm_by_well.get(well) or ""), d, (
-                gs_all.get(well) or {}
-            )
 
 
 # --- blanks ----------------------------------------------------------------
