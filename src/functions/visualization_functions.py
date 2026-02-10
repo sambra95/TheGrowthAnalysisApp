@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from functions.common import _iter_wells
+from src.functions.common import _iter_wells
 
 
 # ---------------- Helpers ----------------

@@ -6,7 +6,7 @@ import streamlit as st
 import growthcurves.plot as gc_plot
 from growthcurves.inference import bad_fit_stats
 
-from functions.check_growth_fits import (
+from src.functions.check_growth_fits import (
     _add_lasso_selected_points,
     _cycle,
     _delete_well_from_plate,
@@ -15,7 +15,7 @@ from functions.check_growth_fits import (
     update_growth_stats_from_lasso,
     well_order_A1_to_H12,
 )
-from functions.plotting_functions import _finite_sorted_xy, is_bad_fit, plot_derivative_metric
+from src.functions.plotting_functions import _finite_sorted_xy, is_bad_fit, plot_derivative_metric
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:

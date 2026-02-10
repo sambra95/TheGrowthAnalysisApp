@@ -16,9 +16,9 @@ from growthcurves.models import (MODEL_REGISTRY, mech_baranyi_model,
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
-from functions.common import _iter_wells
-from functions.constants import ALL_WELLS
-from functions.data_processing import (compute_first_derivative,
+from src.functions.common import _iter_wells
+from src.functions.constants import ALL_WELLS
+from src.functions.data_processing import (compute_first_derivative,
                                        compute_sliding_window_growth_rate,
                                        compute_specific_growth_rate, smooth)
 

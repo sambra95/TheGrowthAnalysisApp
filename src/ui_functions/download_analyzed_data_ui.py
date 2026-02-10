@@ -1,5 +1,5 @@
 import streamlit as st
-from functions.export_functions import build_export_zip
+from src.functions.export_functions import build_export_zip
 
 
 def _render_tabulated_data_container():

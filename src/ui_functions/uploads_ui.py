@@ -4,13 +4,13 @@ import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
-from functions.constants import DEFAULT_PARAMS
-from functions.data_processing import analyse_plate, load_plate
-from functions.ui_components import (
+from src.functions.constants import DEFAULT_PARAMS
+from src.functions.data_processing import analyse_plate, load_plate
+from src.functions.ui_components import (
     ui_method_visualization,
     ui_phase_boundary_visualization,
 )
-from functions.upload_functions import (
+from src.functions.upload_functions import (
     build_symbol_grid,
     get_plate_preview_data,
     plate_params,

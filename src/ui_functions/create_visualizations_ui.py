@@ -5,7 +5,7 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
-from functions.visualization_functions import _unique_preserve_order
+from src.functions.visualization_functions import _unique_preserve_order
 
 
 @st.fragment

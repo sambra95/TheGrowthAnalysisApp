@@ -5,8 +5,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from growthcurves.inference import bad_fit_stats
 
-from functions.fitting_pipeline import fit_growth_series
-from functions.plotting_functions import is_bad_fit
+from src.functions.fitting_pipeline import fit_growth_series
+from src.functions.plotting_functions import is_bad_fit
 
 
 # ---------------- Selection + stats helpers ----------------

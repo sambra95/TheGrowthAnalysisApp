@@ -1,7 +1,7 @@
 """Upload inputs, configure analysis parameters, and run plate analysis."""
 
-from functions.upload_functions import init_state
-from ui_functions.uploads_ui import (
+from src.functions.upload_functions import init_state
+from src.ui_functions.uploads_ui import (
     ui_analyse_button,
     ui_analysis_params,
     ui_preprocessing_params,
