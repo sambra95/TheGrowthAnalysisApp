@@ -7,9 +7,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import is_no_growth
-from growthcurves.models import (mech_baranyi_model, mech_gompertz_model,
-                                 mech_logistic_model, mech_richards_model,
-                                 phenom_gompertz_model,
+from growthcurves.models import (MODEL_REGISTRY, mech_baranyi_model,
+                                 mech_gompertz_model, mech_logistic_model,
+                                 mech_richards_model, phenom_gompertz_model,
                                  phenom_gompertz_modified_model,
                                  phenom_logistic_model, phenom_richards_model,
                                  spline_from_params)
@@ -965,16 +965,10 @@ def plot_derivative_metric(
                         t_model, y_model_raw, window_points=window_points
                     )
 
-            elif model_type in [
-                "mech_logistic",
-                "mech_gompertz",
-                "mech_richards",
-                "mech_baranyi",
-                "phenom_logistic",
-                "phenom_gompertz",
-                "phenom_gompertz_modified",
-                "phenom_richards",
-            ]:
+            elif model_type in (
+                MODEL_REGISTRY["mechanistic"]
+                + MODEL_REGISTRY["phenomenological"]
+            ):
                 # For parametric models, compute metric from the model
                 model_func = {
                     "mech_logistic": mech_logistic_model,
