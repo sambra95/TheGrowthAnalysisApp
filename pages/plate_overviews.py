@@ -2,8 +2,8 @@
 
 import streamlit as st
 
-from functions.plate_overviews import (replicates_view, require_plates,
-                                       window_plate_view)
+from functions.common import require_plates
+from functions.plate_overviews import replicates_view, window_plate_view
 from functions.ui_components import page_header_with_help
 
 if not st.session_state.get("plates"):

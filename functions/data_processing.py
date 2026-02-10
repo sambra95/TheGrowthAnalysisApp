@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from growthcurves.preprocessing import blank_subtraction, path_correct
-from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
 from .constants import COLS, ROWS
@@ -34,31 +33,6 @@ def smooth(y, window=21, poly=1, passes=3):
     return y
 
 
-def d1_model(t, A, r, t0):
-    """Derivative of a logistic curve used for fitting growth rate peaks."""
-    u = np.exp(-r * (t - t0))
-    return A * (u / (1 + u) ** 2)
-
-
-@st.cache_data
-def fit_d1(t, dy):
-    """Fit the derivative model to a gradient series; return (A, r, t0) or None."""
-    t, dy = _as_float(t), np.maximum(_as_float(dy), 0.0)
-    m = np.isfinite(t) & np.isfinite(dy)
-    t, dy = t[m], dy[m]
-    if t.size < 10 or np.ptp(t) <= 0 or dy.max(initial=0.0) <= 0:
-        return None
-
-    t0 = float(t[np.argmax(dy)])
-    p0 = [float(4 * dy.max()), float(0.2 / max(np.ptp(t), 1e-9)), t0]
-    bounds = ([0.0, 1e-6, float(t.min())], [np.inf, 10.0, float(t.max())])
-    try:
-        (A, r, t0), _ = curve_fit(d1_model, t, dy, p0=p0, bounds=bounds, maxfev=20000)
-        return float(A), float(r), float(t0)
-    except Exception:
-        return None
-
-
 @st.cache_data
 def compute_first_derivative(t, y):
     """
@@ -74,24 +48,6 @@ def compute_first_derivative(t, y):
     t, y = _as_float(t), _as_float(y)
     dy = np.gradient(y, t)
     return t, dy
-
-
-@st.cache_data
-def compute_second_derivative(t, y):
-    """
-    Compute the second derivative of a growth curve.
-
-    Args:
-        t: Time array
-        y: OD600 values (baseline-corrected)
-
-    Returns:
-        Tuple of (t, d2y) where d2y is the second derivative d²y/dt²
-    """
-    t, y = _as_float(t), _as_float(y)
-    dy = np.gradient(y, t)
-    d2y = np.gradient(dy, t)
-    return t, d2y
 
 
 def compute_specific_growth_rate(t, y):
@@ -337,88 +293,3 @@ def analyse_plate(record: dict):
 
     record.update(plate)
     return record
-
-
-def compute_window_fits(
-    plates,
-    window_points=15,
-    sg_window=11,
-    sg_poly=2,
-    lag_frac=0.10,
-    exp_frac=0.10,
-    min_data_points=5,
-    min_signal_to_noise=1.0,
-):
-    """
-    Recompute stats and write them back into plates[*]["processed_data"][well] in-place.
-    Returns a stats dict-of-dicts: stats[plate_id][well] -> row dict for easy DF building.
-    """
-    stats = {}
-    for plate_id, plate in plates.items():
-        plate_stats = {}
-        for well, wdict in plate["processed_data"].items():
-            d = wdict["processed_values"]
-            t_arr = d["Time"].to_numpy(float)
-            y_arr = d["baseline_corrected"].to_numpy(float)
-
-            # Use unified fitting pipeline
-            params = {
-                "growth_method": "Sliding Window",
-                "window_points": int(window_points),
-                "lag_cutoff": float(lag_frac),
-                "exp_cutoff": float(exp_frac),
-                "sg_window": int(sg_window),
-                "sg_poly": int(sg_poly),
-                "phase_boundary_method": "tangent",
-                "min_data_points": int(min_data_points),
-                "min_signal_to_noise": float(min_signal_to_noise),
-                "min_od_increase": 0.05,
-                "min_growth_rate": 0.001,
-            }
-            fit, fit_result = fit_growth_series(t_arr, y_arr, params)
-
-            wdict.update(
-                {
-                    "max_od": float(fit["max_od"]),
-                    "specific_growth_rate": float(fit["specific_growth_rate"]),
-                    "exp_phase_start": (
-                        float(fit["exp_phase_start"])
-                        if np.isfinite(fit["exp_phase_start"])
-                        else np.nan
-                    ),
-                    "exp_phase_end": (
-                        float(fit["exp_phase_end"])
-                        if np.isfinite(fit["exp_phase_end"])
-                        else np.nan
-                    ),
-                    "time_at_umax": (
-                        float(fit["time_at_umax"])
-                        if np.isfinite(fit["time_at_umax"])
-                        else np.nan
-                    ),
-                    "od_at_umax": (
-                        float(fit["od_at_umax"])
-                        if np.isfinite(fit["od_at_umax"])
-                        else np.nan
-                    ),
-                    "t_window_start": (
-                        float(fit.get("fit_t_min", np.nan))
-                        if np.isfinite(fit.get("fit_t_min", np.nan))
-                        else np.nan
-                    ),
-                    "t_window_end": (
-                        float(fit.get("fit_t_max", np.nan))
-                        if np.isfinite(fit.get("fit_t_max", np.nan))
-                        else np.nan
-                    ),
-                    "window_points": int(window_points),
-                }
-            )
-
-            plate_stats[well] = {
-                "Sample Name": plate["name"].get(well, ""),
-                "max_od": wdict["max_od"],
-                "specific_growth_rate": wdict["specific_growth_rate"],
-            }
-        stats[plate_id] = plate_stats
-    return stats

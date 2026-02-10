@@ -2,8 +2,8 @@
 
 import streamlit as st
 
-from functions.check_growth_fits import (require_plates,
-                                         ui_window_fits_well_editor)
+from functions.check_growth_fits import ui_window_fits_well_editor
+from functions.common import require_plates
 from functions.ui_components import page_header_with_help
 
 if not st.session_state.get("plates"):

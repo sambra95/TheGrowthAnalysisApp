@@ -2,7 +2,8 @@
 
 import streamlit as st
 
-from functions.export_functions import require_plates, ui_export
+from functions.common import require_plates
+from functions.export_functions import ui_export
 from functions.ui_components import page_header_with_help
 
 if not st.session_state.get("plates"):
