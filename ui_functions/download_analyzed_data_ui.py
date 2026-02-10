@@ -1,8 +1,6 @@
 import streamlit as st
 from functions.export_functions import build_export_zip
 
-"""Deprecated: UI moved to pages/download_analyzed_data.py."""
-
 
 def _render_tabulated_data_container():
     with st.container(border=True):
