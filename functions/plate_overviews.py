@@ -2,7 +2,6 @@
 
 import streamlit as st
 
-from functions.common import require_plates
 from functions.plotting_functions import (plot_baseline,
                                           plot_replicates_by_sample,
                                           plot_rmse_heatmap, plot_window_plate)

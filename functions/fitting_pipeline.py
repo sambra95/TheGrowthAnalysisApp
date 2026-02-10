@@ -5,14 +5,17 @@ Extracted from duplicated logic in:
 - check_growth_fits.py:_analyse_series_with_plate_params (lines 195-265)
 """
 
-from growthcurves.inference import bad_fit_stats, detect_no_growth, extract_stats
+from growthcurves.inference import (bad_fit_stats, detect_no_growth,
+                                    extract_stats)
 from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.parametric import fit_parametric
 
 from .constants import LEGACY_MODEL_TYPE_MAP
 
 
-def normalize_model_type(model_type: str | None, model_family: str | None = None) -> str:
+def normalize_model_type(
+    model_type: str | None, model_family: str | None = None
+) -> str:
     """Normalize legacy model identifiers to growthcurves' current API names."""
     mt = str(model_type or "").strip()
     if mt in LEGACY_MODEL_TYPE_MAP:

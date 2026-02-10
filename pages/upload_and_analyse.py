@@ -5,18 +5,12 @@ import streamlit as st
 
 from functions.constants import DEFAULT_PARAMS
 from functions.data_processing import analyse_plate, load_plate
-from functions.ui_components import (
-    render_method_visualization,
-    render_phase_boundary_visualization,
-)
-from functions.upload_functions import (
-    build_symbol_grid,
-    get_plate_preview_data,
-    init_state,
-    plate_params,
-    validate_data_file,
-    validate_plate_map_file,
-)
+from functions.ui_components import (render_method_visualization,
+                                     render_phase_boundary_visualization)
+from functions.upload_functions import (build_symbol_grid,
+                                        get_plate_preview_data, init_state,
+                                        plate_params, validate_data_file,
+                                        validate_plate_map_file)
 
 
 def render_plate_table(grid: pd.DataFrame):
@@ -73,15 +67,13 @@ with title_col:
 with popover_col:
     st.write("")
     with st.popover("Help", width="stretch"):
-        st.markdown(
-            """
+        st.markdown("""
 **Workflow Summary:**
 
 This page guides you through uploading your plate reader data and analyzing growth curves. Follow the steps in order: upload your data files and plate maps, configure preprocessing parameters, select analysis settings, and run the analysis.
 
 💡 **Tip:** The plate preview updates automatically to help you verify your setup before running the full analysis.
-"""
-        )
+""")
 
         with st.expander("File Upload Requirements"):
             st.markdown("**Data File Format:**")
@@ -117,15 +109,13 @@ This page guides you through uploading your plate reader data and analyzing grow
 
             st.markdown("**Plate Map Format:**")
             st.markdown("Excel file (.xlsx or .xls) with sample layout")
-            st.markdown(
-                """
+            st.markdown("""
 - 96-well plate format (rows A-H, columns 1-12)
 - Samples with the same name will be assigned as replicates
 - Use 'BLANK' for blank wells
 - Leave cells empty for wells to ignore
 - The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visualizations' page.
-"""
-            )
+""")
 
             example_map = pd.DataFrame(
                 {
@@ -165,8 +155,7 @@ This page guides you through uploading your plate reader data and analyzing grow
                 )
 
         with st.expander("Growth Descriptor Metrics"):
-            st.markdown(
-                """
+            st.markdown("""
 All methods output the same set of growth descriptors:
 
 | Metric | Description |
@@ -180,20 +169,16 @@ All methods output the same set of growth descriptors:
 | **Max OD** | Maximum OD reached (carrying capacity) |
 | **Fit window** | Start and end times of the fitting window (h) |
 | **RMSE** | Root mean square error of the fit |
-"""
-            )
+""")
             st.markdown("### Parametric Methods")
             st.caption("Currently selected model shown below")
-            st.markdown(
-                """
+            st.markdown("""
 **How it works:**
 1. A parametric growth model is fitted to the entire growth curve
 2. The model's analytical derivative gives the growth rate at each time point
 3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-"""
-            )
-            st.markdown(
-                """
+""")
+            st.markdown("""
 **Spline method: How it works**
 1. Phase boundaries (lag and exponential phase end) are detected from the data
 2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
@@ -209,21 +194,17 @@ All methods output the same set of growth descriptors:
 - Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
 - Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
 - Can be set automatically based on data size
-"""
-            )
-            st.markdown(
-                """
+""")
+            st.markdown("""
 **Sliding window method: How it works**
 1. A window of fixed size (e.g., 15 points) slides across the growth curve
 2. At each position, a linear regression is fitted to log-transformed OD values
 3. The slope of each fit represents the specific growth rate (μ) at that window
 4. The maximum slope across all windows is reported as μ_max
-"""
-            )
+""")
 
         with st.expander("Phase Boundary Method Comparison"):
-            st.markdown(
-                """
+            st.markdown("""
 | Method | Advantages | Threshold Parameters Used |
 |---|---|---|
 | **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
@@ -257,8 +238,7 @@ All methods output the same set of growth descriptors:
 - More consistent across different curve shapes
 - Default for non-parametric methods (Sliding Window, Spline)
 - Does not require threshold parameters
-"""
-            )
+""")
 
 st.divider()
 
@@ -568,7 +548,9 @@ def _render_model_selection_ui(params0: dict):
             help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
         )
 
-    model_family_internal = "mechanistic" if model_family == "Mechanistic" else "phenomenological"
+    model_family_internal = (
+        "mechanistic" if model_family == "Mechanistic" else "phenomenological"
+    )
 
     # Build method options based on family
     if model_family == "Mechanistic":
@@ -584,7 +566,11 @@ def _render_model_selection_ui(params0: dict):
             ("Spline (non-parametric)", "spline", "Spline"),
             ("Logistic (parametric)", "phenom_logistic", "Model Fitting"),
             ("Gompertz (parametric)", "phenom_gompertz", "Model Fitting"),
-            ("Modified Gompertz (parametric)", "phenom_gompertz_modified", "Model Fitting"),
+            (
+                "Modified Gompertz (parametric)",
+                "phenom_gompertz_modified",
+                "Model Fitting",
+            ),
             ("Richards (parametric)", "phenom_richards", "Model Fitting"),
         ]
 
@@ -624,7 +610,9 @@ def _render_model_selection_ui(params0: dict):
     return model_family_internal, growth_method, model_type, param_col
 
 
-def _render_method_params_ui(growth_method: str, params0: dict, step4_prev: dict, param_col):
+def _render_method_params_ui(
+    growth_method: str, params0: dict, step4_prev: dict, param_col
+):
     """Render method-specific parameters (window size or spline smoothing)."""
     default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
     if default_spline_s is None:
@@ -824,7 +812,9 @@ def analysis_params_fragment():
 
         with model_col:
             # Model selection
-            model_family, growth_method, model_type, param_col = _render_model_selection_ui(params0)
+            model_family, growth_method, model_type, param_col = (
+                _render_model_selection_ui(params0)
+            )
 
             # Method-specific parameters
             window_points, spline_s = _render_method_params_ui(
@@ -843,7 +833,9 @@ def analysis_params_fragment():
 
         with boundary_col:
             # Phase boundary selection
-            phase_boundary_method, lag_cutoff, exp_cutoff = _render_phase_boundary_ui(params0)
+            phase_boundary_method, lag_cutoff, exp_cutoff = _render_phase_boundary_ui(
+                params0
+            )
             st.write("")
 
         st.write("")
@@ -862,7 +854,9 @@ def analysis_params_fragment():
 
         with graph_col_model:
             if model_fig is not None:
-                st.plotly_chart(model_fig, use_container_width=True, config={"staticPlot": True})
+                st.plotly_chart(
+                    model_fig, use_container_width=True, config={"staticPlot": True}
+                )
 
         with graph_col_boundary:
             if boundary_image is not None:

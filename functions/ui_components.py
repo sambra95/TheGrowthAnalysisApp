@@ -162,16 +162,16 @@ def render_parametric_model_viz(model_type: str):
         K_b = 1.0
         y0_b = 0.05
         A_t = t + (1.0 / mu_max_b) * np.log(
-            np.exp(-mu_max_b * t) + np.exp(-lag_lambda) - np.exp(-mu_max_b * t - lag_lambda)
+            np.exp(-mu_max_b * t)
+            + np.exp(-lag_lambda)
+            - np.exp(-mu_max_b * t - lag_lambda)
         )
         y = K_b / (1.0 + ((K_b - y0_b) / y0_b) * np.exp(-mu_max_b * A_t))
     else:
         y = 1.0 / (1 + np.exp(-0.15 * (t - 24)))
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(x=t, y=y, mode="lines", line=dict(color="blue", width=3))
-    )
+    fig.add_trace(go.Scatter(x=t, y=y, mode="lines", line=dict(color="blue", width=3)))
     fig.update_layout(
         height=200,
         margin=dict(l=0, r=0, t=0, b=0),
@@ -224,7 +224,9 @@ def render_method_visualization(growth_method: str, model_type: str = None):
             )
 
         elif "gompertz" in str(model_type):
-            model_name = "Modified Gompertz" if "modified" in str(model_type) else "Gompertz"
+            model_name = (
+                "Modified Gompertz" if "modified" in str(model_type) else "Gompertz"
+            )
             st.markdown(f"**{model_name}** (Currently Selected)")
             if str(model_type).startswith("mech_"):
                 st.latex(r"\frac{dN}{dt} = \mu\log\!\left(\frac{K}{N}\right)N")
@@ -243,7 +245,9 @@ def render_method_visualization(growth_method: str, model_type: str = None):
         elif "richards" in str(model_type):
             st.markdown("**Richards** (Currently Selected)")
             if str(model_type).startswith("mech_"):
-                st.latex(r"\frac{dN}{dt}=\mu\left(1-\left(\frac{N}{K}\right)^{\beta}\right)N")
+                st.latex(
+                    r"\frac{dN}{dt}=\mu\left(1-\left(\frac{N}{K}\right)^{\beta}\right)N"
+                )
             else:
                 st.latex(
                     r"\ln\!\left(\frac{N(t)}{N_0}\right)=A\left(1+\nu\exp\!\left(1+\nu+\frac{\mu_{\max}(1+\nu)^{1/\nu}(\lambda-t)}{A}\right)\right)^{-1/\nu}"
@@ -285,7 +289,9 @@ def render_phase_boundary_visualization(phase_boundary_method: str):
         return "info_plots/threshold_demo.png"
     else:  # tangent
         st.markdown("**Tangent Method** (Currently Selected)")
-        st.latex(r"\text{Tangent at } \mu_{\max} \text{ intersects baseline and plateau}")
+        st.latex(
+            r"\text{Tangent at } \mu_{\max} \text{ intersects baseline and plateau}"
+        )
         st.caption(
             "Geometric definition based on tangent line at maximum growth rate. No arbitrary thresholds required."
         )

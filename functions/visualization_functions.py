@@ -6,7 +6,7 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
-from functions.common import _iter_wells, require_plates
+from functions.common import _iter_wells
 from functions.plotting_functions import (plot_mean_growth,
                                           plot_replicates_scatter,
                                           plot_single_growth_stat)

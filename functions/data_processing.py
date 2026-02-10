@@ -9,7 +9,7 @@ from growthcurves.preprocessing import blank_subtraction, path_correct
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 
-from .constants import ALL_WELLS, COLS, ROWS
+from .constants import COLS, ROWS
 from .fitting_pipeline import fit_growth_series
 
 
@@ -362,6 +362,7 @@ def analyse_plate(record: dict):
             fit, fit_result = fit_growth_series(t_arr, y_arr, p)
         except Exception:
             from growthcurves.inference import bad_fit_stats
+
             fit = bad_fit_stats()
             fit_result = None
 
@@ -397,28 +398,21 @@ def compute_window_fits(
             t_arr = d["Time"].to_numpy(float)
             y_arr = d["baseline_corrected"].to_numpy(float)
 
-            # Use growthcurves non_parametric fit function
-            fit_result = fit_non_parametric(
-                t_arr,
-                y_arr,
-                method="sliding_window",
-                window_points=int(window_points),
-                exp_start=float(lag_frac),
-                exp_end=float(exp_frac),
-                sg_window=int(sg_window),
-                sg_poly=int(sg_poly),
-            )
-
-            if fit_result is not None:
-                fit = extract_stats(
-                    fit_result,
-                    t_arr,
-                    y_arr,
-                    lag_frac=float(lag_frac),
-                    exp_frac=float(exp_frac),
-                )
-            else:
-                fit = bad_fit_stats()
+            # Use unified fitting pipeline
+            params = {
+                "growth_method": "Sliding Window",
+                "window_points": int(window_points),
+                "lag_cutoff": float(lag_frac),
+                "exp_cutoff": float(exp_frac),
+                "sg_window": int(sg_window),
+                "sg_poly": int(sg_poly),
+                "phase_boundary_method": "tangent",
+                "min_data_points": int(min_data_points),
+                "min_signal_to_noise": float(min_signal_to_noise),
+                "min_od_increase": 0.05,
+                "min_growth_rate": 0.001,
+            }
+            fit, fit_result = fit_growth_series(t_arr, y_arr, params)
 
             wdict.update(
                 {

@@ -1,4 +1,5 @@
 """Common utilities used across the application."""
+
 import streamlit as st
 
 
@@ -18,4 +19,6 @@ def _iter_wells(plates: dict):
         proc = p.get("processed_data") or {}
         gs_all = p.get("growth_stats") or {}
         for well, d in proc.items():
-            yield pid, p, well, (nm_by_well.get(well) or ""), d, (gs_all.get(well) or {})
+            yield pid, p, well, (nm_by_well.get(well) or ""), d, (
+                gs_all.get(well) or {}
+            )

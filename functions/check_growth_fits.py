@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
 
-from functions.common import require_plates
 from functions.fitting_pipeline import fit_growth_series
 from functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
                                           plot_derivative_metric)

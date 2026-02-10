@@ -3,7 +3,8 @@
 import streamlit as st
 
 from functions.ui_components import page_header_with_help
-from functions.visualization_functions import require_plates, ui_growth_summaries
+from functions.visualization_functions import (require_plates,
+                                               ui_growth_summaries)
 
 if not st.session_state.get("plates"):
     st.info("Add data first by running **Upload and Analyze**.")

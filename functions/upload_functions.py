@@ -1,10 +1,12 @@
 """Data processing helper functions for plate upload and validation."""
 
-import pandas as pd
-import streamlit as st
 from io import BytesIO
 
-from .constants import BLUE, COLS, DEFAULT_PARAMS, GRAY, GREEN, ORANGE, RED, ROWS
+import pandas as pd
+import streamlit as st
+
+from .constants import (BLUE, COLS, DEFAULT_PARAMS, GRAY, GREEN, ORANGE, RED,
+                        ROWS)
 
 
 def init_state():

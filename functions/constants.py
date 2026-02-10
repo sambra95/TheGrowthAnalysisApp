@@ -6,11 +6,11 @@ COLS = list(range(1, 13))
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 
 # UI color symbols for plate status
-GREEN = "🟩"   # Sample present
+GREEN = "🟩"  # Sample present
 ORANGE = "🟧"  # Not in data file
-RED = "🟥"     # Excluded by user
-BLUE = "🟦"    # Blank well
-GRAY = "⬜"    # Not in plate map
+RED = "🟥"  # Excluded by user
+BLUE = "🟦"  # Blank well
+GRAY = "⬜"  # Not in plate map
 
 # Legacy model type mapping
 LEGACY_MODEL_TYPE_MAP = {
