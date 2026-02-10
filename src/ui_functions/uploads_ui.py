@@ -901,7 +901,6 @@ def ui_analysis_params(ss):
     ss["step4_params"]["spline_s"] = spline_s
 
 
-@st.fragment
 def ui_analyse_button(ss):
     """Fragment for the analyze button."""
     # Get values from Step 3 and Step 4
