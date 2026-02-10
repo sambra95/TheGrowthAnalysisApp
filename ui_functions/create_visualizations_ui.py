@@ -5,22 +5,12 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
-from functions.plotting_functions import (
-    plot_mean_growth,
-    plot_replicates_scatter,
-    plot_single_growth_stat,
-)
-from functions.visualization_functions import (
-    _build_growth_curves_long_df,
-    _build_growth_stats_long_df,
-    _max_time_hours,
-    _unique_preserve_order,
-)
+from functions.visualization_functions import _unique_preserve_order
 
 
 @st.fragment
-def ui_growth_summaries(plates: dict):
-    """Render interactive growth summary plots with selection controls."""
+def ui_growth_selection_container(plates: dict) -> dict:
+    """Render the sample selection container and return selection context."""
     # Build options once per rerun.
     rows = []
     for pid, p in plates.items():
@@ -59,8 +49,6 @@ def ui_growth_summaries(plates: dict):
     grid_ver_key = "sample_selection_grid_ver"
     st.session_state.setdefault(grid_ver_key, 0)
 
-    max_t = _max_time_hours(plates)
-
     def _selected_ids():
         return [sid for sid in ids if sel.get(sid, False)]
 
@@ -68,31 +56,6 @@ def ui_growth_summaries(plates: dict):
         if not sel_ids:
             return opt.iloc[0:0].copy()
         return opt[opt["_id"].isin(sel_ids)].copy()
-
-    # -----------------------------
-    # Order state (stats x-axis + legend)
-    # -----------------------------
-    x_order_key = "growth_stats_x_order"
-    x_order_sig_key = "growth_stats_x_order_sig"
-    x_order_ver_key = "growth_stats_x_order_ver"
-
-    leg_order_key = "growth_stats_legend_order"
-    leg_order_sig_key = "growth_stats_legend_order_sig"
-    leg_order_ver_key = "growth_stats_legend_order_ver"
-
-    st.session_state.setdefault(x_order_key, [])
-    st.session_state.setdefault(x_order_ver_key, 0)
-    st.session_state.setdefault(leg_order_key, [])
-    st.session_state.setdefault(leg_order_ver_key, 0)
-
-    # -----------------------------
-    # Order state (curves sample order: mean+reps)
-    # -----------------------------
-    curves_order_key = "growth_curves_sample_order"
-    curves_order_sig_key = "growth_curves_sample_order_sig"
-    curves_order_ver_key = "growth_curves_sample_order_ver"
-    st.session_state.setdefault(curves_order_key, [])
-    st.session_state.setdefault(curves_order_ver_key, 0)
 
     # -----------------------------
     # UI: Step 1 selection (outside form so grid changes rerun)
@@ -184,209 +147,200 @@ def ui_growth_summaries(plates: dict):
             else []
         )
 
+    return {
+        "opt": opt,
+        "has_split": has_split,
+        "ids": ids,
+        "sel_ids": sel_ids,
+        "sel_opt": sel_opt,
+        "sel_sample_names": sel_sample_names,
+    }
+
+
+def ui_growth_stats_controls_container(
+    has_split: bool, sel_opt: pd.DataFrame
+) -> dict:
+    """Render growth stats controls and return form selections."""
     # -----------------------------
-    # UI: Step 2 controls (form)
+    # Order state (stats x-axis + legend)
     # -----------------------------
-    with st.form(
-        "growth_combined_form",
-        border=False,
-    ):
-        col1, col2 = st.columns([1, 1])
-        # ============================================================
-        # Box 1: Growth stats controls
-        # ============================================================
-        with col1.container(border=True):
-            st.header("Step 2. option a) Plot Growth Statistics")
+    x_order_key = "growth_stats_x_order"
+    x_order_sig_key = "growth_stats_x_order_sig"
+    x_order_ver_key = "growth_stats_x_order_ver"
 
-            x_choices = ["Sample Name"]
-            group_choices = ["None"]
-            if has_split:
-                x_choices += ["Strain", "Condition"]
-                group_choices += ["Strain", "Condition"]
+    leg_order_key = "growth_stats_legend_order"
+    leg_order_sig_key = "growth_stats_legend_order_sig"
+    leg_order_ver_key = "growth_stats_legend_order_ver"
 
-            cA, cB = st.columns([1, 1])
-            x_col = cA.selectbox(
-                "X-axis column",
-                options=x_choices,
-                index=0,
-                key="growth_stats_x_col",
-            )
-            legend_group = cB.selectbox(
-                "Legend grouping",
-                options=group_choices,
-                index=0,
-                key="growth_stats_legend_group",
-            )
-            legend_col = None if legend_group == "None" else legend_group
+    st.session_state.setdefault(x_order_key, [])
+    st.session_state.setdefault(x_order_ver_key, 0)
+    st.session_state.setdefault(leg_order_key, [])
+    st.session_state.setdefault(leg_order_ver_key, 0)
 
-            x_vals = (
-                _unique_preserve_order(sel_opt[x_col].astype(str).tolist())
-                if (not sel_opt.empty and x_col in sel_opt.columns)
-                else []
-            )
-            legend_vals = (
-                _unique_preserve_order(sel_opt[legend_col].astype(str).tolist())
-                if (legend_col and not sel_opt.empty and legend_col in sel_opt.columns)
-                else []
-            )
+    with st.container(border=True):
+        st.header("Step 2. option a) Plot Growth Statistics")
 
-            # drag ordering: x-axis
-            cur_x_order = [v for v in st.session_state[x_order_key] if v in x_vals]
-            for v in x_vals:
-                if v not in cur_x_order:
-                    cur_x_order.append(v)
-            st.session_state[x_order_key] = cur_x_order
+        x_choices = ["Sample Name"]
+        group_choices = ["None"]
+        if has_split:
+            x_choices += ["Strain", "Condition"]
+            group_choices += ["Strain", "Condition"]
 
-            x_sig = (x_col, tuple(x_vals))
-            if st.session_state.get(x_order_sig_key) != x_sig:
-                st.session_state[x_order_sig_key] = x_sig
-                st.session_state[x_order_ver_key] += 1
+        cA, cB = st.columns([1, 1])
+        x_col = cA.selectbox(
+            "X-axis column",
+            options=x_choices,
+            index=0,
+            key="growth_stats_x_col",
+        )
+        legend_group = cB.selectbox(
+            "Legend grouping",
+            options=group_choices,
+            index=0,
+            key="growth_stats_legend_group",
+        )
+        legend_col = None if legend_group == "None" else legend_group
 
-            if x_vals:
-                st.markdown("**Drag to set x-axis order:**")
-                st.session_state[x_order_key] = sort_items(
-                    st.session_state[x_order_key],
-                    key=f"growth_stats_x_sortable_{st.session_state[x_order_ver_key]}",
-                )
+        x_vals = (
+            _unique_preserve_order(sel_opt[x_col].astype(str).tolist())
+            if (not sel_opt.empty and x_col in sel_opt.columns)
+            else []
+        )
+        legend_vals = (
+            _unique_preserve_order(sel_opt[legend_col].astype(str).tolist())
+            if (legend_col and not sel_opt.empty and legend_col in sel_opt.columns)
+            else []
+        )
 
-            # drag ordering: legend
-            if legend_col:
-                cur_leg_order = [
-                    v for v in st.session_state[leg_order_key] if v in legend_vals
-                ]
-                for v in legend_vals:
-                    if v not in cur_leg_order:
-                        cur_leg_order.append(v)
-                st.session_state[leg_order_key] = cur_leg_order
+        # drag ordering: x-axis
+        cur_x_order = [v for v in st.session_state[x_order_key] if v in x_vals]
+        for v in x_vals:
+            if v not in cur_x_order:
+                cur_x_order.append(v)
+        st.session_state[x_order_key] = cur_x_order
 
-                leg_sig = (legend_col, tuple(legend_vals))
-                if st.session_state.get(leg_order_sig_key) != leg_sig:
-                    st.session_state[leg_order_sig_key] = leg_sig
-                    st.session_state[leg_order_ver_key] += 1
+        x_sig = (x_col, tuple(x_vals))
+        if st.session_state.get(x_order_sig_key) != x_sig:
+            st.session_state[x_order_sig_key] = x_sig
+            st.session_state[x_order_ver_key] += 1
 
-                if legend_vals:
-                    st.markdown("**Drag to set legend order:**")
-                    st.session_state[leg_order_key] = sort_items(
-                        st.session_state[leg_order_key],
-                        key=f"growth_stats_leg_sortable_{st.session_state[leg_order_ver_key]}",
-                    )
-
-            apply_stats = st.form_submit_button(
-                "Generate growth stats plot",
-                type="primary",
-                width="stretch",
+        if x_vals:
+            st.markdown("**Drag to set x-axis order:**")
+            st.session_state[x_order_key] = sort_items(
+                st.session_state[x_order_key],
+                key=f"growth_stats_x_sortable_{st.session_state[x_order_ver_key]}",
             )
 
-        # ============================================================
-        # Box 2: Mean + replicates controls
-        # ============================================================
-        with col2.container(border=True):
-            st.header("Step 2. option b) Plot Growth Curves")
-
-            curves_t0, curves_t1 = st.slider(
-                "Mean/replicates plot time window (hours)",
-                0.0,
-                max_t,
-                (0.0, min(72.0, max_t)),
-                step=0.5,
-                key="growth_curves_time_window",
-            )
-
-            # drag ordering: sample names (specific to mean+reps)
-            cur_curves_order = [
-                v for v in st.session_state[curves_order_key] if v in sel_sample_names
+        # drag ordering: legend
+        if legend_col:
+            cur_leg_order = [
+                v for v in st.session_state[leg_order_key] if v in legend_vals
             ]
-            for v in sel_sample_names:
-                if v not in cur_curves_order:
-                    cur_curves_order.append(v)
-            st.session_state[curves_order_key] = cur_curves_order
+            for v in legend_vals:
+                if v not in cur_leg_order:
+                    cur_leg_order.append(v)
+            st.session_state[leg_order_key] = cur_leg_order
 
-            curves_sig = tuple(sel_sample_names)
-            if st.session_state.get(curves_order_sig_key) != curves_sig:
-                st.session_state[curves_order_sig_key] = curves_sig
-                st.session_state[curves_order_ver_key] += 1
+            leg_sig = (legend_col, tuple(legend_vals))
+            if st.session_state.get(leg_order_sig_key) != leg_sig:
+                st.session_state[leg_order_sig_key] = leg_sig
+                st.session_state[leg_order_ver_key] += 1
 
-            if sel_sample_names:
-                st.markdown("**Drag to set Sample Name order (mean/replicates):**")
-                st.session_state[curves_order_key] = sort_items(
-                    st.session_state[curves_order_key],
-                    key=f"growth_curves_sortable_{st.session_state[curves_order_ver_key]}",
+            if legend_vals:
+                st.markdown("**Drag to set legend order:**")
+                st.session_state[leg_order_key] = sort_items(
+                    st.session_state[leg_order_key],
+                    key=f"growth_stats_leg_sortable_{st.session_state[leg_order_ver_key]}",
                 )
 
-            b1, b2 = st.columns(2)
-            apply_mean = b1.form_submit_button(
-                "Generate mean growth plot",
-                type="primary",
-                width="stretch",
-            )
-            apply_reps = b2.form_submit_button(
-                "Generate replicates plot",
-                type="primary",
-                width="stretch",
-            )
+        apply_stats = st.form_submit_button(
+            "Generate growth stats plot",
+            type="primary",
+            width="stretch",
+        )
 
-    # -----------------------------
-    # Resolve orders
-    # -----------------------------
     x_ordered = [v for v in st.session_state[x_order_key] if v in x_vals]
     legend_ordered = (
         [v for v in st.session_state[leg_order_key] if v in legend_vals]
         if legend_col
         else []
     )
+
+    return {
+        "x_col": x_col,
+        "legend_col": legend_col,
+        "x_ordered": x_ordered,
+        "legend_ordered": legend_ordered,
+        "apply_stats": apply_stats,
+    }
+
+
+def ui_growth_curves_controls_container(
+    max_t: float, sel_sample_names: list[str]
+) -> dict:
+    """Render growth curves controls and return form selections."""
+    # -----------------------------
+    # Order state (curves sample order: mean+reps)
+    # -----------------------------
+    curves_order_key = "growth_curves_sample_order"
+    curves_order_sig_key = "growth_curves_sample_order_sig"
+    curves_order_ver_key = "growth_curves_sample_order_ver"
+    st.session_state.setdefault(curves_order_key, [])
+    st.session_state.setdefault(curves_order_ver_key, 0)
+
+    with st.container(border=True):
+        st.header("Step 2. option b) Plot Growth Curves")
+
+        curves_t0, curves_t1 = st.slider(
+            "Mean/replicates plot time window (hours)",
+            0.0,
+            max_t,
+            (0.0, min(72.0, max_t)),
+            step=0.5,
+            key="growth_curves_time_window",
+        )
+
+        # drag ordering: sample names (specific to mean+reps)
+        cur_curves_order = [
+            v for v in st.session_state[curves_order_key] if v in sel_sample_names
+        ]
+        for v in sel_sample_names:
+            if v not in cur_curves_order:
+                cur_curves_order.append(v)
+        st.session_state[curves_order_key] = cur_curves_order
+
+        curves_sig = tuple(sel_sample_names)
+        if st.session_state.get(curves_order_sig_key) != curves_sig:
+            st.session_state[curves_order_sig_key] = curves_sig
+            st.session_state[curves_order_ver_key] += 1
+
+        if sel_sample_names:
+            st.markdown("**Drag to set Sample Name order (mean/replicates):**")
+            st.session_state[curves_order_key] = sort_items(
+                st.session_state[curves_order_key],
+                key=f"growth_curves_sortable_{st.session_state[curves_order_ver_key]}",
+            )
+
+        b1, b2 = st.columns(2)
+        apply_mean = b1.form_submit_button(
+            "Generate mean growth plot",
+            type="primary",
+            width="stretch",
+        )
+        apply_reps = b2.form_submit_button(
+            "Generate replicates plot",
+            type="primary",
+            width="stretch",
+        )
+
     curves_ordered = [
         v for v in st.session_state[curves_order_key] if v in sel_sample_names
     ]
 
-    # -----------------------------
-    # Plots
-    # -----------------------------
-    if apply_stats:
-        long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
-
-        # Display each metric as a separate downloadable plot.
-        metrics = [
-            "mu_max",
-            "intrinsic_growth_rate",
-            "doubling_time",
-            "max_od",
-            "exp_phase_start",
-            "exp_phase_end",
-            "time_at_umax",
-            "od_at_umax",
-        ]
-
-        for metric in metrics:
-            metric_df = long_df[long_df["metric"] == metric].copy()
-            if not metric_df.empty:
-                fig = plot_single_growth_stat(
-                    metric_df,
-                    x_col=x_col,
-                    legend_col=legend_col,
-                    x_order=x_ordered,
-                    legend_order=legend_ordered,
-                )
-                st.plotly_chart(fig, width="stretch")
-
-    # Build the shared curves DF only if needed
-    if apply_mean or apply_reps:
-        curves_df = _build_growth_curves_long_df(plates, sel_sample_names)
-
-    if apply_mean:
-        st.plotly_chart(
-            plot_mean_growth(
-                curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
-            ),
-            width="stretch",
-        )
-
-    if apply_reps:
-        if curves_df.empty:
-            st.info("No replicate data found.")
-            return
-        st.plotly_chart(
-            plot_replicates_scatter(
-                curves_df, curves_ordered, t_start=curves_t0, t_end=curves_t1
-            ),
-            width="stretch",
-        )
+    return {
+        "curves_t0": curves_t0,
+        "curves_t1": curves_t1,
+        "curves_ordered": curves_ordered,
+        "apply_mean": apply_mean,
+        "apply_reps": apply_reps,
+    }
