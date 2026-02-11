@@ -31,6 +31,16 @@ def ui_window_fits_plate_overview(plates: dict):
     st.subheader("Plate Blanks")
     st.caption("Baseline values from blank wells. Hover over points for details.")
     plate = plates[plate_id]
+
+    # Check if plate has been analyzed
+    if "baseline" not in plate:
+        st.warning(
+            f"Plate '{plate_id}' has not been analyzed yet. "
+            "Please go to the 'Uploads' page and click "
+            "'Update parameters and analyse selected plate' first."
+        )
+        return
+
     st.plotly_chart(
         plot_baseline(plate["baseline"], name_by_well=plate.get("name", {}))
     )
