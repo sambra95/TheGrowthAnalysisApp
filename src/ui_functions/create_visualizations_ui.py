@@ -9,7 +9,6 @@ from src.functions.visualization_functions import _unique_preserve_order
 from src.styling import data_grid_style
 
 
-@st.fragment
 def ui_growth_selection_container(plates: dict) -> dict:
     """Render the sample selection container and return selection context."""
     # Build options once per rerun.
@@ -138,6 +137,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
     }
 
 
+@st.fragment
 def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -> dict:
     """Render growth stats controls and return form selections."""
     # -----------------------------
@@ -232,10 +232,10 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
                     key=f"growth_stats_leg_sortable_{st.session_state[leg_order_ver_key]}",
                 )
 
-        apply_stats = st.form_submit_button(
+        apply_stats = st.button(
             "Generate growth stats plot",
             type="primary",
-            width="stretch",
+            use_container_width=True,
         )
 
     x_ordered = [v for v in st.session_state[x_order_key] if v in x_vals]
@@ -254,6 +254,7 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
     }
 
 
+@st.fragment
 def ui_growth_curves_controls_container(
     max_t: float, sel_sample_names: list[str]
 ) -> dict:
@@ -301,15 +302,15 @@ def ui_growth_curves_controls_container(
             )
 
         b1, b2 = st.columns(2)
-        apply_mean = b1.form_submit_button(
+        apply_mean = b1.button(
             "Generate mean growth plot",
             type="primary",
-            width="stretch",
+            use_container_width=True,
         )
-        apply_reps = b2.form_submit_button(
+        apply_reps = b2.button(
             "Generate replicates plot",
             type="primary",
-            width="stretch",
+            use_container_width=True,
         )
 
     curves_ordered = [

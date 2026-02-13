@@ -48,15 +48,11 @@ has_split = selection["has_split"]
 
 max_t = _max_time_hours(plates)
 
-with st.form(
-    "growth_combined_form",
-    border=False,
-):
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        stats = ui_growth_stats_controls_container(has_split, sel_opt)
-    with col2:
-        curves = ui_growth_curves_controls_container(max_t, sel_sample_names)
+col1, col2 = st.columns([1, 1])
+with col1:
+    stats = ui_growth_stats_controls_container(has_split, sel_opt)
+with col2:
+    curves = ui_growth_curves_controls_container(max_t, sel_sample_names)
 
 x_col = stats["x_col"]
 legend_col = stats["legend_col"]
