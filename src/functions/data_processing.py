@@ -140,7 +140,7 @@ def _read_excel_bytes(b, **kw):
 def _plate_name_map(plate_bytes):
     """Return (plate_df, well_name_map) from a plate map Excel file."""
     plate = _read_excel_bytes(plate_bytes).fillna("False").set_index("rows")
-    return plate, {f"{r}{c}": plate.loc[r, c] for r in ROWS for c in COLS}
+    return plate, {f"{r}{c}": str(plate.loc[r, c]).strip() for r in ROWS for c in COLS}
 
 
 def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:

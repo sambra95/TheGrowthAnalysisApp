@@ -508,7 +508,8 @@ def ui_preprocessing_params(ss):
 
                     st.subheader(plate_id)
                     st.caption(
-                        "· 🟩 sample · 🟦 blank · 🟥 excluded by user · 🟧 not in data file · ⬜ not in plate map"
+                        "**Included:** 🟩 sample · 🟦 blank  |  "
+                        "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
                     )
                     render_plate_table(grid)
 

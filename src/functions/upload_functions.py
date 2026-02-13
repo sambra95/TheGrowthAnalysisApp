@@ -34,7 +34,7 @@ def build_symbol_grid(
         DataFrame grid with status symbols (GREEN/ORANGE/RED/BLUE/GRAY)
     """
     removed = {w.upper() for w in remove_wells} if remove_wells else set()
-    name_by_well = {f"{r}{c}": str(plate_map.loc[r, c]) for r in ROWS for c in COLS}
+    name_by_well = {f"{r}{c}": str(plate_map.loc[r, c]).strip() for r in ROWS for c in COLS}
     ignored = {w for w, nm in name_by_well.items() if nm == "False"}
 
     grid = pd.DataFrame(index=ROWS, columns=COLS, dtype="object")
@@ -43,15 +43,18 @@ def build_symbol_grid(
             w = f"{r}{c}"
             nm = name_by_well.get(w, "")
             is_blank = nm == "BLANK"
+            has_valid_name = nm not in {"", "False", "BLANK"}
 
             if w in removed:
                 sym = RED
-            elif w in present:
-                sym = GREEN
-            elif blank and is_blank:
-                sym = BLUE
             elif w in ignored:
                 sym = GRAY
+            elif w not in present:
+                sym = ORANGE
+            elif blank and is_blank:
+                sym = BLUE
+            elif has_valid_name:
+                sym = GREEN
             else:
                 sym = ORANGE
 
@@ -176,7 +179,7 @@ def get_plate_preview_data(plate_bytes: bytes, data_bytes: bytes):
         tuple: (plate_map DataFrame, set of present wells)
     """
     # Load plate map
-    plate_map = pd.read_excel(BytesIO(plate_bytes), index_col=0)
+    plate_map = pd.read_excel(BytesIO(plate_bytes), index_col=0).fillna("False")
 
     # Load data and check which wells exist
     data_df = pd.read_excel(BytesIO(data_bytes))
