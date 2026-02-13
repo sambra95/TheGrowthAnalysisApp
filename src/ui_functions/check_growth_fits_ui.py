@@ -127,7 +127,11 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         # Clamp max_od to the actual max in the processed data to avoid slider errors
         actual_max_od = float(max(processed["baseline_corrected"]))
         stored_max_od = float(growth_stats.get("max_od", 0.0))
-        st.session_state[maxod_key] = min(stored_max_od, actual_max_od)
+        # Handle edge case where all OD values are <= 0
+        if actual_max_od > 0:
+            st.session_state[maxod_key] = min(stored_max_od, actual_max_od)
+        else:
+            st.session_state[maxod_key] = 0.0
 
         # Track the last lasso update time we've synced
         st.session_state[lasso_time_key] = growth_stats.get("_lasso_update_time")
@@ -152,13 +156,19 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
 
     with c2:
-        max_od = st.slider(
-            "Set maximum OD",
-            0.0,
-            max(processed["baseline_corrected"]),
-            step=max(processed["baseline_corrected"]) / 120,
-            key=maxod_key,
-        )
+        # Handle edge case where all OD values are 0 or negative
+        actual_max_od = max(processed["baseline_corrected"])
+        if actual_max_od <= 0:
+            st.warning("All OD values are ≤ 0 - no growth detected")
+            max_od = 0.0
+        else:
+            max_od = st.slider(
+                "Set maximum OD",
+                0.0,
+                actual_max_od,
+                step=actual_max_od / 120,
+                key=maxod_key,
+            )
 
     # Persist boundaries unless we're deleting
     growth_stats["exp_phase_start"] = float(lag_end)
