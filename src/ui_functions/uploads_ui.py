@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
-from src.functions.constants import DEFAULT_PARAMS
+from src.functions.constants import COLS, DEFAULT_PARAMS, GRAY, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.ui_components import (
     ui_method_visualization,
@@ -514,7 +514,14 @@ def ui_preprocessing_params(ss):
                     render_plate_table(grid)
 
             else:
-                st.info("Upload files to see plate preview.")
+                # Show blank plate (all gray) when no files uploaded
+                blank_grid = pd.DataFrame(GRAY, index=ROWS, columns=COLS)
+                st.subheader("Plate Preview")
+                st.caption(
+                    "**Included:** 🟩 sample · 🟦 blank  |  "
+                    "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
+                )
+                render_plate_table(blank_grid)
 
     # Store selected values in session state for access by other fragments
     if plate_id:
