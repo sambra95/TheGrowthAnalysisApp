@@ -5,6 +5,7 @@ import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
 from src.functions.constants import COLS, DEFAULT_PARAMS, GRAY, ROWS
+from src.styling import growth_param_table_style, plate_table_style
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.ui_components import (
     ui_method_visualization,
@@ -219,25 +220,8 @@ All methods output the same set of growth descriptors:
 
 def render_plate_table(grid: pd.DataFrame):
     """Render an HTML table showing the plate status grid."""
-    css = """
-    <style>
-      .plate-wrap { width: 100%; overflow: hidden; }
-      table.plate {
-        width: 100%;
-        table-layout: fixed;
-        border-collapse: collapse;
-        font-size: 18px;
-      }
-      table.plate th, table.plate td {
-        border: 1px solid rgba(49,51,63,0.2);
-        text-align: center;
-        padding: 6px 0;
-        line-height: 1.2;
-      }
-      table.plate th { font-weight: 600; }
-      table.plate th.row { width: 2.2rem; }
-    </style>
-    """
+    # Apply styling (moved to styling.py)
+    plate_table_style()
 
     header = "".join(f"<th>{c}</th>" for c in grid.columns)
     rows_html = []
@@ -246,7 +230,6 @@ def render_plate_table(grid: pd.DataFrame):
         rows_html.append(f"<tr><th class='row'>{r}</th>{cells}</tr>")
 
     html = f"""
-    {css}
     <div class="plate-wrap">
       <table class="plate">
         <thead>
@@ -798,17 +781,10 @@ def ui_calculation_table(
         lag_time_calc = boundary_calc
 
     st.markdown("**Growth parameter calculations for selected methods:**")
+    # Apply styling (moved to styling.py)
+    growth_param_table_style()
     st.markdown(
         f"""
-<style>
-.growth-param-table table {{
-    width: 100%;
-}}
-.growth-param-table th, .growth-param-table td {{
-    text-align: center !important;
-    vertical-align: middle !important;
-}}
-</style>
 <div class="growth-param-table">
 
 | OD(max) | μ(max) | Intrinsic Growth Rate | Doubling Time | Lag Time | μ(max) Time | μ(max) OD | Exponential End Time | RMSE |

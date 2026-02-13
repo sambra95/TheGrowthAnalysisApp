@@ -97,3 +97,72 @@ def red_buttons():
         """,
         unsafe_allow_html=True,
     )
+
+
+# styles plate status grid tables
+def plate_table_style():
+    return st.markdown(
+        """
+        <style>
+        .plate-wrap { width: 100%; overflow: hidden; }
+        table.plate {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            font-size: 18px;
+        }
+        table.plate th, table.plate td {
+            border: 1px solid rgba(49,51,63,0.2);
+            text-align: center;
+            padding: 6px 0;
+            line-height: 1.2;
+        }
+        table.plate th { font-weight: 600; }
+        table.plate th.row { width: 2.2rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# styles growth parameter calculations table
+def growth_param_table_style():
+    return st.markdown(
+        """
+        <style>
+        .growth-param-table table {
+            width: 100%;
+        }
+        .growth-param-table th, .growth-param-table td {
+            text-align: center !important;
+            vertical-align: middle !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# styles data frames and AG Grid tables with larger font sizes
+def data_grid_style():
+    return st.markdown(
+        """
+        <style>
+        div[data-testid="stDataFrame"] table {
+            font-size: 16px !important;
+        }
+        div[data-testid="stDataFrame"] thead th {
+            font-size: 17px !important;
+            font-weight: bold !important;
+        }
+        .ag-theme-streamlit .ag-cell {
+            font-size: 16px !important;
+        }
+        .ag-theme-streamlit .ag-header-cell-text {
+            font-size: 17px !important;
+            font-weight: bold !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )

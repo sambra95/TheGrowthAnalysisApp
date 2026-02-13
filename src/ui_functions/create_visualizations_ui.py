@@ -6,6 +6,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from streamlit_sortables import sort_items
 
 from src.functions.visualization_functions import _unique_preserve_order
+from src.styling import data_grid_style
 
 
 @st.fragment
@@ -63,28 +64,8 @@ def ui_growth_selection_container(plates: dict) -> dict:
     with st.container(border=True):
         st.header("Step 1. Select Samples for Visualization")
 
-        # Add custom CSS to increase font size in data editor
-        st.markdown(
-            """
-            <style>
-                div[data-testid="stDataFrame"] table {
-                    font-size: 16px !important;
-                }
-                div[data-testid="stDataFrame"] thead th {
-                    font-size: 17px !important;
-                    font-weight: bold !important;
-                }
-                .ag-theme-streamlit .ag-cell {
-                    font-size: 16px !important;
-                }
-                .ag-theme-streamlit .ag-header-cell-text {
-                    font-size: 17px !important;
-                    font-weight: bold !important;
-                }
-            </style>
-        """,
-            unsafe_allow_html=True,
-        )
+        # Apply styling for data grid (moved to styling.py)
+        data_grid_style()
 
         # Prepare dataframe for display with selection column
         if has_split:
