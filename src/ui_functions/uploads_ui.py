@@ -42,7 +42,7 @@ This page guides you through uploading your plate reader data and analyzing grow
                 st.markdown("Excel file (.xlsx or .xls) with time series data")
                 st.info(
                     "Your data file must include a **Time** column with numeric values (integers or decimals). "
-                    "Select the time unit (seconds, minutes, or hours) in Step 3."
+                    "Select the time unit (seconds, minutes, or hours) in Step 4."
                 )
 
                 example_data = pd.DataFrame(
@@ -368,38 +368,40 @@ def ui_upload_files(ss):
                 key="map_up",
             )
 
-    if st.button(
-        "Load plate",
-        type="primary",
-        width="stretch",
-        disabled=not (data_file and map_file),
-    ):
-        # Validate data file
-        is_valid_data, data_error = validate_data_file(data_file.getvalue())
-        if not is_valid_data:
-            st.toast(f"❌ Data file validation failed: {data_error}", icon="🚫")
-            st.stop()
+    with st.container(border=True):
+        st.header("Step 3. Match samples with names")
+        if st.button(
+            "Match samples with names",
+            type="primary",
+            width="stretch",
+            disabled=not (data_file and map_file),
+        ):
+            # Validate data file
+            is_valid_data, data_error = validate_data_file(data_file.getvalue())
+            if not is_valid_data:
+                st.toast(f"❌ Data file validation failed: {data_error}", icon="🚫")
+                st.stop()
 
-        # Validate plate map file
-        is_valid_map, map_error = validate_plate_map_file(map_file.getvalue())
-        if not is_valid_map:
-            st.toast(f"❌ Plate map validation failed: {map_error}", icon="🚫")
-            st.stop()
+            # Validate plate map file
+            is_valid_map, map_error = validate_plate_map_file(map_file.getvalue())
+            if not is_valid_map:
+                st.toast(f"❌ Plate map validation failed: {map_error}", icon="🚫")
+                st.stop()
 
-        # If both validations pass, load the plate
-        plate_id = (
-            data_file.name.rsplit(".", 1)[0]
-            if getattr(data_file, "name", None)
-            else "Plate"
-        )
-        load_plate(
-            ss.plates,
-            plate_id,
-            data_bytes=data_file.getvalue(),
-            plate_bytes=map_file.getvalue(),
-            params=DEFAULT_PARAMS,
-        )
-        st.toast(f"✅ Successfully loaded {plate_id}")
+            # If both validations pass, load the plate
+            plate_id = (
+                data_file.name.rsplit(".", 1)[0]
+                if getattr(data_file, "name", None)
+                else "Plate"
+            )
+            load_plate(
+                ss.plates,
+                plate_id,
+                data_bytes=data_file.getvalue(),
+                plate_bytes=map_file.getvalue(),
+                params=DEFAULT_PARAMS,
+            )
+            st.toast(f"✅ Successfully loaded {plate_id}")
 
 
 @st.fragment
@@ -408,7 +410,7 @@ def ui_preprocessing_params(ss):
     ready = sorted(ss.plates)
 
     with st.container(border=True):
-        st.header("Step 3. Select plate and preprocessing parameters")
+        st.header("Step 4. Select plate and preprocessing parameters")
 
         pcol, acol = st.columns(2, gap="large")
 
@@ -488,7 +490,7 @@ def ui_preprocessing_params(ss):
                 st.rerun()
 
         with acol:
-            # Preview grid in Step 3
+            # Preview grid in Step 4
             if plate_id:
                 rec = ss.plates.get(plate_id, {})
                 if rec.get("uploads"):
@@ -827,7 +829,7 @@ def ui_analysis_params(ss):
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
 
     with st.container(border=True):
-        st.header("Step 4. Select the analysis parameters")
+        st.header("Step 5. Select the analysis parameters")
 
         # Two columns: Model options | Phase boundary options
         model_col, boundary_col = st.columns((5, 4), gap="large")
@@ -911,7 +913,7 @@ def ui_analysis_params(ss):
 
 def ui_analyse_button(ss):
     """Fragment for the analyze button."""
-    # Get values from Step 3 and Step 4
+    # Get values from Step 4 and Step 5
     step3_params = ss.get("step3_params", {})
     step4_params = ss.get("step4_params", {})
 
@@ -960,7 +962,7 @@ def ui_analyse_button(ss):
     )
 
     with st.container(border=True):
-        st.header("Step 5. Click analyse")
+        st.header("Step 6. Click analyse")
 
         if st.button(
             "Update parameters and analyse selected plate",
