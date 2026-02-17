@@ -75,17 +75,6 @@ def _finite_sorted_xy(time_s, y_s):
     return t, y
 
 
-def _model_type_from_fit_method(fit_method: str | None) -> str | None:
-    """Extract model type from fit_method strings."""
-    if not fit_method:
-        return None
-    if "(" in fit_method and ")" in fit_method:
-        return fit_method.split("(", 1)[1].split(")", 1)[0].strip()
-    if "model_fitting_" in fit_method:
-        return fit_method.split("model_fitting_", 1)[1].strip()
-    return None
-
-
 # --- blanks ----------------------------------------------------------------
 def plot_baseline(baseline, name_by_well: dict | None = None, time_unit: str = "hours"):
     """Plot blank wells and mean baseline over time.

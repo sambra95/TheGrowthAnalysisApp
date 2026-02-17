@@ -34,7 +34,9 @@ def build_symbol_grid(
         DataFrame grid with status symbols (GREEN/ORANGE/RED/BLUE/GRAY)
     """
     removed = {w.upper() for w in remove_wells} if remove_wells else set()
-    name_by_well = {f"{r}{c}": str(plate_map.loc[r, c]).strip() for r in ROWS for c in COLS}
+    name_by_well = {
+        f"{r}{c}": str(plate_map.loc[r, c]).strip() for r in ROWS for c in COLS
+    }
     ignored = {w for w, nm in name_by_well.items() if nm == "False"}
 
     grid = pd.DataFrame(index=ROWS, columns=COLS, dtype="object")
