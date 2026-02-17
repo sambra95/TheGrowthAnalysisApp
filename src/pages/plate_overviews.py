@@ -9,10 +9,6 @@ from src.ui_functions.plate_overviews_ui import (
     ui_window_fits_plate_overview,
 )
 
-if not st.session_state.get("plates"):
-    st.info("Add data first by running **Upload and Analyze**.")
-    st.stop()
-
 page_header_with_help(
     "Plate Overviews",
     """

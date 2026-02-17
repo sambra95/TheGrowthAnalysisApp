@@ -4,10 +4,11 @@ import streamlit as st
 
 
 def require_plates() -> dict:
-    """Return plates from session state, or stop with a warning."""
+    """Return plates from session state if processed data exists, or stop."""
     plates = st.session_state.get("plates") or {}
-    if not plates:
-        st.info("No results yet. Run **Upload + Analyse** first.")
+    has_processed = any(p.get("processed_data") for p in plates.values())
+    if not has_processed:
+        st.info("Add data first by running **Upload and Analyze**.")
         st.stop()
     return plates
 

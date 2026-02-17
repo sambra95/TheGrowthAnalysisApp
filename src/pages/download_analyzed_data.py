@@ -11,10 +11,6 @@ from src.ui_functions.download_analyzed_data_ui import (
     get_export_zip,
 )
 
-if not st.session_state.get("plates"):
-    st.info("Add data first by running **Upload and Analyze**.")
-    st.stop()
-
 page_header_with_help(
     "Download Analyzed Data",
     """

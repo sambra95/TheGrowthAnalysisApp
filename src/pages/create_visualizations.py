@@ -20,10 +20,6 @@ from src.ui_functions.create_visualizations_ui import (
     ui_growth_stats_controls_container,
 )
 
-if not st.session_state.get("plates"):
-    st.info("Add data first by running **Upload and Analyze**.")
-    st.stop()
-
 page_header_with_help(
     "Create Visualizations",
     """

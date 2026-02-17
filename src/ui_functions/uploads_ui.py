@@ -741,7 +741,7 @@ def ui_calculation_table(
 ):
     """Render the growth parameter calculations table."""
     if growth_method == "Model Fitting":
-        mu_max_calc = "μ(max)"
+        mu_max_calc = "μ<sub>max</sub>"
         model_rmse_calc = "RMSE over entire curve"
         max_od_calc = "Maximum OD from fitted model"
     else:
@@ -759,11 +759,11 @@ def ui_calculation_table(
         intrinsic_calc = "N.a."
 
     if phase_boundary_method == "threshold":
-        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ(max)"
-        exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ(max)"
+        boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ<sub>max</sub>"
+        exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
     else:
-        boundary_calc = "μ(max) tangent intersect with OD baseline"
-        exp_phase_end_calc = "μ(max) tangent intersec with OD(max)"
+        boundary_calc = "μ<sub>max</sub> tangent intersect with OD baseline"
+        exp_phase_end_calc = "μ<sub>max</sub> tangent intersec with OD(max)"
 
     if growth_method == "Model Fitting" and model_type in {
         "phenom_logistic",
@@ -782,9 +782,9 @@ def ui_calculation_table(
         f"""
 <div class="growth-param-table">
 
-| OD(max) | μ(max) | Intrinsic Growth Rate | Doubling Time | Lag Time | μ(max) Time | μ(max) OD | Exponential End Time | RMSE |
+| OD(max) | μ<sub>max</sub> | Intrinsic Growth Rate | Doubling Time | Lag Time | μ<sub>max</sub> Time | μ<sub>max</sub> OD | Exponential End Time | RMSE |
 |---|---|---|---|---|---|---|---|---|
-| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / μ(max) | {lag_time_calc} | Time at μ(max) | OD at μ(max) | {exp_phase_end_calc} | {model_rmse_calc} |
+| {max_od_calc} | {mu_max_calc} | {intrinsic_calc} | ln(2) / μ<sub>max</sub> | {lag_time_calc} | Time at μ<sub>max</sub> | OD at μ<sub>max</sub> | {exp_phase_end_calc} | {model_rmse_calc} |
 
 </div>
 """,
