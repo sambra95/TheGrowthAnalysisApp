@@ -6,7 +6,13 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.inference import is_no_growth
+from growthcurves.inference import (
+    is_no_growth,
+    compute_first_derivative,
+    smooth,
+    compute_instantaneous_mu,
+    compute_sliding_window_growth_rate,
+)
 from growthcurves.models import (
     MODEL_REGISTRY,
     mech_baranyi_model,
@@ -24,12 +30,6 @@ from scipy.optimize import curve_fit
 
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
-from src.functions.data_processing import (
-    compute_first_derivative,
-    compute_sliding_window_growth_rate,
-    compute_specific_growth_rate,
-    smooth,
-)
 
 
 # --- time unit helpers --------------------------------------------------------
@@ -876,7 +876,7 @@ def plot_derivative_metric(
         y_axis_title = "dN/dt"
         plot_title = f"dN/dt – {well}"
     else:  # mu
-        t_metric_raw, metric_raw = compute_specific_growth_rate(t_raw, y_raw)
+        t_metric_raw, metric_raw = compute_instantaneous_mu(t_raw, y_raw)
         metric_label = "μ"
         y_axis_title = "μ (h⁻¹)"
         plot_title = f"Specific growth rate – {well}"
@@ -888,7 +888,7 @@ def plot_derivative_metric(
     if metric == "dndt":
         t_metric_smooth, metric_smooth = compute_first_derivative(t_raw, y_smooth)
     else:  # mu
-        t_metric_smooth, metric_smooth = compute_specific_growth_rate(t_raw, y_smooth)
+        t_metric_smooth, metric_smooth = compute_instantaneous_mu(t_raw, y_smooth)
 
     # Convert time to display unit
     t_display = convert_hours_to_unit(t_metric_smooth, time_unit)
@@ -993,7 +993,7 @@ def plot_derivative_metric(
                     if metric == "dndt":
                         _, metric_model = compute_first_derivative(t_model, y_model)
                     else:  # mu
-                        _, metric_model = compute_specific_growth_rate(t_model, y_model)
+                        _, metric_model = compute_instantaneous_mu(t_model, y_model)
 
             elif model_type == "spline":
                 # For spline model, reconstruct the spline and evaluate
