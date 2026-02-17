@@ -243,9 +243,11 @@ def _sg_params_for_plate(plates: dict, plate_id: str) -> tuple[int, int, int]:
     )
 
 
-def analyse_well(plate: dict, well: str) -> dict:
+def analyse_well(plate: dict, well: str, params_override: dict | None = None) -> dict:
     """Recompute growth statistics for a single well using existing processed data."""
-    p = (plate or {}).get("params") or {}
+    p = dict((plate or {}).get("params") or {})
+    if params_override:
+        p.update(params_override)
     processed_data = (plate or {}).get("processed_data") or {}
     fit_parameters = (plate or {}).setdefault("fit_parameters", {})
 

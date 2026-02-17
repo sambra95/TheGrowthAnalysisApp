@@ -112,9 +112,20 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     step = float(max((t_max - t_min) / 200.0, 0.01))
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
+    plate_params = (plate or {}).get("params") or {}
+    growth_method = plate_params.get("growth_method", "Sliding Window")
+
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
     lasso_time_key = f"lasso_time__{key}"
+
+    # Session-state keys for re-analysis parameter overrides (scoped to this well)
+    _rp_min_od_key = f"rp_min_od__{key}"
+    _rp_min_gr_key = f"rp_min_gr__{key}"
+    _rp_min_snr_key = f"rp_min_snr__{key}"
+    _rp_min_dp_key = f"rp_min_dp__{key}"
+    _rp_window_key = f"rp_window__{key}"
+    _rp_spline_s_key = f"rp_spline_s__{key}"
 
     def _sync_widgets_from_growth_stats():
         """Sync widget state from the current growth_stats dict."""
@@ -135,6 +146,19 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
         # Track the last lasso update time we've synced
         st.session_state[lasso_time_key] = growth_stats.get("_lasso_update_time")
+
+    def _init_reanalyse_params():
+        """Reset re-analysis param overrides to the original plate values."""
+        st.session_state[_rp_min_od_key] = float(plate_params.get("min_od_increase", 0.05))
+        st.session_state[_rp_min_gr_key] = float(plate_params.get("min_growth_rate", 0.001))
+        st.session_state[_rp_min_snr_key] = float(plate_params.get("min_signal_to_noise", 1.0))
+        st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
+        st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
+        st.session_state[_rp_spline_s_key] = float(plate_params.get("spline_s", 1.0))
+
+    # Initialise re-analysis params the first time this well is shown
+    if _rp_min_od_key not in st.session_state:
+        _init_reanalyse_params()
 
     # Sync widgets if they don't exist OR if growth_stats was updated by lasso selection
     current_lasso_time = growth_stats.get("_lasso_update_time")
@@ -187,10 +211,29 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
-        """Re-run analysis for the well and refresh widgets."""
-        plate["growth_stats"][well] = analyse_well(plate, well)
+        """Re-run analysis using the current popover parameter values."""
+        params_override = {
+            "min_od_increase": float(st.session_state.get(_rp_min_od_key, plate_params.get("min_od_increase", 0.05))),
+            "min_growth_rate": float(st.session_state.get(_rp_min_gr_key, plate_params.get("min_growth_rate", 0.001))),
+            "min_signal_to_noise": float(st.session_state.get(_rp_min_snr_key, plate_params.get("min_signal_to_noise", 1.0))),
+            "min_data_points": int(st.session_state.get(_rp_min_dp_key, plate_params.get("min_data_points", 5))),
+        }
+        if growth_method == "Sliding Window":
+            params_override["window_points"] = int(
+                st.session_state.get(_rp_window_key, plate_params.get("window_points", 15))
+            )
+        elif growth_method == "Spline":
+            params_override["spline_s"] = float(
+                st.session_state.get(_rp_spline_s_key, plate_params.get("spline_s", 1.0))
+            )
+        plate["growth_stats"][well] = analyse_well(plate, well, params_override=params_override)
         # refresh local ref + sync widget state
         growth_stats.update(plate["growth_stats"][well])
+        # Record the custom no-growth thresholds so they appear in the per-well export
+        growth_stats["reanalysis_min_od_increase"] = params_override["min_od_increase"]
+        growth_stats["reanalysis_min_growth_rate"] = params_override["min_growth_rate"]
+        growth_stats["reanalysis_min_signal_to_noise"] = params_override["min_signal_to_noise"]
+        growth_stats["reanalysis_min_data_points"] = params_override["min_data_points"]
         # Clear lasso-specific keys so all points show as red (original behavior)
         growth_stats.pop("_used_fit_times", None)
         growth_stats.pop("_lasso_update_time", None)
@@ -221,12 +264,72 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
 
     with c2:
-        st.button(
-            "Re-analyse",
-            type="primary",
-            width="stretch",
-            on_click=_on_reanalyse,
-        )
+        with st.popover("Re-analyse", width="stretch"):
+            st.markdown("**No-growth thresholds**")
+            st.number_input(
+                "Min OD increase",
+                min_value=0.0,
+                step=0.01,
+                format="%.3f",
+                key=_rp_min_od_key,
+                help="Minimum total OD increase required to classify a well as growing.",
+            )
+            st.number_input(
+                "Min growth rate (1/h)",
+                min_value=0.0,
+                step=0.0001,
+                format="%.4f",
+                key=_rp_min_gr_key,
+                help="Minimum maximum specific growth rate required to classify a well as growing.",
+            )
+            st.number_input(
+                "Min signal-to-noise",
+                min_value=0.0,
+                step=0.1,
+                format="%.2f",
+                key=_rp_min_snr_key,
+                help="Minimum signal-to-noise ratio required to classify a well as growing.",
+            )
+            st.number_input(
+                "Min data points",
+                min_value=1,
+                step=1,
+                key=_rp_min_dp_key,
+                help="Minimum number of valid data points required for analysis.",
+            )
+            if growth_method == "Sliding Window":
+                st.number_input(
+                    "Window size (points)",
+                    min_value=3,
+                    step=1,
+                    key=_rp_window_key,
+                    help="Number of data points in each sliding window used to estimate growth rate.",
+                )
+            elif growth_method == "Spline":
+                st.number_input(
+                    "Smoothing factor",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.2f",
+                    key=_rp_spline_s_key,
+                    help="Spline smoothing factor (higher = smoother). Set 0 for interpolating spline.",
+                )
+            btn_col, restore_col = st.columns(2)
+            with btn_col:
+                st.button(
+                    "Re-analyse",
+                    type="primary",
+                    width="stretch",
+                    key=f"reanalyse__{key}",
+                    on_click=_on_reanalyse,
+                )
+            with restore_col:
+                st.button(
+                    "Defaults",
+                    width="stretch",
+                    key=f"restore_defaults__{key}",
+                    on_click=_init_reanalyse_params,
+                )
 
     with c3:
         st.button(
