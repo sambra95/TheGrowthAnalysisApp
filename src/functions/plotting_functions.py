@@ -841,7 +841,7 @@ def plot_derivative_metric(
     This function generates three traces:
     1. Raw data metric (light grey)
     2. Smoothed data metric (main trace)
-    3. Model fit metric (dashed line)
+    3. Model fit metric (solid blue line)
 
     Args:
         plate: Plate dictionary containing processed_data and fit_parameters
@@ -1042,7 +1042,7 @@ def plot_derivative_metric(
                     x=t_model_display,
                     y=metric_model,
                     mode="lines",
-                    line=dict(width=5, dash="dash", color="#8dcde0"),
+                    line=dict(width=5, color="#8dcde0"),
                     hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (fitted)=%{{y:.4f}}<extra></extra>",
                     showlegend=False,
                     name="Fitted",
