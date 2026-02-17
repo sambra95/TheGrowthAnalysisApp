@@ -853,12 +853,12 @@ def ui_analysis_params(ss):
         with graph_col_model:
             if model_fig is not None:
                 st.plotly_chart(
-                    model_fig, use_container_width=True, config={"staticPlot": True}
+                    model_fig, width='stretch, config={"staticPlot": True}
                 )
 
         with graph_col_boundary:
             if boundary_image is not None:
-                st.image(boundary_image, use_container_width=True)
+                st.image(boundary_image, width='stretch)
 
         # Growth parameter calculations table
         ui_calculation_table(
