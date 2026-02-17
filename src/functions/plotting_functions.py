@@ -588,13 +588,31 @@ def plot_single_growth_stat(
 
 
 # --- window fits ----------------------------------------------------------------
-def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True):
+def plot_window_plate(
+    plate: dict,
+    time_unit: str = "hours",
+    sharey: bool = True,
+    log_scale: bool = False,
+    show_fitted_curve: bool = True,
+    show_phase_boundaries: bool = True,
+    show_crosshairs: bool = True,
+    show_od_max_line: bool = True,
+    show_n0_line: bool = True,
+    show_tangent: bool = True,
+):
     """Plot a full 96-well plate overview with window-fit overlays.
 
     Args:
         plate: Plate dictionary containing processed_data, growth_stats, and fit_parameters
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
         sharey: Whether to share y-axes across subplots (default: True)
+        log_scale: Whether to display y-axis on a log scale (default: False)
+        show_fitted_curve: Whether to show the fitted model curve (default: True)
+        show_phase_boundaries: Whether to show exponential phase boundaries (default: True)
+        show_crosshairs: Whether to show crosshairs to umax point (default: True)
+        show_od_max_line: Whether to show horizontal line at maximum OD (default: True)
+        show_n0_line: Whether to show horizontal line at initial OD (default: True)
+        show_tangent: Whether to show tangent line at umax (default: True)
     """
     proc = plate.get("processed_data") or {}
     gs_all = plate.get("growth_stats") or {}
@@ -633,7 +651,14 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
     y_min, y_max = float(min(y.min() for y in ys)), float(max(y.max() for y in ys))
     xr, yr = x_max_display - x_min_display, y_max - y_min
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
-    y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
+    if log_scale:
+        import math
+        y_min_log = math.log(max(y_min, 1e-9))
+        y_max_log = math.log(y_max)
+        yr_log = y_max_log - y_min_log
+        y_range = [y_min_log - 0.05 * yr_log, y_max_log + 0.05 * yr_log]
+    else:
+        y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
     time_label = get_time_label(time_unit)
 
@@ -676,7 +701,8 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
 
         # Step 2: Populate subplot with create_base_plot
         # Create a temporary base plot to extract its trace
-        temp_fig = gc_plot.create_base_plot(t_display, y, scale="linear")
+        scale = "log" if log_scale else "linear"
+        temp_fig = gc_plot.create_base_plot(t_display, y, scale=scale)
 
         # Extract traces from temp_fig and add to main figure
         for trace in temp_fig.data:
@@ -726,14 +752,15 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
             fig=fig,
             fit_result=fitted_model,
             stats=stats_converted,
-            show_fitted_curve=True,
-            show_phase_boundaries=True,
-            show_crosshairs=True,
-            show_od_max_line=True,
-            show_n0_line=True,
+            show_fitted_curve=show_fitted_curve,
+            show_phase_boundaries=show_phase_boundaries,
+            show_crosshairs=show_crosshairs,
+            show_od_max_line=show_od_max_line,
+            show_n0_line=show_n0_line,
             show_umax_marker=False,  # Don't show green dot for umax
-            show_tangent=True,
-            scale="linear",
+            show_tangent=show_tangent,
+            scale=scale,
+            fitted_curve_width=3,
             row=r,
             col=c,
         )
@@ -894,7 +921,7 @@ def plot_derivative_metric(
             x=t_raw_display,
             y=metric_raw,
             mode="lines",
-            line=dict(width=1, color="lightgrey"),
+            line=dict(width=5, color="lightgrey"),
             hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (raw)=%{{y:.4f}}<extra></extra>",
             showlegend=False,
             name="Raw",
@@ -907,7 +934,7 @@ def plot_derivative_metric(
             x=t_display,
             y=metric_smooth,
             mode="lines",
-            line=dict(width=2, color="#FF6692"),
+            line=dict(width=5, color="#FF6692"),
             hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (smoothed)=%{{y:.4f}}<extra></extra>",
             showlegend=False,
             name="Smoothed",
@@ -1015,7 +1042,7 @@ def plot_derivative_metric(
                     x=t_model_display,
                     y=metric_model,
                     mode="lines",
-                    line=dict(width=2, dash="dash", color="#636EFA"),
+                    line=dict(width=5, dash="dash", color="#8dcde0"),
                     hovertemplate=f"Well={well}<br>Time=%{{x:.2f}} {time_unit}<br>{metric_label} (fitted)=%{{y:.4f}}<extra></extra>",
                     showlegend=False,
                     name="Fitted",
