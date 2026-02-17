@@ -676,16 +676,7 @@ def plot_window_plate(plate: dict, time_unit: str = "hours", sharey: bool = True
 
         # Step 2: Populate subplot with create_base_plot
         # Create a temporary base plot to extract its trace
-        temp_fig = gc_plot.create_base_plot(
-            time=t_display,
-            data=y,
-            scale="linear",
-            xlabel=time_label,
-            ylabel="OD600 (baseline-corrected)",
-            marker_size=2,
-            marker_opacity=0.7,
-            marker_color="#d32f2f",
-        )
+        temp_fig = gc_plot.create_base_plot(t_display, y, scale="linear")
 
         # Extract traces from temp_fig and add to main figure
         for trace in temp_fig.data:
