@@ -510,16 +510,16 @@ def ui_preprocessing_params(ss):
 def _get_model_display_name(model_code: str) -> str:
     """Convert model code to display name."""
     display_names = {
-        "mech_logistic": "Logistic (parametric)",
-        "mech_gompertz": "Gompertz (parametric)",
-        "mech_richards": "Richards (parametric)",
-        "mech_baranyi": "Baranyi-Roberts (parametric)",
-        "phenom_logistic": "Logistic (parametric)",
-        "phenom_gompertz": "Gompertz (parametric)",
-        "phenom_gompertz_modified": "Modified Gompertz (parametric)",
-        "phenom_richards": "Richards (parametric)",
-        "sliding_window": "Sliding Window (non-parametric)",
-        "spline": "Spline (non-parametric)",
+        "mech_logistic": "Logistic",
+        "mech_gompertz": "Gompertz",
+        "mech_richards": "Richards",
+        "mech_baranyi": "Baranyi-Roberts",
+        "phenom_logistic": "Logistic",
+        "phenom_gompertz": "Gompertz",
+        "phenom_gompertz_modified": "Modified Gompertz",
+        "phenom_richards": "Richards",
+        "sliding_window": "Sliding Window",
+        "spline": "Spline",
     }
     return display_names.get(model_code, model_code)
 
@@ -534,40 +534,49 @@ def _ui_model_selection(params0: dict):
 
     family_col, method_col, param_col = st.columns(3)
 
+    # Determine default family index from stored state
+    if stored_method in ["Sliding Window", "Spline"]:
+        default_family_idx = 2
+    elif stored_model_family == "mechanistic":
+        default_family_idx = 0
+    else:
+        default_family_idx = 1
+
     with family_col:
         model_family = st.selectbox(
             "Model family",
-            options=["Phenomenological", "Mechanistic"],
-            index=1 if stored_model_family == "mechanistic" else 0,
-            help="Phenomenological models describe growth patterns empirically. Mechanistic models are based on biological growth principles (ODE-based).",
+            options=["Mechanistic parametric", "Phenomenological parametric", "Non-parametric"],
+            index=default_family_idx,
+            help="Mechanistic models use ODE-based biological principles. Phenomenological models describe growth patterns empirically. Non-parametric methods are data-driven without a fixed curve shape.",
         )
 
-    model_family_internal = (
-        "mechanistic" if model_family == "Mechanistic" else "phenomenological"
-    )
+    if model_family == "Mechanistic parametric":
+        model_family_internal = "mechanistic"
+    elif model_family == "Phenomenological parametric":
+        model_family_internal = "phenomenological"
+    else:
+        model_family_internal = "non_parametric"
 
     # Build method options from MODEL_REGISTRY
     method_options = []
 
-    if model_family == "Mechanistic":
-        # Add mechanistic parametric models
+    if model_family == "Mechanistic parametric":
         for model_code in MODEL_REGISTRY["mechanistic"]:
             method_options.append(
                 (_get_model_display_name(model_code), model_code, "Model Fitting")
             )
-    else:  # Phenomenological
-        # Add non-parametric methods first
+    elif model_family == "Phenomenological parametric":
+        for model_code in MODEL_REGISTRY["phenomenological"]:
+            method_options.append(
+                (_get_model_display_name(model_code), model_code, "Model Fitting")
+            )
+    else:  # Non-parametric
         for model_code in MODEL_REGISTRY["non_parametric"]:
             growth_method = (
                 "Sliding Window" if model_code == "sliding_window" else "Spline"
             )
             method_options.append(
                 (_get_model_display_name(model_code), model_code, growth_method)
-            )
-        # Then add phenomenological parametric models
-        for model_code in MODEL_REGISTRY["phenomenological"]:
-            method_options.append(
-                (_get_model_display_name(model_code), model_code, "Model Fitting")
             )
 
     # Determine default index
@@ -794,7 +803,7 @@ def ui_analysis_params(ss):
         st.header("Step 5. Select the analysis parameters")
 
         # Two columns: Model options | Phase boundary options
-        model_col, boundary_col = st.columns((5, 4), gap="large")
+        model_col, boundary_col = st.columns(2, gap="large")
 
         with model_col:
             # Model selection
@@ -825,7 +834,7 @@ def ui_analysis_params(ss):
         st.write("")
 
         # Visualization columns
-        help_model_col, help_boundary_col = st.columns((5, 4), gap="large")
+        help_model_col, help_boundary_col = st.columns(2, gap="large")
 
         with help_model_col:
             model_fig = ui_method_visualization(growth_method, model_type)
@@ -834,10 +843,12 @@ def ui_analysis_params(ss):
             boundary_image = ui_phase_boundary_visualization(phase_boundary_method)
 
         # Render the visualizations
-        graph_col_model, graph_col_boundary = st.columns((5, 4), gap="large")
+        graph_col_model, graph_col_boundary = st.columns(2, gap="large")
 
         with graph_col_model:
-            if model_fig is not None:
+            if isinstance(model_fig, str):
+                st.image(model_fig, width="stretch")
+            elif model_fig is not None:
                 st.plotly_chart(model_fig, width="stretch", config={"staticPlot": True})
 
         with graph_col_boundary:

@@ -13,7 +13,75 @@ from growthcurves.inference import extract_stats
 from growthcurves.parametric import fit_parametric
 
 
-def create_annotation_demo_plot_png(save_path: Path):
+MODEL_DISPLAY_NAMES = {
+    "mech_logistic": "Logistic (mechanistic)",
+    "mech_gompertz": "Gompertz (mechanistic)",
+    "mech_richards": "Richards (mechanistic)",
+    "mech_baranyi": "Baranyi-Roberts (mechanistic)",
+    "phenom_logistic": "Logistic (phenomenological)",
+    "phenom_gompertz": "Gompertz (phenomenological)",
+    "phenom_gompertz_modified": "Modified Gompertz (phenomenological)",
+    "phenom_richards": "Richards (phenomenological)",
+}
+
+
+def create_model_curve_plot(model_name: str, svg_save_path: Path):
+    """Create and save a minimal SVG of the fitted curve for one growth model."""
+    t = np.linspace(0, 20, 100)
+    K = 1.0
+    r = 0.5
+    N0 = 0.05
+    y = K / (1 + ((K - N0) / N0) * np.exp(-r * t))
+
+    np.random.seed(42)
+    y_noisy = y + np.random.normal(0, 0.02, len(y))
+
+    fit_result = fit_parametric(t, y_noisy, method=model_name)
+    if fit_result is None:
+        print(f"  Warning: fitting failed for {model_name}, skipping.")
+        return
+
+    growth_stats = extract_stats(fit_result, t, y_noisy)
+
+    fig = gc_plot.create_base_plot(t, y_noisy, scale="linear")
+    fig = gc_plot.annotate_plot(
+        fig,
+        fit_result=fit_result,
+        stats=growth_stats,
+        show_fitted_curve=True,
+        show_phase_boundaries=False,
+        show_crosshairs=False,
+        show_od_max_line=False,
+        show_n0_line=False,
+        show_umax_marker=False,
+        show_tangent=False,
+        scale="linear",
+    )
+
+    # Keep only the fitted curve trace (remove raw data point markers)
+    fig.data = tuple(
+        trace for trace in fig.data if getattr(trace, "mode", "") != "markers"
+    )
+
+    # Set curve colour
+    for trace in fig.data:
+        if hasattr(trace, "line"):
+            trace.line.color = "#a6dcea"
+
+    fig.update_layout(
+        title=None,
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+
+    fig.write_image(svg_save_path, format="svg", width=1977, height=989)
+
+
+def create_annotation_demo_plot_png(save_path: Path, svg_save_path: Path | None = None):
     """Create and save a demo plot showing what each annotation represents."""
     # Create synthetic growth curve data
     t = np.linspace(0, 20, 100)
@@ -200,21 +268,37 @@ def create_annotation_demo_plot_png(save_path: Path):
     # Save as PNG
     fig.write_image(save_path, format="png", width=800, height=400, scale=2)
 
+    # Save as SVG if path provided
+    if svg_save_path is not None:
+        fig.write_image(svg_save_path, format="svg", width=800, height=400)
+
 
 def save_all_info_plots():
-    """Generate and save all informational plots as PNG files."""
+    """Generate and save all informational plots as PNG files and SVG curves."""
     # Get the project root directory
     project_root = Path(__file__).parent.parent
     info_plots_dir = project_root / "info_plots"
+    curves_dir = info_plots_dir / "curves"
 
-    # Create directory if it doesn't exist
+    # Create directories if they don't exist
     info_plots_dir.mkdir(exist_ok=True)
+    curves_dir.mkdir(exist_ok=True)
 
     # Generate and save annotation demo plot
     print("Generating annotation demo plot...")
     annotation_path = info_plots_dir / "annotation_demo.png"
-    create_annotation_demo_plot_png(annotation_path)
+    annotation_svg_path = curves_dir / "annotation_demo.svg"
+    create_annotation_demo_plot_png(annotation_path, svg_save_path=annotation_svg_path)
     print(f"Saved annotation demo plot to {annotation_path}")
+    print(f"Saved annotation demo SVG to {annotation_svg_path}")
+
+    # Generate and save one SVG curve per model
+    print("\nGenerating model curve SVGs...")
+    for model_name in MODEL_DISPLAY_NAMES:
+        print(f"  {model_name}...")
+        svg_path = curves_dir / f"{model_name}.svg"
+        create_model_curve_plot(model_name, svg_path)
+        print(f"    Saved SVG: {svg_path}")
 
     print("\nAll info plots generated successfully!")
 

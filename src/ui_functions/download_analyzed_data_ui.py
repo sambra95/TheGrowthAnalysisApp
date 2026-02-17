@@ -71,7 +71,7 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
 
                 with plot_col:
                     # Show pre-generated demo plot image
-                    st.image("info_plots/.png", width="stretch")
+                    st.image("info_plots/annotations.png", width="stretch")
 
                 with checkbox_col:
                     annot_phase = st.checkbox(
