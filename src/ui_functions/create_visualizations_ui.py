@@ -235,7 +235,7 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
         apply_stats = st.button(
             "Generate growth stats plot",
             type="primary",
-            width='stretch,
+            width="stretch",
         )
 
     x_ordered = [v for v in st.session_state[x_order_key] if v in x_vals]
@@ -305,12 +305,12 @@ def ui_growth_curves_controls_container(
         apply_mean = b1.button(
             "Generate mean growth plot",
             type="primary",
-            width='stretch,
+            width="stretch",
         )
         apply_reps = b2.button(
             "Generate replicates plot",
             type="primary",
-            width='stretch,
+            width="stretch",
         )
 
     curves_ordered = [
