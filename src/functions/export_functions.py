@@ -242,7 +242,7 @@ def build_export_zip(
                         params_df, on="Parameter", how="outer"
                     )
                 zf.writestr(
-                    "tables/analysis_parameters.csv",
+                    "tables/default_analysis_parameters.csv",
                     combined_params.to_csv(index=False),
                 )
 
