@@ -19,7 +19,7 @@ DEFAULT_PARAMS = {
     "clip_time_series": (0.0, 72.0),
     "remove_wells": False,
     "blank": True,
-    "window_points": 15,
+    "window_points": 10,
     "lag_cutoff": 0.5,
     "exp_cutoff": 0.5,
     "sg_window": 15,
