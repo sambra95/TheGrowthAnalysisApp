@@ -1,5 +1,7 @@
 """Interactive well-by-well growth fit inspection helpers."""
 
+import time
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -186,11 +188,9 @@ def _as_finite_float(value) -> float | None:
 def update_growth_stats_from_lasso(
     plates: dict, pid: str, well: str, chart_key: str
 ) -> None:
-    """
-    Update growth stats based on lasso-selected points.
+    """Update growth stats based on lasso-selected points.
 
-    For Sliding Window: Re-run sliding window analysis on selected points only
-    For Model Fitting: Refit the selected model to selected points only
+    Uses any custom re-analysis parameters already set in the popover for this well.
     """
     xs, ys = _get_selected_points(st.session_state.get(chart_key))
     if xs.size < 2:
@@ -200,32 +200,53 @@ def update_growth_stats_from_lasso(
     gs = plates.setdefault(pid, {}).setdefault("growth_stats", {}).setdefault(well, {})
     fit_parameters = plates.setdefault(pid, {}).setdefault("fit_parameters", {})
 
-    # Store a timestamp to force UI update
-    import time
-
-    gs["_lasso_update_time"] = time.time()
-
-    # Store the actual selected time values for visualization (red vs grey points)
-    # Sort by time to ensure consistent ordering
     sort_idx = np.argsort(xs)
     selected_times = xs[sort_idx]
 
-    # Get all data points for the well (always stored internally in hours)
     processed = plate.get("processed_data", {}).get(well)
     if processed is None or processed.empty:
         return
 
-    # Build lasso-selected series and store for visualization
     refit_t, refit_y = _collect_lasso_series(processed, selected_times)
     if refit_t.size < 2:
         return
 
-    gs["_used_fit_times"] = refit_t.tolist()
+    # Merge plate params with any custom overrides set in the re-analyse popover
+    params = dict(plate.get("params", {}))
+    well_key = f"{pid}_{well}"
+    for param_key, ss_key in [
+        ("min_od_increase", f"rp_min_od__{well_key}"),
+        ("min_growth_rate", f"rp_min_gr__{well_key}"),
+        ("min_signal_to_noise", f"rp_min_snr__{well_key}"),
+        ("min_data_points", f"rp_min_dp__{well_key}"),
+        ("window_points", f"rp_window__{well_key}"),
+        ("spline_s", f"rp_spline_s__{well_key}"),
+    ]:
+        if ss_key in st.session_state:
+            params[param_key] = st.session_state[ss_key]
 
-    # Run the identical analysis pipeline as initial plate analysis
-    params = plate.get("params", {})
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
+
+    # Build the params record that was actually used
+    growth_method = params.get("growth_method", "Sliding Window")
+    analysis_params = {
+        "min_od_increase": params.get("min_od_increase"),
+        "min_growth_rate": params.get("min_growth_rate"),
+        "min_signal_to_noise": params.get("min_signal_to_noise"),
+        "min_data_points": params.get("min_data_points"),
+    }
+    if growth_method == "Sliding Window":
+        analysis_params["window_points"] = params.get("window_points")
+    elif growth_method == "Spline":
+        analysis_params["spline_s"] = params.get("spline_s")
+
+    # Update gs in-place so all references stay valid
+    gs.clear()
     gs.update(fit)
+    gs["_used_fit_times"] = refit_t.tolist()
+    gs["_analysis_params"] = analysis_params
+    gs["_lasso_update_time"] = time.time()
+
     if fit_result is not None:
         fit_parameters[well] = fit_result
     else:

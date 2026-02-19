@@ -9,6 +9,8 @@ from growthcurves.inference import bad_fit_stats
 
 from src.functions.check_growth_fits import (
     _add_lasso_selected_points,
+    _analyse_series_with_plate_params,
+    _collect_lasso_series,
     _cycle,
     _delete_well_from_plate,
     _sg_params_for_plate,
@@ -25,12 +27,7 @@ from src.functions.plotting_functions import (
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     """Format growth stats into a displayable table."""
-    if not gs or is_bad_fit(gs):
-        # Check if there's a reason for the fit failure
-        reason = gs.get("no_growth_reason", "--") if gs else "--"
-        return pd.DataFrame(
-            {"Metric": ["No growth detected", "Reason"], "Value": ["--", reason]}
-        )
+    gs = gs or {}
 
     # Define metrics to display with nice labels and formatting
     metrics = [
@@ -67,24 +64,13 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
             "Exponential Phase End (h)",
             lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
         ),
-        (
-            "t_window_start",
-            "Analysis Window Start (h)",
-            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
-        ),
-        (
-            "t_window_end",
-            "Analysis Window End (h)",
-            lambda x: f"{float(x):.2f}" if pd.notna(x) else "--",
-        ),
-        (
-            "phase_boundary_method",
-            "Phase Boundary Method",
-            lambda x: str(x) if x else "--",
-        ),
     ]
 
     rows = []
+    if is_bad_fit(gs):
+        reason = gs.get("no_growth_reason", "--")
+        rows.append({"Metric": "No growth reason", "Value": reason})
+
     for key, label, formatter in metrics:
         value = gs.get(key)
         # Backward compatibility for previously exported/serialized stats.
@@ -95,6 +81,60 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
         except (ValueError, TypeError):
             formatted_value = "--"
         rows.append({"Metric": label, "Value": formatted_value})
+
+    return pd.DataFrame(rows)
+
+
+def _format_analysis_params_table(gs: dict, plate_params: dict, n_total: int | None = None) -> pd.DataFrame:
+    """Format the analysis parameters actually used into a displayable table.
+
+    Falls back to plate_params when no custom analysis has been run, so the table
+    always reflects the actual values used.
+    """
+    rows = []
+    # Use stored custom params if present, otherwise fall back to plate defaults
+    analysis_params = gs.get("_analysis_params") or {}
+    used_fit_times = gs.get("_used_fit_times")
+    growth_method = plate_params.get("growth_method", "Sliding Window")
+
+    n_selected = len(used_fit_times) if used_fit_times else n_total
+    total_str = str(n_total) if n_total is not None else "?"
+    selected_str = str(n_selected) if n_selected is not None else "?"
+    rows.append({"Parameter": "Data subset (points)", "Value": f"{selected_str}/{total_str}"})
+
+    common_params = [
+        ("min_od_increase", "Min OD increase", lambda x: f"{float(x):.4f}"),
+        ("min_growth_rate", "Min growth rate (1/h)", lambda x: f"{float(x):.5f}"),
+        ("min_signal_to_noise", "Min signal-to-noise", lambda x: f"{float(x):.2f}"),
+        ("min_data_points", "Min data points", lambda x: str(int(x))),
+    ]
+    method_params = []
+    if growth_method == "Sliding Window":
+        method_params = [("window_points", "Window size (points)", lambda x: str(int(x)))]
+    elif growth_method == "Spline":
+        method_params = [("spline_s", "Smoothing factor", lambda x: f"{float(x):.3f}")]
+
+    for param_name, plabel, formatter in common_params + method_params:
+        value = analysis_params.get(param_name) if analysis_params.get(param_name) is not None else plate_params.get(param_name)
+        if value is not None:
+            try:
+                rows.append({"Parameter": plabel, "Value": formatter(value)})
+            except (ValueError, TypeError):
+                pass
+
+    # Analysis window and phase boundary method come from the fit result stored in gs
+    fit_metrics = [
+        ("t_window_start", "Analysis window start (h)", lambda x: f"{float(x):.2f}"),
+        ("t_window_end", "Analysis window end (h)", lambda x: f"{float(x):.2f}"),
+        ("phase_boundary_method", "Phase boundary method", lambda x: str(x)),
+    ]
+    for key, plabel, formatter in fit_metrics:
+        value = gs.get(key)
+        if value is not None:
+            try:
+                rows.append({"Parameter": plabel, "Value": formatter(value)})
+            except (ValueError, TypeError):
+                pass
 
     return pd.DataFrame(rows)
 
@@ -205,13 +245,17 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         """Mark the well as no-growth and reset widgets."""
         growth_stats.update(bad_fit_stats())
         growth_stats["no_growth_reason"] = "manually assigned"
-        # Clear lasso-specific keys
         growth_stats.pop("_used_fit_times", None)
         growth_stats.pop("_lasso_update_time", None)
+        growth_stats.pop("_analysis_params", None)
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
-        """Re-run analysis using the current popover parameter values."""
+        """Re-run analysis using the current popover parameters.
+
+        If lasso points are selected, re-analyses only that subset.
+        Otherwise re-analyses all data for the well.
+        """
         params_override = {
             "min_od_increase": float(st.session_state.get(_rp_min_od_key, plate_params.get("min_od_increase", 0.05))),
             "min_growth_rate": float(st.session_state.get(_rp_min_gr_key, plate_params.get("min_growth_rate", 0.001))),
@@ -226,17 +270,53 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             params_override["spline_s"] = float(
                 st.session_state.get(_rp_spline_s_key, plate_params.get("spline_s", 1.0))
             )
-        plate["growth_stats"][well] = analyse_well(plate, well, params_override=params_override)
-        # refresh local ref + sync widget state
-        growth_stats.update(plate["growth_stats"][well])
-        # Record the custom no-growth thresholds so they appear in the per-well export
-        growth_stats["reanalysis_min_od_increase"] = params_override["min_od_increase"]
-        growth_stats["reanalysis_min_growth_rate"] = params_override["min_growth_rate"]
-        growth_stats["reanalysis_min_signal_to_noise"] = params_override["min_signal_to_noise"]
-        growth_stats["reanalysis_min_data_points"] = params_override["min_data_points"]
-        # Clear lasso-specific keys so all points show as red (original behavior)
-        growth_stats.pop("_used_fit_times", None)
-        growth_stats.pop("_lasso_update_time", None)
+
+        effective_p = dict(plate_params)
+        effective_p.update(params_override)
+
+        used_fit_times = growth_stats.get("_used_fit_times")
+        if used_fit_times:
+            # Re-analyse only the lasso-selected subset with the custom params
+            processed = plate.get("processed_data", {}).get(well)
+            refit_t, refit_y = _collect_lasso_series(processed, np.array(used_fit_times))
+            if refit_t.size >= 2:
+                fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, effective_p)
+                growth_stats.clear()
+                growth_stats.update(fit)
+                growth_stats["_used_fit_times"] = used_fit_times  # preserve lasso selection
+                if fit_result is not None:
+                    plate.setdefault("fit_parameters", {})[well] = fit_result
+                else:
+                    plate.get("fit_parameters", {}).pop(well, None)
+            else:
+                used_fit_times = None  # fall through to full analysis
+
+        if not used_fit_times:
+            new_stats = analyse_well(plate, well, params_override=params_override)
+            growth_stats.clear()
+            growth_stats.update(new_stats)
+
+        # Record the params actually used for display in the stats table
+        analysis_params = {
+            "min_od_increase": effective_p.get("min_od_increase"),
+            "min_growth_rate": effective_p.get("min_growth_rate"),
+            "min_signal_to_noise": effective_p.get("min_signal_to_noise"),
+            "min_data_points": effective_p.get("min_data_points"),
+        }
+        if growth_method == "Sliding Window":
+            analysis_params["window_points"] = effective_p.get("window_points")
+        elif growth_method == "Spline":
+            analysis_params["spline_s"] = effective_p.get("spline_s")
+        growth_stats["_analysis_params"] = analysis_params
+
+        _sync_widgets_from_growth_stats()
+
+    def _on_defaults():
+        """Rerun analysis with plate default settings on all data, clearing any lasso selection."""
+        _init_reanalyse_params()
+        new_stats = analyse_well(plate, well, params_override=None)
+        growth_stats.clear()
+        growth_stats.update(new_stats)
         _sync_widgets_from_growth_stats()
 
     def _on_delete():
@@ -327,8 +407,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                 st.button(
                     "Defaults",
                     width="stretch",
+                    type="primary",
                     key=f"restore_defaults__{key}",
-                    on_click=_init_reanalyse_params,
+                    on_click=_on_defaults,
                 )
 
     with c3:
@@ -486,21 +567,29 @@ def ui_window_fits_well_editor(plates: dict):
             st.container(border=True).success("**Growth Detected**")
 
     with expander_col:
-        # Display growth stats table in an expander
-        with st.expander(f"Growth Statistics for Well {well}"):
-            stats_df = _format_growth_stats_table(gs)
-            # Use a key based on growth stats values to force update when they change
-            # Include all key metrics that change during lasso selection
-            table_key = (
-                f"stats_table_{plate_id}_{well}_"
-                f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
-                f"{gs.get('max_od', 0)}_"
-                f"{gs.get('exp_phase_start', 0)}_"
-                f"{gs.get('exp_phase_end', 0)}_"
-                f"{gs.get('model_rmse', 0)}_"
-                f"{gs.get('_lasso_update_time', '')}"
-            )
-            st.dataframe(stats_df, width="stretch", hide_index=True, key=table_key)
+        stats_exp_col, params_exp_col = st.columns(2)
+
+        table_key_base = (
+            f"{plate_id}_{well}_"
+            f"{gs.get('mu_max', gs.get('specific_growth_rate', 0))}_"
+            f"{gs.get('max_od', 0)}_"
+            f"{gs.get('exp_phase_start', 0)}_"
+            f"{gs.get('exp_phase_end', 0)}_"
+            f"{gs.get('model_rmse', 0)}_"
+            f"{gs.get('_lasso_update_time', '')}"
+        )
+
+        with stats_exp_col:
+            with st.popover(f"Growth Statistics — {well}", width="stretch"):
+                stats_df = _format_growth_stats_table(gs)
+                st.dataframe(stats_df, width="stretch", hide_index=True, key=f"stats_{table_key_base}")
+
+        with params_exp_col:
+            with st.popover(f"Analysis Parameters — {well}", width="stretch"):
+                well_data = (plate.get("processed_data") or {}).get(well)
+                n_total = len(well_data) if well_data is not None and not well_data.empty else None
+                params_df = _format_analysis_params_table(gs, plate.get("params") or {}, n_total=n_total)
+                st.dataframe(params_df, width="stretch", hide_index=True, key=f"params_{table_key_base}")
 
         st.caption(
             "💡 **Tip:** Click and drag on the growth curve plot below to select a subset of data points. "
