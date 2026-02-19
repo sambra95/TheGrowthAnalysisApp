@@ -14,9 +14,27 @@ from src.ui_functions.download_analyzed_data_ui import (
 page_header_with_help(
     "Download Analyzed Data",
     """
-**Actions you can perform on this page:**
-- Download processed growth data including baseline corrected measurements and summary statistics (e.g. max growth rate) tables as CSV files
-- Bulk download annotated growth curves and other plots for all or a subset of wells
+**Workflow Overview — Download Analyzed Data**
+
+Use this page to **export your analysis results** as a ZIP file containing data tables and plots. Check the boxes for the content you want to include, then click the download button at the bottom of the page.
+
+**Data tables**
+- **Baseline corrected measurements**: Time series OD data after blank subtraction and pathlength correction, for all included wells
+- **Per-well statistics**: Growth descriptors (μ_max, lag time, doubling time, etc.) for each individual well
+- **Per-sample statistics**: Growth descriptors averaged across replicates for each sample
+- **Analysis parameters**: The parameter settings used for the analysis, useful for record-keeping and reproducibility
+
+**Well-level plots**
+- Generates annotated growth curve plots for each well
+- Use the **annotation options** to control which overlays are shown on each plot (phase boundaries, μ_max point, Max OD line, baseline OD, tangent line, fitted model)
+- Use the plate and well filters to export only a subset of wells rather than the full plate
+
+**Global plots**
+- **Plate map**: Colour-coded overview of growth descriptor values across all wells
+- **Baseline OD**: Plot of blank well OD measurements used for baseline correction
+- **Replicate curves**: Grouped replicate growth curves for each sample
+
+Click **Download Export ZIP** to package all selected content into a single ZIP file.
 """,
 )
 

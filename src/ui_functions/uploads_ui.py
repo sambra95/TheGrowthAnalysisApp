@@ -29,176 +29,39 @@ def ui_upload_and_analyse_header():
         st.write("")
         with st.popover("Help", width="stretch"):
             st.markdown("""
-**Workflow Summary:**
+**Workflow Overview — Upload & Analyse**
 
-This page guides you through uploading your plate reader data and analyzing growth curves. Follow the steps in order: upload your data files and plate maps, configure preprocessing parameters, select analysis settings, and run the analysis.
+This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
 
-💡 **Tip:** The plate preview updates automatically to help you verify your setup before running the full analysis.
-""")
+**Step 1 — Upload data file**
+Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
 
-            with st.expander("File Upload Requirements"):
-                st.markdown("**Data File Format:**")
-                st.markdown("Excel file (.xlsx or .xls) with time series data")
-                st.info(
-                    "Your data file must include a **Time** column with numeric values (integers or decimals). "
-                    "Select the time unit (seconds, minutes, or hours) in Step 4."
-                )
+**Step 2 — Upload plate map**
+Upload a plate map Excel file that assigns sample names to each well. Wells with the same name are treated as replicates. Use **BLANK** for blank wells and leave cells empty to ignore wells. Click "Requirements" for the expected format and an example download.
 
-                example_data = pd.DataFrame(
-                    {
-                        "Time": [0, 12, 24, 36],
-                        "A1": [0.05, 0.08, 0.15, 0.28],
-                        "A2": [0.06, 0.09, 0.18, 0.32],
-                        "B1": [0.05, 0.07, 0.14, 0.26],
-                        "...": ["...", "...", "...", "..."],
-                    }
-                )
-                st.dataframe(example_data, hide_index=True, width="stretch")
+**Step 3 — Match samples with names**
+Click the button to load both files and match well IDs between the data and the plate map. The plate preview on the right will update to confirm which wells are included.
 
-                with open("example_data/example_data.xlsx", "rb") as f:
-                    st.download_button(
-                        "Download example data",
-                        data=f.read(),
-                        file_name="example_data.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        width="stretch",
-                        type="primary",
-                        key="help_download_example_data",
-                    )
+**Step 4 — Select preprocessing parameters**
+Configure how the data is processed before analysis:
+- **Time unit**: Set to match the unit in your data file (seconds, minutes, or hours)
+- **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
+- **Blank subtraction**: Subtract the mean BLANK well OD from all other wells
+- **Time range**: Restrict analysis to a specific window of the experiment
+- **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
-                st.divider()
+The plate preview updates live — 🟩 included · 🟦 blank · 🟥 excluded by user · 🟧 missing from data file · ⬜ not in plate map.
 
-                st.markdown("**Plate Map Format:**")
-                st.markdown("Excel file (.xlsx or .xls) with sample layout")
-                st.markdown("""
-- 96-well plate format (rows A-H, columns 1-12)
-- Samples with the same name will be assigned as replicates
-- Use 'BLANK' for blank wells
-- Leave cells empty for wells to ignore
-- The first '_' is used to split strain and condition labels. These can be used to group samples and colour code with a legend in the 'Create Visualizations' page.
-""")
+**Step 5 — Select analysis parameters**
+Choose how growth descriptors are calculated:
+- **Model family & method**: Select a parametric model (mechanistic or phenomenological) or a non-parametric approach (Sliding Window or Spline). The visualisation below the selector shows the shape of the selected model.
+- **Quality control filters**: Wells not meeting these thresholds are automatically marked as "no growth"
+- **Phase boundary method**: Controls how the lag phase end and exponential phase end are determined
 
-                example_map = pd.DataFrame(
-                    {
-                        "rows": ["A", "B", "C", "D"],
-                        "1": [
-                            "Sample1_Condition1",
-                            "Sample3_Condition2",
-                            "",
-                            "Sample6_Condition3",
-                        ],
-                        "2": [
-                            "Sample1_Condition2",
-                            "BLANK",
-                            "Sample5_Condition2",
-                            "Sample7_Condition2",
-                        ],
-                        "3": [
-                            "Sample2_Condition1",
-                            "Sample4_Condition3",
-                            "Sample5_Condition2",
-                            "BLANK",
-                        ],
-                        "...": ["...", "...", "...", "..."],
-                    }
-                )
-                st.dataframe(example_map, hide_index=True, width="stretch")
+The table at the bottom shows exactly how each growth parameter will be calculated for your selected settings.
 
-                with open("example_data/example_plate_map.xls", "rb") as f:
-                    st.download_button(
-                        "Download example plate map",
-                        data=f.read(),
-                        file_name="example_plate_map.xls",
-                        mime="application/vnd.ms-excel",
-                        width="stretch",
-                        type="primary",
-                        key="help_download_example_plate_map",
-                    )
-
-            with st.expander("Growth Descriptor Metrics"):
-                st.markdown("""
-All methods output the same set of growth descriptors:
-
-| Metric | Description |
-|---|---|
-| **μ_max** | Maximum specific growth rate (h⁻¹) |
-| **Doubling time** | ln(2) / μ_max (h) |
-| **Lag time** | Time at end of lag phase (h) |
-| **Exp. phase end** | Time at end of exponential phase (h) |
-| **Time at μ_max** | Time at which μ_max occurs (h) |
-| **OD at μ_max** | OD value at the time of μ_max |
-| **Max OD** | Maximum OD reached (carrying capacity) |
-| **Fit window** | Start and end times of the fitting window (h) |
-| **RMSE** | Root mean square error of the fit |
-""")
-                st.markdown("### Parametric Methods")
-                st.caption("Currently selected model shown below")
-                st.markdown("""
-**How it works:**
-1. A parametric growth model is fitted to the entire growth curve
-2. The model's analytical derivative gives the growth rate at each time point
-3. **μ_max** is the maximum of d(ln N)/dt = (1/N)(dN/dt), i.e. the peak specific growth rate relative to N
-""")
-                st.markdown("""
-**Spline method: How it works**
-1. Phase boundaries (lag and exponential phase end) are detected from the data
-2. A smoothing spline is fitted to log-transformed OD values in the exponential phase
-3. The derivative of the spline gives the specific growth rate at each time point
-4. **μ_max** is the maximum derivative value from the spline fit
-
-**Advantages:**
-- More flexible than sliding window - adapts to curve shape
-- Smoother than sliding window - less sensitive to noise
-- Better for curves with irregular or non-uniform spacing
-
-**Smoothing factor:**
-- Lower values (e.g., 0.1-1.0): More flexible fit, follows data closely
-- Higher values (e.g., 5.0-20.0): Smoother fit, less influenced by noise
-- Can be set automatically based on data size
-""")
-                st.markdown("""
-**Sliding window method: How it works**
-1. A window of fixed size (e.g., 15 points) slides across the growth curve
-2. At each position, a linear regression is fitted to log-transformed OD values
-3. The slope of each fit represents the specific growth rate (μ) at that window
-4. The maximum slope across all windows is reported as μ_max
-""")
-
-            with st.expander("Phase Boundary Method Comparison"):
-                st.markdown("""
-| Method | Advantages | Threshold Parameters Used |
-|---|---|---|
-| **Threshold** | Simple, intuitive, adjustable sensitivity | Lag cutoff, Exp cutoff |
-| **Tangent** | Geometric definition, no arbitrary thresholds | None |
-
-**Recommendation:**
-- Threshold method works well for most mechanistic models and noisy data
-- Tangent method is often preferred for non-parametric methods where no model assumptions are made
-
-**Threshold method: How it works**
-1. Calculate the specific growth rate μ(t) = (1/N) × dN/dt across all time points
-2. Find the maximum growth rate μ_max and its time
-3. Set threshold values as fractions of μ_max (e.g., 50% of μ_max)
-4. **Lag phase end**: First time point where μ exceeds the lag threshold
-5. **Exp phase end**: First time point after μ_max where μ drops below the exp threshold
-
-**Threshold parameters:**
-- **Lag cutoff**: Fraction of μ_max used as threshold
-- **Exp cutoff**: Fraction of μ_max used as threshold
-- Lower threshold values detect phase transitions earlier; higher values require more pronounced rate changes.
-
-**Tangent method: How it works**
-1. Find the point of maximum specific growth rate (μ_max) and its time (t_μmax)
-2. Draw a tangent line to the growth curve at that point
-3. The tangent line in log space is: ln(OD) = ln(OD_μmax) + μ_max × (t - t_μmax)
-4. **Exp phase start**: Time where tangent intersects baseline OD (lag phase level)
-5. **Exp phase end**: Time where tangent intersects plateau OD (stationary phase level)
-
-**Key features:**
-- Geometrically defines the exponential phase as the region where growth follows the maximum rate
-- More consistent across different curve shapes
-- Default for non-parametric methods (Sliding Window, Spline)
-- Does not require threshold parameters
+**Step 6 — Analyse**
+Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
 """)
 
     st.divider()

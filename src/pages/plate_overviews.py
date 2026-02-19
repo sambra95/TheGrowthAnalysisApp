@@ -12,10 +12,21 @@ from src.ui_functions.plate_overviews_ui import (
 page_header_with_help(
     "Plate Overviews",
     """
-**Actions you can perform on this page:**
-- View grouped replicate growth curves for all your samples and compare to assess consistency
-- View OD measurements for the blank wells as well as the mean value that is used for baseline correction
-- View the predicted fits on you plate maps to quickly identify problematic wells.
+**Workflow Overview — Plate Overviews**
+
+Use this page as your **first quality check** after running the analysis on the Upload & Analyse page.
+
+**Replicate growth curves (top section)**
+Browse through your samples and inspect the grouped replicate curves. Consistent replicates should overlap closely — wide spread may indicate variability or issues with specific wells. Use this view to identify samples that may need attention in the Check Growth Fits page.
+
+**Blank wells**
+If blank subtraction is enabled, inspect the OD measurements for all BLANK wells. The mean blank value used for baseline correction is shown — verify it looks reasonable. Large variation across blank wells may affect the quality of baseline correction.
+
+**Plate map fit overview (bottom section)**
+A colour-coded plate map shows the predicted growth descriptor values across all wells. Use this to quickly spot problematic wells or patterns across the plate (e.g. edge effects, failed wells).
+
+**What to do next**
+If you spot inconsistent or poorly fitted wells, go to **Check Growth Fits** to inspect and manually correct individual wells before exporting your data.
 
 💡 **Tip:** You can download any plot by clicking the camera icon in the top right corner of the plot.
 """,

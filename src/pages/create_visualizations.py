@@ -23,13 +23,27 @@ from src.ui_functions.create_visualizations_ui import (
 page_header_with_help(
     "Create Visualizations",
     """
-**Actions you can perform on this page:**
-- Create custom visualizations of growth parameters (max growth rate, lag time, yield, etc.)
-- Group and compare samples by strain or condition
-- Generate interactive plots with color-coded legends
-- Visualize statistical summaries across experimental conditions
+**Workflow Overview — Create Visualizations**
 
-💡 **Tip:** You can download any plot by clicking the camera icon in the top right corner of the plot.
+Use this page to **generate and explore plots** of your growth analysis results. You can create bar/violin plots of growth parameters and overlay or compare growth curves across samples.
+
+**Step 1 — Select samples**
+Use the sample selection panel at the top to choose which plates and samples to include in your plots. You can filter by plate, sample name, or condition.
+
+**Step 2 — Configure growth statistics plots (left column)**
+- Choose the **X axis** variable to group samples by strain, condition, or sample name
+- Choose the **Legend** variable to colour-code data points by a second grouping (e.g. condition)
+- Reorder groups using the order controls to customise the plot layout
+- Click **Apply** to generate bar/violin plots for all growth parameters (μ_max, doubling time, lag time, yield, etc.)
+
+**Step 3 — Configure growth curve plots (right column)**
+- Set the **time range** to focus on a specific window of the experiment
+- Reorder samples in the legend using the order controls
+- Enable **Mean curves** to plot the mean ± spread across replicates for each sample
+- Enable **Replicate scatter** to overlay individual replicate curves
+
+**Downloading plots**
+Each plot can be downloaded individually using the camera icon in the top right corner of the plot. To bulk-export all plots, use the **Download Analyzed Data** page.
 """,
 )
 
