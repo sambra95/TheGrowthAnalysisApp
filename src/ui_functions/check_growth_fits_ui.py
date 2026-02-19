@@ -243,11 +243,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     def _on_no_growth():
         """Mark the well as no-growth and reset widgets."""
-        growth_stats.update(bad_fit_stats())
-        growth_stats["no_growth_reason"] = "manually assigned"
-        growth_stats.pop("_used_fit_times", None)
-        growth_stats.pop("_lasso_update_time", None)
-        growth_stats.pop("_analysis_params", None)
+        new_stats = bad_fit_stats()
+        new_stats["no_growth_reason"] = "manually assigned"
+        growth_stats.clear()
+        growth_stats.update(new_stats)
         _sync_widgets_from_growth_stats()
 
     def _on_reanalyse():
@@ -322,9 +321,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     def _on_delete():
         """Remove the well from the plate and clear widget state."""
         _delete_well_from_plate(plate, well)
-        st.session_state.pop(ss_key, None)
-        st.session_state.pop(maxod_key, None)
-        st.session_state.pop(lasso_time_key, None)
+        for k in (ss_key, maxod_key, lasso_time_key,
+                  _rp_min_od_key, _rp_min_gr_key, _rp_min_snr_key,
+                  _rp_min_dp_key, _rp_window_key, _rp_spline_s_key):
+            st.session_state.pop(k, None)
 
         # Update params to include this well in remove_wells list
         params = plate.setdefault("params", {})
@@ -576,7 +576,8 @@ def ui_window_fits_well_editor(plates: dict):
             f"{gs.get('exp_phase_start', 0)}_"
             f"{gs.get('exp_phase_end', 0)}_"
             f"{gs.get('model_rmse', 0)}_"
-            f"{gs.get('_lasso_update_time', '')}"
+            f"{gs.get('_lasso_update_time', '')}_"
+            f"{id(gs.get('_analysis_params'))}"
         )
 
         with stats_exp_col:

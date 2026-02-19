@@ -192,7 +192,7 @@ def update_growth_stats_from_lasso(
 
     Uses any custom re-analysis parameters already set in the popover for this well.
     """
-    xs, ys = _get_selected_points(st.session_state.get(chart_key))
+    xs, _ = _get_selected_points(st.session_state.get(chart_key))
     if xs.size < 2:
         return
 
