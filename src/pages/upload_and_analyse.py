@@ -2,7 +2,6 @@
 
 from src.functions.upload_functions import init_state
 from src.ui_functions.uploads_ui import (
-    ui_analyse_button,
     ui_analysis_params,
     ui_preprocessing_params,
     ui_upload_and_analyse_header,
@@ -16,4 +15,3 @@ ui_upload_and_analyse_header()
 ui_upload_files(ss)
 ui_preprocessing_params(ss)
 ui_analysis_params(ss)
-ui_analyse_button(ss)

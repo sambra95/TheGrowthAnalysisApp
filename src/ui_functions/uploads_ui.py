@@ -504,7 +504,7 @@ def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_c
         elif growth_method == "Spline":
             window_points = int(params0["window_points"])
             spline_s = st.number_input(
-                "Spline smoothing factor (s)",
+                "Spline smoothing factor",
                 0.001,
                 None,
                 float(default_spline_s),
@@ -665,10 +665,18 @@ def ui_calculation_table(
 
 @st.fragment
 def ui_analysis_params(ss):
-    """Fragment for analysis parameters."""
+    """Fragment for analysis parameters and the analyse button."""
     step3_params = ss.get("step3_params", {})
     step4_prev = ss.get("step4_params", {})
     params0 = step3_params.get("params0", DEFAULT_PARAMS)
+
+    # Step 3 preprocessing values needed to build the final params dict
+    plate_id = step3_params.get("plate_id")
+    time_unit = step3_params.get("time_unit", "hours")
+    pl_cm = step3_params.get("pl_cm", 0.42)
+    blank = step3_params.get("blank", True)
+    clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
+    remove_wells = step3_params.get("remove_wells", False)
 
     with st.container(border=True):
         st.header("Step 5. Select the analysis parameters")
@@ -726,49 +734,6 @@ def ui_analysis_params(ss):
             if boundary_image is not None:
                 st.image(boundary_image, width="stretch")
 
-    # Store analysis parameters in session state
-    ss.setdefault("step4_params", {})
-    ss["step4_params"]["window_points"] = window_points
-    ss["step4_params"]["lag_cutoff"] = lag_cutoff
-    ss["step4_params"]["exp_cutoff"] = exp_cutoff
-    ss["step4_params"]["min_data_points"] = min_data_points
-    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
-    ss["step4_params"]["min_od_increase"] = min_od_increase
-    ss["step4_params"]["min_growth_rate"] = min_growth_rate
-    ss["step4_params"]["growth_method"] = growth_method
-    ss["step4_params"]["model_family"] = model_family
-    ss["step4_params"]["model_type"] = model_type
-    ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
-    ss["step4_params"]["spline_s"] = spline_s
-
-
-def ui_analyse_button(ss):
-    """Fragment for the analyze button."""
-    # Get values from Step 4 and Step 5
-    step3_params = ss.get("step3_params", {})
-    step4_params = ss.get("step4_params", {})
-
-    plate_id = step3_params.get("plate_id")
-    time_unit = step3_params.get("time_unit", "hours")
-    pl_cm = step3_params.get("pl_cm", 0.42)
-    blank = step3_params.get("blank", True)
-    clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
-    remove_wells = step3_params.get("remove_wells", False)
-    params0 = step3_params.get("params0", DEFAULT_PARAMS)
-
-    window_points = step4_params.get("window_points", 15)
-    lag_cutoff = step4_params.get("lag_cutoff", 0.5)
-    exp_cutoff = step4_params.get("exp_cutoff", 0.5)
-    min_data_points = step4_params.get("min_data_points", 5)
-    min_signal_to_noise = step4_params.get("min_signal_to_noise", 1.0)
-    min_od_increase = step4_params.get("min_od_increase", 0.05)
-    min_growth_rate = step4_params.get("min_growth_rate", 0.001)
-    growth_method = step4_params.get("growth_method", "Sliding Window")
-    model_family = step4_params.get("model_family", "mechanistic")
-    model_type = step4_params.get("model_type", "mech_logistic")
-    phase_boundary_method = step4_params.get("phase_boundary_method", "tangent")
-    spline_s = step4_params.get("spline_s", None)
-
     # Build final params dict
     params = dict(
         time_unit=str(time_unit),
@@ -821,3 +786,18 @@ def ui_analyse_button(ss):
                 with st.spinner("Analysing plate...", show_time=True):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
+
+    # Store analysis parameters in session state
+    ss.setdefault("step4_params", {})
+    ss["step4_params"]["window_points"] = window_points
+    ss["step4_params"]["lag_cutoff"] = lag_cutoff
+    ss["step4_params"]["exp_cutoff"] = exp_cutoff
+    ss["step4_params"]["min_data_points"] = min_data_points
+    ss["step4_params"]["min_signal_to_noise"] = min_signal_to_noise
+    ss["step4_params"]["min_od_increase"] = min_od_increase
+    ss["step4_params"]["min_growth_rate"] = min_growth_rate
+    ss["step4_params"]["growth_method"] = growth_method
+    ss["step4_params"]["model_family"] = model_family
+    ss["step4_params"]["model_type"] = model_type
+    ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
+    ss["step4_params"]["spline_s"] = spline_s
