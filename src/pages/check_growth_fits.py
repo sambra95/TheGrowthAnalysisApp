@@ -3,7 +3,7 @@
 import streamlit as st
 
 from src.functions.common import require_plates
-from src.functions.ui_components import page_header_with_help
+from src.ui_functions.ui_components import page_header_with_help
 from src.ui_functions.check_growth_fits_ui import ui_window_fits_well_editor
 
 page_header_with_help(

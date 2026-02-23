@@ -6,7 +6,7 @@ from growthcurves.models import MODEL_REGISTRY
 
 from src.functions.constants import COLS, DEFAULT_PARAMS, GRAY, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
-from src.functions.ui_components import (
+from src.ui_functions.ui_components import (
     ui_method_visualization,
     ui_phase_boundary_visualization,
 )
@@ -809,5 +809,6 @@ def ui_analyse_button(ss):
                 st.error("No uploads found for this plate.")
             else:
                 rec["params"] = params
-                ss.plates[plate_id] = analyse_plate(rec)
+                with st.spinner("Analysing plate..."):
+                    ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")

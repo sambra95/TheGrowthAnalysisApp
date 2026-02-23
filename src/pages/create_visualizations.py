@@ -8,7 +8,7 @@ from src.functions.plotting_functions import (
     plot_replicates_scatter,
     plot_single_growth_stat,
 )
-from src.functions.ui_components import page_header_with_help
+from src.ui_functions.ui_components import page_header_with_help
 from src.functions.visualization_functions import (
     _build_growth_curves_long_df,
     _build_growth_stats_long_df,

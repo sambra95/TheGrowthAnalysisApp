@@ -3,7 +3,7 @@
 import streamlit as st
 
 from src.functions.common import require_plates
-from src.functions.ui_components import page_header_with_help
+from src.ui_functions.ui_components import page_header_with_help
 from src.ui_functions.download_analyzed_data_ui import (
     _render_global_plots_container,
     _render_tabulated_data_container,
