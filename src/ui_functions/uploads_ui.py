@@ -28,7 +28,8 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown("""
+            st.markdown(
+                """
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -62,7 +63,8 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-""")
+"""
+            )
 
     st.divider()
 
@@ -408,7 +410,11 @@ def _ui_model_selection(params0: dict):
     with family_col:
         model_family = st.selectbox(
             "Model family",
-            options=["Mechanistic parametric", "Phenomenological parametric", "Non-parametric"],
+            options=[
+                "Mechanistic parametric",
+                "Phenomenological parametric",
+                "Non-parametric",
+            ],
             index=default_family_idx,
             help="Mechanistic models use ODE-based biological principles. Phenomenological models describe growth patterns empirically. Non-parametric methods are data-driven without a fixed curve shape.",
         )
@@ -623,7 +629,9 @@ def ui_calculation_table(
 
     if phase_boundary_method == "threshold":
         boundary_calc = f"Time at instantaneous μ > {lag_cutoff:.0%} μ<sub>max</sub>"
-        exp_phase_end_calc = f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
+        exp_phase_end_calc = (
+            f"Time at instantaneous μ < {exp_cutoff:.0%} μ<sub>max</sub>"
+        )
     else:
         boundary_calc = "μ<sub>max</sub> tangent intersect with OD baseline"
         exp_phase_end_calc = "μ<sub>max</sub> tangent intersec with OD(max)"
@@ -638,7 +646,7 @@ def ui_calculation_table(
     else:
         lag_time_calc = boundary_calc
 
-    st.markdown("**Growth parameter calculations for selected methods:**")
+    st.caption("Your selected settings will calculate growth parameters as follows:")
     # Apply styling (moved to styling.py)
     growth_param_table_style()
     st.markdown(
