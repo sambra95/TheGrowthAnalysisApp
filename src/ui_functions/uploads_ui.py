@@ -783,7 +783,19 @@ def ui_analysis_params(ss):
                 st.error("No uploads found for this plate.")
             else:
                 rec["params"] = params
-                with st.spinner("Analysing plate...", show_time=True):
+                st.markdown(
+                    """
+<style>
+[data-testid="stSpinner"] > div {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+}
+</style>
+""",
+                    unsafe_allow_html=True,
+                )
+                with st.spinner("Analysing plate...", show_time=True, width="stretch"):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
 
