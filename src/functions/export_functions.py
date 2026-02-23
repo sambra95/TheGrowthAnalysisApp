@@ -55,8 +55,11 @@ def _growth_stats_per_well_df(p: dict) -> pd.DataFrame:
         )
         # Remove internal columns not meant for export
         internal_cols = [
-            "_lasso_update_time", "lasso_t_min", "lasso_t_max",
-            "_used_fit_times", "_analysis_params",
+            "_lasso_update_time",
+            "lasso_t_min",
+            "lasso_t_max",
+            "_used_fit_times",
+            "_analysis_params",
         ]
         df = df.drop(
             columns=[c for c in internal_cols if c in df.columns], errors="ignore"

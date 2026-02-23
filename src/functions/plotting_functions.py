@@ -7,11 +7,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import (
-    is_no_growth,
     compute_first_derivative,
-    smooth,
     compute_instantaneous_mu,
     compute_sliding_window_growth_rate,
+    is_no_growth,
+    smooth,
 )
 from growthcurves.models import (
     MODEL_REGISTRY,
@@ -653,6 +653,7 @@ def plot_window_plate(
     x_range = [x_min_display - 0.02 * xr, x_max_display + 0.02 * xr]
     if log_scale:
         import math
+
         y_min_log = math.log(max(y_min, 1e-9))
         y_max_log = math.log(y_max)
         yr_log = y_max_log - y_min_log
@@ -660,7 +661,7 @@ def plot_window_plate(
     else:
         y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
-    time_label = get_time_label(time_unit)
+    get_time_label(time_unit)
 
     for i, well in enumerate(ALL_WELLS, 1):
         d = proc.get(well)

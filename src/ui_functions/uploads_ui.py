@@ -6,10 +6,6 @@ from growthcurves.models import MODEL_REGISTRY
 
 from src.functions.constants import COLS, DEFAULT_PARAMS, GRAY, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
-from src.ui_functions.ui_components import (
-    ui_method_visualization,
-    ui_phase_boundary_visualization,
-)
 from src.functions.upload_functions import (
     build_symbol_grid,
     get_plate_preview_data,
@@ -18,6 +14,10 @@ from src.functions.upload_functions import (
     validate_plate_map_file,
 )
 from src.styling import growth_param_table_style, plate_table_style
+from src.ui_functions.ui_components import (
+    ui_method_visualization,
+    ui_phase_boundary_visualization,
+)
 
 
 def ui_upload_and_analyse_header():
@@ -28,8 +28,7 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown(
-                """
+            st.markdown("""
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -63,8 +62,7 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-"""
-            )
+""")
 
     st.divider()
 

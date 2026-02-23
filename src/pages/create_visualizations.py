@@ -8,7 +8,6 @@ from src.functions.plotting_functions import (
     plot_replicates_scatter,
     plot_single_growth_stat,
 )
-from src.ui_functions.ui_components import page_header_with_help
 from src.functions.visualization_functions import (
     _build_growth_curves_long_df,
     _build_growth_stats_long_df,
@@ -19,6 +18,7 @@ from src.ui_functions.create_visualizations_ui import (
     ui_growth_selection_container,
     ui_growth_stats_controls_container,
 )
+from src.ui_functions.ui_components import page_header_with_help
 
 page_header_with_help(
     "Create Visualizations",

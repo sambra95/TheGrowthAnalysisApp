@@ -12,7 +12,6 @@ import numpy as np
 from growthcurves.inference import extract_stats
 from growthcurves.parametric import fit_parametric
 
-
 MODEL_DISPLAY_NAMES = {
     "mech_logistic": "Logistic (mechanistic)",
     "mech_gompertz": "Gompertz (mechanistic)",

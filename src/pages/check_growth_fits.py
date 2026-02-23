@@ -1,10 +1,9 @@
 """Growth fit review page with well-level editor."""
 
-import streamlit as st
 
 from src.functions.common import require_plates
-from src.ui_functions.ui_components import page_header_with_help
 from src.ui_functions.check_growth_fits_ui import ui_window_fits_well_editor
+from src.ui_functions.ui_components import page_header_with_help
 
 page_header_with_help(
     "Check Growth Fits",

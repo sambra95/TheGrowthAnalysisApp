@@ -65,13 +65,25 @@ def ui_window_fits_plate_overview(plates: dict):
             col_a, col_b = st.columns(2)
             with col_a:
                 sharey = st.checkbox("Share Y-axis", value=True, key="sharey_toggle")
-                log_scale = st.checkbox("Log Y-axis", value=False, key="log_scale_toggle")
-                show_fitted_curve = st.checkbox("Fitted model curve", value=True, key="po_fitted_curve")
-                show_phase_boundaries = st.checkbox("Phase boundaries", value=True, key="po_phase_boundaries")
+                log_scale = st.checkbox(
+                    "Log Y-axis", value=False, key="log_scale_toggle"
+                )
+                show_fitted_curve = st.checkbox(
+                    "Fitted model curve", value=True, key="po_fitted_curve"
+                )
+                show_phase_boundaries = st.checkbox(
+                    "Phase boundaries", value=True, key="po_phase_boundaries"
+                )
             with col_b:
-                show_crosshairs = st.checkbox("Crosshairs", value=True, key="po_crosshairs")
-                show_od_max_line = st.checkbox("Max OD line", value=True, key="po_od_max_line")
-                show_n0_line = st.checkbox("Baseline OD line", value=True, key="po_n0_line")
+                show_crosshairs = st.checkbox(
+                    "Crosshairs", value=True, key="po_crosshairs"
+                )
+                show_od_max_line = st.checkbox(
+                    "Max OD line", value=True, key="po_od_max_line"
+                )
+                show_n0_line = st.checkbox(
+                    "Baseline OD line", value=True, key="po_n0_line"
+                )
                 show_tangent = st.checkbox("Tangent line", value=True, key="po_tangent")
             st.image("info_plots/annotations.png", width="stretch")
 
