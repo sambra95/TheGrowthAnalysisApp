@@ -718,17 +718,6 @@ def ui_analysis_params(ss):
             if boundary_image is not None:
                 st.image(boundary_image, width="stretch")
 
-        # Growth parameter calculations table
-        ui_calculation_table(
-            growth_method,
-            model_type,
-            model_family,
-            phase_boundary_method,
-            lag_cutoff,
-            exp_cutoff,
-            window_points,
-        )
-
     # Store analysis parameters in session state
     ss.setdefault("step4_params", {})
     ss["step4_params"]["window_points"] = window_points
@@ -798,17 +787,29 @@ def ui_analyse_button(ss):
     with st.container(border=True):
         st.header("Step 6. Click analyse")
 
-        if st.button(
+        ui_calculation_table(
+            growth_method,
+            model_type,
+            model_family,
+            phase_boundary_method,
+            lag_cutoff,
+            exp_cutoff,
+            window_points,
+        )
+
+        st.write("")
+        clicked = st.button(
             "Update parameters and analyse selected plate",
             type="primary",
             width="stretch",
             disabled=not plate_id,
-        ):
+        )
+        if clicked:
             rec = ss.plates.get(plate_id, {})
             if not rec.get("uploads"):
                 st.error("No uploads found for this plate.")
             else:
                 rec["params"] = params
-                with st.spinner("Analysing plate..."):
+                with st.spinner("Analysing plate...", show_time=True):
                     ss.plates[plate_id] = analyse_plate(rec)
                 st.toast(f"Analysed {plate_id}", duration="infinite")
