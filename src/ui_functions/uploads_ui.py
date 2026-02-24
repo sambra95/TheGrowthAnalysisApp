@@ -56,6 +56,7 @@ The plate preview updates live — 🟩 included · 🟦 blank · 🟥 excluded 
 **Step 5 — Select analysis parameters**
 Choose how growth descriptors are calculated:
 - **Model family & method**: Select a parametric model (mechanistic or phenomenological) or a non-parametric approach (Sliding Window or Spline). The visualisation below the selector shows the shape of the selected model.
+- **Spline fitting mode**: For the Spline method, choose **Fast** (auto-default smoothing with OD weighting) or **Slow** (weighted GCV smoothing).
 - **Quality control filters**: Wells not meeting these thresholds are automatically marked as "no growth"
 - **Phase boundary method**: Controls how the lag phase end and exponential phase end are determined
 
@@ -485,10 +486,10 @@ def _ui_model_selection(params0: dict):
 
 
 def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
-    """Render method-specific parameters (window size or spline smoothing)."""
-    default_spline_s = step4_prev.get("spline_s", params0.get("spline_s", 1.0))
-    if default_spline_s is None:
-        default_spline_s = 1.0
+    """Render method-specific parameters (window size or spline mode)."""
+    smooth_default = str(step4_prev.get("smooth", params0.get("smooth", "fast"))).strip().lower()
+    if smooth_default not in {"fast", "slow"}:
+        smooth_default = "fast"
 
     with param_col:
         if growth_method == "Sliding Window":
@@ -500,22 +501,25 @@ def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_c
                 1,
                 help="Number of consecutive data points used for sliding window linear fit to determine maximum growth rate",
             )
-            spline_s = float(default_spline_s)
+            smooth = smooth_default
         elif growth_method == "Spline":
             window_points = int(params0["window_points"])
-            spline_s = st.number_input(
-                "Spline smoothing factor",
-                0.001,
-                None,
-                float(default_spline_s),
-                0.001,
-                help="Lower values follow noise more closely; higher values produce smoother fits.",
+            smooth = st.radio(
+                "Spline fitting mode",
+                options=["fast", "slow"],
+                index=0 if smooth_default == "fast" else 1,
+                horizontal=True,
+                format_func=lambda v: v.capitalize(),
+                help=(
+                    "Fast uses auto-default smoothing with OD weights. "
+                    "Slow uses weighted GCV smoothing and is typically slower."
+                ),
             )
         else:  # Model Fitting
             window_points = int(params0["window_points"])
-            spline_s = float(default_spline_s)
+            smooth = smooth_default
 
-    return window_points, spline_s
+    return window_points, smooth
 
 
 def ui_qc_filters(params0: dict):
@@ -691,7 +695,7 @@ def ui_analysis_params(ss):
             )
 
             # Method-specific parameters
-            window_points, spline_s = ui_model_params(
+            window_points, smooth = ui_model_params(
                 growth_method, params0, step4_prev, param_col
             )
 
@@ -754,7 +758,7 @@ def ui_analysis_params(ss):
         model_family=str(model_family),
         model_type=str(model_type),
         phase_boundary_method=str(phase_boundary_method),
-        spline_s=float(spline_s) if spline_s is not None else None,
+        smooth=str(smooth),
     )
 
     with st.container(border=True):
@@ -812,4 +816,4 @@ def ui_analysis_params(ss):
     ss["step4_params"]["model_family"] = model_family
     ss["step4_params"]["model_type"] = model_type
     ss["step4_params"]["phase_boundary_method"] = phase_boundary_method
-    ss["step4_params"]["spline_s"] = spline_s
+    ss["step4_params"]["smooth"] = smooth

@@ -220,10 +220,20 @@ def update_growth_stats_from_lasso(
         ("min_signal_to_noise", f"rp_min_snr__{well_key}"),
         ("min_data_points", f"rp_min_dp__{well_key}"),
         ("window_points", f"rp_window__{well_key}"),
-        ("spline_s", f"rp_spline_s__{well_key}"),
     ]:
         if ss_key in st.session_state:
             params[param_key] = st.session_state[ss_key]
+
+    if params.get("growth_method") == "Spline":
+        smooth_key = f"rp_smooth__{well_key}"
+        if smooth_key in st.session_state:
+            smooth_mode = str(st.session_state[smooth_key]).strip().lower()
+            params["smooth"] = smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
+        else:
+            smooth_mode = str(params.get("smooth", params.get("spline_s", "fast"))).strip().lower()
+            if smooth_mode == "auto":
+                smooth_mode = "slow"
+            params["smooth"] = smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
 
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
 
@@ -238,7 +248,7 @@ def update_growth_stats_from_lasso(
     if growth_method == "Sliding Window":
         analysis_params["window_points"] = params.get("window_points")
     elif growth_method == "Spline":
-        analysis_params["spline_s"] = params.get("spline_s")
+        analysis_params["smooth"] = fit.get("smooth", params.get("smooth"))
 
     # Update gs in-place so all references stay valid
     gs.clear()

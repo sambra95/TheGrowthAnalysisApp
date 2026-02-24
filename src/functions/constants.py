@@ -32,5 +32,5 @@ DEFAULT_PARAMS = {
     "model_family": "phenomenological",
     "model_type": "phenom_logistic",
     "phase_boundary_method": "tangent",
-    "spline_s": 1.0,
+    "smooth": "fast",
 }

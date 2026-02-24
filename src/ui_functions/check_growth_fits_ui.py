@@ -85,6 +85,21 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _normalize_smooth(value) -> str:
+    """Normalize spline mode to fast/slow with legacy compatibility."""
+    mode = str(value).strip().lower() if value is not None else ""
+    if mode == "auto":
+        return "slow"
+    if mode in {"fast", "slow"}:
+        return mode
+    return "fast"
+
+
+def _format_smooth(value) -> str:
+    """Format spline mode for display."""
+    return _normalize_smooth(value).capitalize()
+
+
 def _format_analysis_params_table(
     gs: dict, plate_params: dict, n_total: int | None = None
 ) -> pd.DataFrame:
@@ -118,14 +133,23 @@ def _format_analysis_params_table(
             ("window_points", "Window size (points)", lambda x: str(int(x)))
         ]
     elif growth_method == "Spline":
-        method_params = [("spline_s", "Smoothing factor", lambda x: f"{float(x):.3f}")]
+        method_params = [("smooth", "Spline mode", _format_smooth)]
 
     for param_name, plabel, formatter in common_params + method_params:
-        value = (
-            analysis_params.get(param_name)
-            if analysis_params.get(param_name) is not None
-            else plate_params.get(param_name)
-        )
+        if param_name == "smooth" and growth_method == "Spline":
+            value = analysis_params.get(param_name)
+            if value is None:
+                value = gs.get("smooth")
+            if value is None:
+                value = plate_params.get(param_name)
+            if value is None:
+                value = plate_params.get("spline_s")
+        else:
+            value = (
+                analysis_params.get(param_name)
+                if analysis_params.get(param_name) is not None
+                else plate_params.get(param_name)
+            )
         if value is not None:
             try:
                 rows.append({"Parameter": plabel, "Value": formatter(value)})
@@ -175,7 +199,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     _rp_min_snr_key = f"rp_min_snr__{key}"
     _rp_min_dp_key = f"rp_min_dp__{key}"
     _rp_window_key = f"rp_window__{key}"
-    _rp_spline_s_key = f"rp_spline_s__{key}"
+    _rp_smooth_key = f"rp_smooth__{key}"
 
     def _sync_widgets_from_growth_stats():
         """Sync widget state from the current growth_stats dict."""
@@ -210,7 +234,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
         st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
-        st.session_state[_rp_spline_s_key] = float(plate_params.get("spline_s", 1.0))
+        smooth_default = plate_params.get("smooth", plate_params.get("spline_s", "fast"))
+        st.session_state[_rp_smooth_key] = _normalize_smooth(smooth_default)
 
     # Initialise re-analysis params the first time this well is shown
     if _rp_min_od_key not in st.session_state:
@@ -300,9 +325,10 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                 )
             )
         elif growth_method == "Spline":
-            params_override["spline_s"] = float(
+            params_override["smooth"] = _normalize_smooth(
                 st.session_state.get(
-                    _rp_spline_s_key, plate_params.get("spline_s", 1.0)
+                    _rp_smooth_key,
+                    plate_params.get("smooth", plate_params.get("spline_s", "fast")),
                 )
             )
 
@@ -347,7 +373,12 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             analysis_params["window_points"] = effective_p.get("window_points")
         elif growth_method == "Spline":
-            analysis_params["spline_s"] = effective_p.get("spline_s")
+            analysis_params["smooth"] = _normalize_smooth(
+                growth_stats.get(
+                    "smooth",
+                    effective_p.get("smooth", effective_p.get("spline_s", "fast")),
+                )
+            )
         growth_stats["_analysis_params"] = analysis_params
 
         _sync_widgets_from_growth_stats()
@@ -372,7 +403,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             _rp_min_snr_key,
             _rp_min_dp_key,
             _rp_window_key,
-            _rp_spline_s_key,
+            _rp_smooth_key,
         ):
             st.session_state.pop(k, None)
 
@@ -436,13 +467,16 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                     help="Number of data points in each sliding window used to estimate growth rate.",
                 )
             elif growth_method == "Spline":
-                st.number_input(
-                    "Smoothing factor",
-                    min_value=0.0,
-                    step=0.1,
-                    format="%.2f",
-                    key=_rp_spline_s_key,
-                    help="Spline smoothing factor (higher = smoother). Set 0 for interpolating spline.",
+                st.radio(
+                    "Spline fitting mode",
+                    options=["fast", "slow"],
+                    key=_rp_smooth_key,
+                    horizontal=True,
+                    format_func=lambda v: v.capitalize(),
+                    help=(
+                        "Fast uses auto-default smoothing with OD weights. "
+                        "Slow uses weighted GCV smoothing and is typically slower."
+                    ),
                 )
             btn_col, restore_col = st.columns(2)
             with btn_col:

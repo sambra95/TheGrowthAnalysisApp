@@ -54,11 +54,12 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
 
     elif growth_method == "Spline":
         # Use non-parametric spline method
+        smooth = params.get("smooth", "fast")
         fit_result = fit_non_parametric(
             t_arr,
             y_arr,
             method="spline",
-            spline_s=params.get("spline_s", None),
+            smooth=smooth,
             exp_start=lag_frac,
             exp_end=exp_frac,
             sg_window=int(params.get("sg_window", 11)),
@@ -73,7 +74,9 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
                 exp_frac=exp_frac,
                 phase_boundary_method=phase_boundary_method,
             )
-            fit["spline_s"] = params.get("spline_s", None)
+            actual_params = fit_result.get("params") or {}
+            fit["spline_s"] = actual_params.get("spline_s")
+            fit["smooth"] = actual_params.get("smooth", smooth)
         else:
             fit = bad_fit_stats()
 
