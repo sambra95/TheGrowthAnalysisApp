@@ -87,10 +87,6 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
             y_arr,
             method="sliding_window",
             window_points=int(params.get("window_points", 7)),
-            exp_start=lag_frac,
-            exp_end=exp_frac,
-            sg_window=int(params.get("sg_window", 11)),
-            sg_poly=int(params.get("sg_poly", 1)),
         )
         if fit_result is not None:
             fit = extract_stats(
