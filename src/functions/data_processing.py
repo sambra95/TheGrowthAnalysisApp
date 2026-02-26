@@ -8,6 +8,8 @@ from growthcurves.preprocessing import blank_subtraction, path_correct
 from .constants import COLS, ROWS
 from .fitting_pipeline import fit_growth_series
 
+DEFAULT_BLANK_GROUP = "Group 1"
+
 
 # ---------- I/O + shaping ----------
 def _read_excel_bytes(b, **kw):
@@ -87,6 +89,26 @@ def load_plate(
     return rec
 
 
+def _normalize_blank_group_map(group_map) -> dict[str, str]:
+    """Return normalized well->group mapping."""
+    if not isinstance(group_map, dict):
+        return {}
+    normalized = {}
+    for well, group in group_map.items():
+        well_key = str(well).strip().upper()
+        group_name = str(group).strip()
+        if well_key and group_name:
+            normalized[well_key] = group_name
+    return normalized
+
+
+def _analysis_group_for_wells(well_series: pd.Series, group_map: dict[str, str]) -> pd.Series:
+    """Return per-row analysis group for each well, defaulting to Group 1."""
+    if not group_map:
+        return pd.Series(DEFAULT_BLANK_GROUP, index=well_series.index, dtype="object")
+    return well_series.map(group_map).fillna(DEFAULT_BLANK_GROUP)
+
+
 def analyse_plate(record: dict):
     """Process a plate record into cleaned, baseline-corrected per-well data."""
     u = (record or {}).get("uploads") or {}
@@ -115,6 +137,8 @@ def analyse_plate(record: dict):
     long["od_1cm"] = path_correct(long["value"], float(p["pathlength_cm_"]))
 
     baseline = pd.DataFrame()
+    grouped_baseline = pd.DataFrame()
+    blank_group_map = _normalize_blank_group_map(p.get("blank_group_assignments", False))
     if p.get("blank", True):
         blanks_long = long.query("name == 'BLANK'").copy()
 
@@ -131,7 +155,19 @@ def analyse_plate(record: dict):
             baseline = blanks_wide.copy()
             baseline["Mean"] = blanks_wide.mean(axis=1)
 
-            # optional: put mean first (purely cosmetic)
+            blanks_long["analysis_group"] = _analysis_group_for_wells(
+                blanks_long["well"], blank_group_map
+            )
+            grouped_baseline = blanks_long.pivot_table(
+                index="Time",
+                columns="analysis_group",
+                values="od_1cm",
+                aggfunc="mean",
+            ).sort_index()
+            for group_name in grouped_baseline.columns:
+                baseline[f"{group_name} Mean"] = grouped_baseline[group_name]
+
+            # Put mean first for compatibility/readability.
             cols = ["Mean"] + [c for c in baseline.columns if c != "Mean"]
             baseline = baseline[cols]
 
@@ -139,8 +175,22 @@ def analyse_plate(record: dict):
 
     # Blank subtraction using growthcurves preprocessing function
     if not baseline.empty:
-        base = baseline["Mean"].to_dict()
-        blank_values = long["Time"].map(base).fillna(0.0)
+        if not grouped_baseline.empty:
+            long["analysis_group"] = _analysis_group_for_wells(
+                long["well"], blank_group_map
+            )
+            grouped_long = grouped_baseline.stack().rename("group_mean").reset_index()
+            long = long.merge(
+                grouped_long,
+                how="left",
+                on=["Time", "analysis_group"],
+                sort=False,
+            )
+            blank_values = long["group_mean"].fillna(0.0)
+            long = long.drop(columns=["group_mean", "analysis_group"], errors="ignore")
+        else:
+            base = baseline["Mean"].to_dict()
+            blank_values = long["Time"].map(base).fillna(0.0)
         long["baseline_corrected"] = blank_subtraction(long["od_1cm"], blank_values)
     else:
         long["baseline_corrected"] = long["od_1cm"]

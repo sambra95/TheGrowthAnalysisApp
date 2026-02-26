@@ -14,6 +14,7 @@ from src.functions.upload_functions import (
     validate_plate_map_file,
 )
 from src.styling import growth_param_table_style, plate_table_style
+from src.ui_functions.blank_grouping_ui import ui_blank_group_assigner
 from src.ui_functions.ui_components import (
     ui_method_visualization,
     ui_phase_boundary_visualization,
@@ -47,7 +48,7 @@ Click the button to load both files and match well IDs between the data and the 
 Configure how the data is processed before analysis:
 - **Time unit**: Set to match the unit in your data file (seconds, minutes, or hours)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
-- **Blank subtraction**: Subtract the mean BLANK well OD from all other wells
+- **Blank subtraction groups**: Link sample wells to BLANK wells by analysis group so subtraction uses only matched BLANK wells
 - **Time range**: Restrict analysis to a specific window of the experiment
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
@@ -95,6 +96,22 @@ def render_plate_table(grid: pd.DataFrame):
     """
 
     st.markdown(html, unsafe_allow_html=True)
+
+
+def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
+    """Return normalized sample name at a plate position."""
+    if col in plate_map.columns:
+        value = plate_map.loc[row, col]
+    elif str(col) in plate_map.columns:
+        value = plate_map.loc[row, str(col)]
+    else:
+        value = "False"
+    return str(value).strip()
+
+
+def _name_by_well_from_plate_map(plate_map: pd.DataFrame) -> dict[str, str]:
+    """Return well->sample-name mapping from a preview plate map."""
+    return {f"{row}{col}": _plate_cell_name(plate_map, row, col) for row in ROWS for col in COLS}
 
 
 def ui_upload_files(ss):
@@ -243,6 +260,18 @@ def ui_upload_files(ss):
 def ui_preprocessing_params(ss):
     """Fragment for preprocessing parameters and plate preview."""
     ready = sorted(ss.plates)
+    plate_id = None
+    params0 = DEFAULT_PARAMS
+    blank = False
+    blank_group_assignments: dict[str, str] | bool = False
+    remove_wells = False
+    clip_time_series = (0.0, 72.0)
+    time_unit = "hours"
+    pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
+    plate_map = None
+    present: set[str] = set()
+    name_by_well: dict[str, str] = {}
+    has_blank_wells = False
 
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
@@ -252,6 +281,17 @@ def ui_preprocessing_params(ss):
         with pcol:
             plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
             params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+
+            if plate_id:
+                rec = ss.plates.get(plate_id, {})
+                if rec.get("uploads"):
+                    uploads = rec["uploads"]
+                    plate_map, present = get_plate_preview_data(
+                        plate_bytes=uploads["plate_bytes"],
+                        data_bytes=uploads["data_bytes"],
+                    )
+                    name_by_well = _name_by_well_from_plate_map(plate_map)
+                    has_blank_wells = any(v == "BLANK" for v in name_by_well.values())
 
             a, b, c = st.columns(3, vertical_alignment="center")
             time_unit = a.selectbox(
@@ -269,11 +309,24 @@ def ui_preprocessing_params(ss):
                 format="%.3f",
                 help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
             )
-            blank = c.checkbox(
-                "Blank subtraction",
-                bool(params0["blank"]),
-                help="Subtract the mean of all wells labeled 'BLANK' as baseline correction",
-            )
+            with c:
+                if has_blank_wells:
+                    initial_group_map = params0.get("blank_group_assignments", False)
+                    if not isinstance(initial_group_map, dict):
+                        initial_group_map = None
+                    with st.popover("Link blanks", width="stretch"):
+                        blank_group_assignments = ui_blank_group_assigner(
+                            plate_id=plate_id,
+                            initial_group_map=initial_group_map,
+                            name_by_well=name_by_well,
+                        )
+                    blank = True
+                elif plate_id:
+                    st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
+                    blank = False
+                else:
+                    st.caption("Select a plate to configure blank subtraction groups.")
+                    blank = False
 
             a, b = st.columns(2)
             clip_time_series = (
@@ -326,30 +379,20 @@ def ui_preprocessing_params(ss):
 
         with acol:
             # Preview grid in Step 4
-            if plate_id:
-                rec = ss.plates.get(plate_id, {})
-                if rec.get("uploads"):
-                    # Use lightweight preview function instead of full analysis
-                    uploads = rec["uploads"]
-                    plate_map, present = get_plate_preview_data(
-                        plate_bytes=uploads["plate_bytes"],
-                        data_bytes=uploads["data_bytes"],
-                    )
+            if plate_id and plate_map is not None:
+                grid = build_symbol_grid(
+                    plate_map=plate_map,
+                    present=present,
+                    remove_wells=remove_wells,
+                    blank=blank,
+                )
 
-                    grid = build_symbol_grid(
-                        plate_map=plate_map,
-                        present=present,
-                        remove_wells=remove_wells,
-                        blank=blank,
-                    )
-
-                    st.subheader(plate_id)
-                    st.caption(
-                        "**Included:** 🟩 sample · 🟦 blank  |  "
-                        "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
-                    )
-                    render_plate_table(grid)
-
+                st.subheader(plate_id)
+                st.caption(
+                    "**Included:** 🟩 sample · 🟦 blank  |  "
+                    "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
+                )
+                render_plate_table(grid)
             else:
                 # Show blank plate (all gray) when no files uploaded
                 blank_grid = pd.DataFrame(GRAY, index=ROWS, columns=COLS)
@@ -367,6 +410,7 @@ def ui_preprocessing_params(ss):
         ss["step3_params"]["time_unit"] = time_unit
         ss["step3_params"]["pl_cm"] = pl_cm
         ss["step3_params"]["blank"] = blank
+        ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
         ss["step3_params"]["clip_time_series"] = clip_time_series
         ss["step3_params"]["remove_wells"] = remove_wells
         ss["step3_params"]["params0"] = params0
@@ -679,6 +723,7 @@ def ui_analysis_params(ss):
     time_unit = step3_params.get("time_unit", "hours")
     pl_cm = step3_params.get("pl_cm", 0.42)
     blank = step3_params.get("blank", True)
+    blank_group_assignments = step3_params.get("blank_group_assignments", False)
     clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
     remove_wells = step3_params.get("remove_wells", False)
 
@@ -745,6 +790,7 @@ def ui_analysis_params(ss):
         clip_time_series=clip_time_series,
         remove_wells=remove_wells,
         blank=bool(blank),
+        blank_group_assignments=blank_group_assignments if blank else False,
         window_points=int(window_points),
         lag_cutoff=float(lag_cutoff),
         exp_cutoff=float(exp_cutoff),
