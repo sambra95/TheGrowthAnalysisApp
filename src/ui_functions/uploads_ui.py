@@ -392,7 +392,7 @@ def _get_model_display_name(model_code: str) -> str:
 
 def _ui_model_selection(params0: dict):
     """Render model family and growth method selection UI."""
-    stored_method = params0.get("growth_method", "Sliding Window")
+    stored_method = params0.get("growth_method", "Spline")
     stored_model_family = params0.get("model_family", "mechanistic")
     stored_model_type = params0.get("model_type", "mech_logistic")
 

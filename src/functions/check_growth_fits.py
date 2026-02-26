@@ -238,7 +238,7 @@ def update_growth_stats_from_lasso(
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
 
     # Build the params record that was actually used
-    growth_method = params.get("growth_method", "Sliding Window")
+    growth_method = params.get("growth_method", "Spline")
     analysis_params = {
         "min_od_increase": params.get("min_od_increase"),
         "min_growth_rate": params.get("min_growth_rate"),

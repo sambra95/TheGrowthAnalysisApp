@@ -25,7 +25,7 @@ def fit_growth_series(t_arr, y_arr, params: dict) -> tuple[dict, dict | None]:
     Returns:
         (fit_stats_dict, fit_result_dict | None)
     """
-    growth_method = params.get("growth_method", "Sliding Window")
+    growth_method = params.get("growth_method", "Spline")
     lag_frac = float(params.get("lag_cutoff", 0.15))
     exp_frac = float(params.get("exp_cutoff", 0.15))
     phase_boundary_method = str(params.get("phase_boundary_method", "tangent")).lower()

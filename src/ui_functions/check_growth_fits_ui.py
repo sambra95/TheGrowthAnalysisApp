@@ -112,7 +112,7 @@ def _format_analysis_params_table(
     # Use stored custom params if present, otherwise fall back to plate defaults
     analysis_params = gs.get("_analysis_params") or {}
     used_fit_times = gs.get("_used_fit_times")
-    growth_method = plate_params.get("growth_method", "Sliding Window")
+    growth_method = plate_params.get("growth_method", "Spline")
 
     n_selected = len(used_fit_times) if used_fit_times else n_total
     total_str = str(n_total) if n_total is not None else "?"
@@ -187,7 +187,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
 
     growth_stats = (plate.get("growth_stats") or {}).setdefault(well, {})
     plate_params = (plate or {}).get("params") or {}
-    growth_method = plate_params.get("growth_method", "Sliding Window")
+    growth_method = plate_params.get("growth_method", "Spline")
 
     ss_key = f"phase__{key}"
     maxod_key = f"maxod__{key}"
