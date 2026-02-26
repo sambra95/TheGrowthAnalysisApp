@@ -1,5 +1,7 @@
 """Plotting utilities for growth curves, stats, and window fits."""
 
+import re
+
 import growthcurves.plot as gc_plot
 import numpy as np
 import pandas as pd
@@ -112,6 +114,121 @@ def plot_baseline(baseline, name_by_well: dict | None = None, time_unit: str = "
         )
     fig.update_xaxes(title=get_time_label(time_unit))
     fig.update_yaxes(showgrid=False)
+
+    return fig
+
+
+def _group_sort_key(name: str) -> tuple[int, str]:
+    """Sort group labels like Group 1, Group 2 numerically."""
+    match = re.search(r"(\d+)", str(name))
+    if match:
+        return int(match.group(1)), str(name)
+    return 10**9, str(name)
+
+
+def plot_baseline_by_group(
+    baseline: pd.DataFrame,
+    *,
+    blank_group_map: dict[str, str] | None = None,
+    time_unit: str = "hours",
+):
+    """Plot grouped blank baselines: per-group mean lines + per-well scatter.
+
+    Args:
+        baseline: DataFrame indexed by Time. Contains blank well columns and optional
+            per-group mean columns named "{Group Name} Mean".
+        blank_group_map: Optional mapping of blank well ID -> group name.
+        time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
+    """
+    fig = go.Figure()
+    fig.update_xaxes(title=get_time_label(time_unit))
+    fig.update_yaxes(showgrid=False)
+
+    if baseline is None or baseline.empty:
+        return fig
+
+    blank_group_map = {
+        str(well).strip().upper(): str(group).strip()
+        for well, group in (blank_group_map or {}).items()
+        if str(well).strip() and str(group).strip()
+    }
+
+    group_mean_cols = [
+        c for c in baseline.columns if str(c).endswith(" Mean") and str(c) != "Mean"
+    ]
+    mean_col_to_group = {
+        c: str(c)[: -len(" Mean")].strip() for c in group_mean_cols
+    }
+    group_names = sorted(set(mean_col_to_group.values()), key=_group_sort_key)
+
+    excluded_cols = {"Mean"} | set(group_mean_cols)
+    well_cols = [c for c in baseline.columns if c not in excluded_cols]
+
+    # Fallback for legacy analyses with no stored per-group means.
+    if not group_names:
+        inferred_groups = sorted(
+            {blank_group_map.get(str(w).upper(), "Group 1") for w in well_cols},
+            key=_group_sort_key,
+        )
+        if inferred_groups:
+            group_names = inferred_groups
+            for group in inferred_groups:
+                group_wells = [
+                    w
+                    for w in well_cols
+                    if blank_group_map.get(str(w).upper(), "Group 1") == group
+                ]
+                if group_wells:
+                    mean_col_to_group[group] = group
+
+    palette = px.colors.qualitative.Plotly
+    group_colors = {g: palette[i % len(palette)] for i, g in enumerate(group_names)}
+    time_display = convert_hours_to_unit(baseline.index.to_numpy(), time_unit)
+
+    for group in group_names:
+        mean_col = None
+        for col, col_group in mean_col_to_group.items():
+            if col_group == group and col in baseline.columns:
+                mean_col = col
+                break
+
+        if mean_col is not None:
+            group_mean = baseline[mean_col]
+        else:
+            group_wells = [
+                w
+                for w in well_cols
+                if blank_group_map.get(str(w).upper(), "Group 1") == group
+            ]
+            if not group_wells:
+                continue
+            group_mean = baseline[group_wells].mean(axis=1)
+
+        color = group_colors[group]
+        fig.add_scatter(
+            x=time_display,
+            y=group_mean,
+            mode="lines",
+            name=f"{group} Mean",
+            legendgroup=group,
+            line=dict(color=color, width=3),
+        )
+
+        group_wells = [
+            w
+            for w in well_cols
+            if blank_group_map.get(str(w).upper(), "Group 1") == group
+        ]
+        for well in group_wells:
+            fig.add_scatter(
+                x=time_display,
+                y=baseline[well],
+                mode="markers",
+                name=well,
+                legendgroup=group,
+                marker=dict(color=color, size=7),
+                showlegend=False,
+            )
 
     return fig
 

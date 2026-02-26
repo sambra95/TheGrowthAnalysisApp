@@ -3,7 +3,7 @@
 import streamlit as st
 
 from src.functions.plotting_functions import (
-    plot_baseline,
+    plot_baseline_by_group,
     plot_replicates_by_sample,
     plot_rmse_heatmap,
     plot_window_plate,
@@ -49,11 +49,17 @@ def ui_window_fits_plate_overview(plates: dict):
     """Render baseline and plate-window fits for a selected plate."""
     plate_id = st.selectbox("Plate", sorted(plates), key="winfit_plate_overview")
     st.subheader("Plate Blanks")
-    st.caption("Baseline values from blank wells. Hover over points for details.")
+    st.caption(
+        "Group-specific blank baselines. Lines show per-group means; points show each blank well."
+    )
     plate = plates[plate_id]
+    blank_group_map = (plate.get("params") or {}).get("blank_group_assignments", {})
 
     st.plotly_chart(
-        plot_baseline(plate["baseline"], name_by_well=plate.get("name", {}))
+        plot_baseline_by_group(
+            plate["baseline"],
+            blank_group_map=blank_group_map,
+        )
     )
 
     # Header with Options popover
