@@ -11,6 +11,7 @@ def _build_growth_stats_long_df(
     plates: dict, sel_ids: list[str]
 ) -> tuple[pd.DataFrame, list[str]]:
     """Build a long DataFrame for growth stats plots and the sample order."""
+    columns = ["plate", "well", "sample_name", "metric", "value"]
     sample_order: list[str] = []
     for sid in sel_ids:
         _, nm = sid.split("||", 1)
@@ -62,7 +63,7 @@ def _build_growth_stats_long_df(
                     }
                 )
 
-    return pd.DataFrame(rows), sample_order
+    return pd.DataFrame(rows, columns=columns), sample_order
 
 
 def _max_time_hours(plates: dict, default: float = 72.0) -> float:

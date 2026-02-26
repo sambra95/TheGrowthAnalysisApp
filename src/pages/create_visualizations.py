@@ -61,50 +61,68 @@ max_t = _max_time_hours(plates)
 col1, col2 = st.columns([1, 1])
 with col1:
     stats = ui_growth_stats_controls_container(has_split, sel_opt)
+    apply_stats = st.button(
+        "Generate growth stats plot",
+        type="primary",
+        width="stretch",
+    )
 with col2:
     curves = ui_growth_curves_controls_container(max_t, sel_sample_names)
+    b1, b2 = st.columns(2)
+    apply_mean = b1.button(
+        "Generate mean growth plot",
+        type="primary",
+        width="stretch",
+    )
+    apply_reps = b2.button(
+        "Generate replicates plot",
+        type="primary",
+        width="stretch",
+    )
 
 x_col = stats["x_col"]
 legend_col = stats["legend_col"]
 x_ordered = stats["x_ordered"]
 legend_ordered = stats["legend_ordered"]
-apply_stats = stats["apply_stats"]
 
 curves_t0 = curves["curves_t0"]
 curves_t1 = curves["curves_t1"]
 curves_ordered = curves["curves_ordered"]
-apply_mean = curves["apply_mean"]
-apply_reps = curves["apply_reps"]
 
 # -----------------------------
 # Plots
 # -----------------------------
 if apply_stats:
     long_df, _ = _build_growth_stats_long_df(plates, sel_ids)
+    if long_df.empty:
+        st.info(
+            "No growth statistics found for the selected samples. "
+            "Run analysis first or select samples with analyzed wells."
+        )
+    else:
+        # Display each metric as a separate downloadable plot.
+        metrics = [
+            "mu_max",
+            "intrinsic_growth_rate",
+            "doubling_time",
+            "max_od",
+            "exp_phase_start",
+            "exp_phase_end",
+            "time_at_umax",
+            "od_at_umax",
+        ]
 
-    # Display each metric as a separate downloadable plot.
-    metrics = [
-        "mu_max",
-        "intrinsic_growth_rate",
-        "doubling_time",
-        "max_od",
-        "exp_phase_start",
-        "exp_phase_end",
-        "time_at_umax",
-        "od_at_umax",
-    ]
-
-    for metric in metrics:
-        metric_df = long_df[long_df["metric"] == metric].copy()
-        if not metric_df.empty:
-            fig = plot_single_growth_stat(
-                metric_df,
-                x_col=x_col,
-                legend_col=legend_col,
-                x_order=x_ordered,
-                legend_order=legend_ordered,
-            )
-            st.plotly_chart(fig, width="stretch")
+        for metric in metrics:
+            metric_df = long_df[long_df["metric"] == metric].copy()
+            if not metric_df.empty:
+                fig = plot_single_growth_stat(
+                    metric_df,
+                    x_col=x_col,
+                    legend_col=legend_col,
+                    x_order=x_ordered,
+                    legend_order=legend_ordered,
+                )
+                st.plotly_chart(fig, width="stretch")
 
 # Build the shared curves DF only if needed
 if apply_mean or apply_reps:

@@ -232,12 +232,6 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
                     key=f"growth_stats_leg_sortable_{st.session_state[leg_order_ver_key]}",
                 )
 
-        apply_stats = st.button(
-            "Generate growth stats plot",
-            type="primary",
-            width="stretch",
-        )
-
     x_ordered = [v for v in st.session_state[x_order_key] if v in x_vals]
     legend_ordered = (
         [v for v in st.session_state[leg_order_key] if v in legend_vals]
@@ -250,7 +244,6 @@ def ui_growth_stats_controls_container(has_split: bool, sel_opt: pd.DataFrame) -
         "legend_col": legend_col,
         "x_ordered": x_ordered,
         "legend_ordered": legend_ordered,
-        "apply_stats": apply_stats,
     }
 
 
@@ -301,18 +294,6 @@ def ui_growth_curves_controls_container(
                 key=f"growth_curves_sortable_{st.session_state[curves_order_ver_key]}",
             )
 
-        b1, b2 = st.columns(2)
-        apply_mean = b1.button(
-            "Generate mean growth plot",
-            type="primary",
-            width="stretch",
-        )
-        apply_reps = b2.button(
-            "Generate replicates plot",
-            type="primary",
-            width="stretch",
-        )
-
     curves_ordered = [
         v for v in st.session_state[curves_order_key] if v in sel_sample_names
     ]
@@ -321,6 +302,4 @@ def ui_growth_curves_controls_container(
         "curves_t0": curves_t0,
         "curves_t1": curves_t1,
         "curves_ordered": curves_ordered,
-        "apply_mean": apply_mean,
-        "apply_reps": apply_reps,
     }
