@@ -405,7 +405,10 @@ def ui_preprocessing_params(ss):
                 plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
         with plate_name_col:
             if plate_id:
-                st.subheader(plate_id)
+                st.markdown(
+                    f"<h3 style='text-align:center; margin:0; font-size:2rem;'>{plate_id}</h3>",
+                    unsafe_allow_html=True,
+                )
             else:
                 st.write("")
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
