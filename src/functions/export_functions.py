@@ -106,6 +106,9 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
         "clip_time_series": "Time series clip (hours)",
         "remove_wells": "Excluded wells",
         "blank": "Blank subtraction",
+        "outlier_detection": "Outlier detection (IQR)",
+        "outlier_window_size": "Outlier window size (points)",
+        "outlier_threshold": "Outlier threshold (IQR factor)",
         "growth_method": "Analysis method",
         "model_family": "Parametric model type",
         "model_type": "Growth model",
@@ -131,6 +134,8 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
                 else:
                     value = ", ".join(value)
             elif key == "blank":
+                value = "Yes" if value else "No"
+            elif key == "outlier_detection":
                 value = "Yes" if value else "No"
 
             data["Parameter"].append(label)

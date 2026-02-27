@@ -58,6 +58,7 @@ Configure how the data is processed before analysis:
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
 - **Blank subtraction groups**: Link sample wells to BLANK wells by analysis group so subtraction uses only matched BLANK wells
 - **Time range**: Restrict analysis to a specific window of the experiment
+- **Outlier detection**: Optionally detect/remove outliers with a sliding IQR window (window size + threshold)
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
 The plate preview updates live — colored wells are included, and gray wells are not included. Hover any well for details.
@@ -83,6 +84,19 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 def _strip_html_tags(text: str) -> str:
     """Strip simple HTML tags from text."""
     return re.sub(r"<[^>]+>", "", str(text))
+
+
+def _coerce_outlier_window_size(value, default: int = 5) -> int:
+    """Return a valid odd outlier window size (>=3)."""
+    try:
+        window = int(value)
+    except (TypeError, ValueError):
+        window = default
+    if window < 3:
+        window = 3
+    if window % 2 == 0:
+        window += 1
+    return window
 
 
 def _build_plate_preview_cells(
@@ -389,6 +403,11 @@ def ui_preprocessing_params(ss):
     clip_time_series = (0.0, 72.0)
     time_unit = "hours"
     pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
+    outlier_detection = bool(DEFAULT_PARAMS.get("outlier_detection", False))
+    outlier_window_size = _coerce_outlier_window_size(
+        DEFAULT_PARAMS.get("outlier_window_size", 5)
+    )
+    outlier_threshold = float(DEFAULT_PARAMS.get("outlier_threshold", 1.5))
     plate_map = None
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
@@ -410,6 +429,14 @@ def ui_preprocessing_params(ss):
             else:
                 st.write("")
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+        outlier_detection = bool(params0.get("outlier_detection", False))
+        outlier_window_size = _coerce_outlier_window_size(
+            params0.get("outlier_window_size", 5)
+        )
+        try:
+            outlier_threshold = float(params0.get("outlier_threshold", 1.5))
+        except (TypeError, ValueError):
+            outlier_threshold = 1.5
 
         if plate_id:
             rec = ss.plates.get(plate_id, {})
@@ -490,6 +517,49 @@ def ui_preprocessing_params(ss):
                 grid_aspect_ratio=plate_grid_aspect_ratio,
             )
 
+            outlier_controls_disabled = not outlier_detection
+            outlier_toggle_col, outlier_window_col, outlier_threshold_col = st.columns(
+                [1.2, 1.0, 1.0], vertical_alignment="bottom"
+            )
+            outlier_detection = outlier_toggle_col.checkbox(
+                "Remove ouliers",
+                value=outlier_detection,
+                help=(
+                    "Calls growthcurves.preprocessing.out_of_iqr after path correction "
+                    "and blank subtraction, before model fitting."
+                ),
+            )
+            outlier_controls_disabled = not outlier_detection
+            outlier_window_size = int(
+                outlier_window_col.number_input(
+                    "Outlier window size (points)",
+                    min_value=3,
+                    max_value=999,
+                    value=outlier_window_size,
+                    step=2,
+                    disabled=outlier_controls_disabled,
+                    help=(
+                        "Odd-numbered sliding window used for IQR outlier detection "
+                        "(e.g., 5, 7, 9)."
+                    ),
+                )
+            )
+            outlier_window_size = _coerce_outlier_window_size(outlier_window_size)
+            outlier_threshold = float(
+                outlier_threshold_col.number_input(
+                    "Outlier threshold (IQR factor)",
+                    min_value=0.1,
+                    value=outlier_threshold,
+                    step=0.1,
+                    format="%.2f",
+                    disabled=outlier_controls_disabled,
+                    help=(
+                        "IQR multiplier used as outlier threshold. Lower values remove "
+                        "more points; default is 1.5."
+                    ),
+                )
+            )
+
             # Get default excluded wells from params0
             default_excluded = params0.get("remove_wells", [])
             if default_excluded is False or not default_excluded:
@@ -546,6 +616,9 @@ def ui_preprocessing_params(ss):
         ss["step3_params"]["pl_cm"] = pl_cm
         ss["step3_params"]["blank"] = blank
         ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
+        ss["step3_params"]["outlier_detection"] = bool(outlier_detection)
+        ss["step3_params"]["outlier_window_size"] = int(outlier_window_size)
+        ss["step3_params"]["outlier_threshold"] = float(outlier_threshold)
         ss["step3_params"]["clip_time_series"] = clip_time_series
         ss["step3_params"]["remove_wells"] = remove_wells
         ss["step3_params"]["params0"] = params0
@@ -859,6 +932,18 @@ def ui_analysis_params(ss):
     pl_cm = step3_params.get("pl_cm", 0.42)
     blank = step3_params.get("blank", True)
     blank_group_assignments = step3_params.get("blank_group_assignments", False)
+    outlier_detection = bool(
+        step3_params.get("outlier_detection", params0.get("outlier_detection", False))
+    )
+    outlier_window_size = _coerce_outlier_window_size(
+        step3_params.get("outlier_window_size", params0.get("outlier_window_size", 5))
+    )
+    try:
+        outlier_threshold = float(
+            step3_params.get("outlier_threshold", params0.get("outlier_threshold", 1.5))
+        )
+    except (TypeError, ValueError):
+        outlier_threshold = 1.5
     clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
     remove_wells = step3_params.get("remove_wells", False)
 
@@ -926,6 +1011,9 @@ def ui_analysis_params(ss):
         remove_wells=remove_wells,
         blank=bool(blank),
         blank_group_assignments=blank_group_assignments if blank else False,
+        outlier_detection=bool(outlier_detection),
+        outlier_window_size=int(outlier_window_size),
+        outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
         lag_cutoff=float(lag_cutoff),
         exp_cutoff=float(exp_cutoff),
