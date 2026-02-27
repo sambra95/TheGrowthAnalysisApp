@@ -94,6 +94,7 @@ def _assignments_from_map(group_map: dict[str, str] | None) -> list[list[str]]:
     return grid
 
 
+
 def assignments_to_map(assignments: list[list[str]]) -> dict[str, str]:
     return {
         f"{row}{col}": str(assignments[y][x])
@@ -263,6 +264,7 @@ def _render_fallback_assigner(prefix: str, grid_height: int = 350):
     st.dataframe(pd.DataFrame(ss[ak], index=ROWS, columns=COLS), width="stretch", height=grid_height)
 
 
+
 def ui_blank_group_assigner(
     *,
     plate_id: str,
@@ -275,7 +277,7 @@ def ui_blank_group_assigner(
     show_controls: bool = True,
     controls_disabled: bool = False,
     show_grid: bool = True,
-    grid_height: int = 460,
+    grid_height: int = 440,
     grid_aspect_ratio: float = 1.0,
 ) -> dict[str, str]:
     """Render the analysis-group assignment UI and return well->group mapping."""
@@ -328,11 +330,11 @@ def ui_blank_group_assigner(
             )
 
         add_clicked = add_col.button(
-            "Add group", type="primary", width="stretch",
+            "Add", type="primary", width="stretch",
             key=_state_key(prefix, "add_group"), disabled=controls_disabled,
         )
         remove_clicked = remove_col.button(
-            "Remove group", type="primary", width="stretch",
+            "Remove", type="primary", width="stretch",
             key=_state_key(prefix, "remove_group"),
             disabled=controls_disabled or ss[actk] == DEFAULT_GROUP,
         )
@@ -392,13 +394,11 @@ def ui_blank_group_assigner(
             else:
                 first_corner = ss[first_k]
                 value = DEFAULT_GROUP if ss[clear_k] else ss[actk]
-
                 if current_click is None:
                     ss[ak] = fill_rect(ss[ak], first_corner, first_corner, value)
                     _reset_pending_selection(prefix)
                     ss[cons_k] = None
                     _bump_grid_nonce(prefix)
-                    st.rerun()
                 else:
                     click_key = (current_click["x"], current_click["y"])
                     if click_key not in ((first_corner["x"], first_corner["y"]), ss[cons_k]):
@@ -406,6 +406,5 @@ def ui_blank_group_assigner(
                         _reset_pending_selection(prefix)
                         ss[cons_k] = None
                         _bump_grid_nonce(prefix)
-                        st.rerun()
 
     return assignments_to_map(ss[ak])

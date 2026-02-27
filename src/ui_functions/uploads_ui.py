@@ -183,7 +183,7 @@ def render_plate_table(
     remove_wells: list[str] | bool = False,
     blank: bool = True,
     blank_group_assignments: dict[str, str] | bool = False,
-    grid_height: int = 460,
+    grid_height: int = 440,
     grid_aspect_ratio: float = 1.0,
 ):
     """Render plate preview with the blank-linker style table."""
@@ -422,7 +422,7 @@ def ui_preprocessing_params(ss):
                 has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
-        plate_grid_height = 460
+        plate_grid_height = 440
         plate_grid_aspect_ratio = 0.65
         initial_group_map: dict[str, str] | None = None
 
