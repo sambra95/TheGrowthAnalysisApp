@@ -410,6 +410,7 @@ def ui_preprocessing_params(ss):
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
     has_blank_wells = False
+    blank_well_count = 0
 
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
@@ -433,7 +434,8 @@ def ui_preprocessing_params(ss):
                     data_bytes=uploads["data_bytes"],
                 )
                 name_by_well = _name_by_well_from_plate_map(plate_map)
-                has_blank_wells = any(v == "BLANK" for v in name_by_well.values())
+                blank_well_count = sum(1 for v in name_by_well.values() if v.upper() == "BLANK")
+                has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
         plate_grid_height = 460
@@ -487,10 +489,20 @@ def ui_preprocessing_params(ss):
             if not isinstance(initial_group_map, dict):
                 initial_group_map = None
 
-            if plate_id and not has_blank_wells:
-                st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
-            elif not plate_id:
-                st.caption("Select a plate to configure blank subtraction groups.")
+            ui_blank_group_assigner(
+                plate_id=plate_id or "placeholder",
+                initial_group_map=initial_group_map,
+                name_by_well=name_by_well,
+                present_wells=present,
+                remove_wells=remove_wells,
+                blank_enabled=blank,
+                show_caption=False,
+                show_controls=True,
+                controls_disabled=blank_well_count <= 1,
+                show_grid=False,
+                grid_height=plate_grid_height,
+                grid_aspect_ratio=plate_grid_aspect_ratio,
+            )
 
             # Get default excluded wells from params0
             default_excluded = params0.get("remove_wells", [])
@@ -518,7 +530,7 @@ def ui_preprocessing_params(ss):
                     st.rerun()
 
         with plate_col:
-            if has_blank_wells:
+            if plate_id and plate_map is not None:
                 blank_group_assignments = ui_blank_group_assigner(
                     plate_id=plate_id,
                     initial_group_map=initial_group_map,
@@ -527,32 +539,18 @@ def ui_preprocessing_params(ss):
                     remove_wells=remove_wells,
                     blank_enabled=blank,
                     show_caption=False,
-                    show_controls=True,
+                    show_controls=False,
                     show_grid=True,
                     grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
-
-            # Preview grid in Step 4
-            if not has_blank_wells:
-                if plate_id and plate_map is not None:
-                    render_plate_table(
-                        key=plate_id,
-                        plate_map=plate_map,
-                        present=present,
-                        remove_wells=remove_wells,
-                        blank=blank,
-                        blank_group_assignments=blank_group_assignments,
-                        grid_height=plate_grid_height,
-                        grid_aspect_ratio=plate_grid_aspect_ratio,
-                    )
-                else:
-                    render_plate_table(
-                        key="empty",
-                        plate_map=None,
-                        grid_height=plate_grid_height,
-                        grid_aspect_ratio=plate_grid_aspect_ratio,
-                    )
+            else:
+                render_plate_table(
+                    key="empty",
+                    plate_map=None,
+                    grid_height=plate_grid_height,
+                    grid_aspect_ratio=plate_grid_aspect_ratio,
+                )
 
     # Store selected values in session state for access by other fragments
     if plate_id:

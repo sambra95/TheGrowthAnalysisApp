@@ -375,6 +375,7 @@ def ui_blank_group_assigner(
     blank_enabled: bool = True,
     show_caption: bool = True,
     show_controls: bool = True,
+    controls_disabled: bool = False,
     show_grid: bool = True,
     grid_height: int = 460,
     grid_aspect_ratio: float = 1.0,
@@ -413,6 +414,7 @@ def ui_blank_group_assigner(
                 "Blanks will be subtracted from samples in the same colour group"
             ),
             key=_state_key(prefix, "assigned_group_select"),
+            disabled=controls_disabled,
         )
         if selected_group != ss[active_key]:
             ss[active_key] = selected_group
@@ -435,13 +437,14 @@ def ui_blank_group_assigner(
             type="primary",
             width="stretch",
             key=_state_key(prefix, "add_group"),
+            disabled=controls_disabled,
         )
         remove_clicked = remove_col.button(
             "Remove group",
             type="primary",
             width="stretch",
             key=_state_key(prefix, "remove_group"),
-            disabled=ss[active_key] == DEFAULT_GROUP,
+            disabled=controls_disabled or ss[active_key] == DEFAULT_GROUP,
         )
 
         if add_clicked:
