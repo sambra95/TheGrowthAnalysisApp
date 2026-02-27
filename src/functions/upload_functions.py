@@ -74,7 +74,7 @@ def validate_data_file(file_bytes):
         tuple: (is_valid: bool, error_message: str or None)
     """
     try:
-        df = pd.read_excel(file_bytes)
+        df = pd.read_excel(BytesIO(file_bytes))
     except Exception as e:
         return False, f"Failed to read Excel file: {str(e)}"
 
@@ -121,7 +121,7 @@ def validate_plate_map_file(file_bytes):
         tuple: (is_valid: bool, error_message: str or None)
     """
     try:
-        df = pd.read_excel(file_bytes)
+        df = pd.read_excel(BytesIO(file_bytes))
     except Exception as e:
         return False, f"Failed to read Excel file: {str(e)}"
 
