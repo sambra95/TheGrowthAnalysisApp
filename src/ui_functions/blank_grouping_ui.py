@@ -315,8 +315,10 @@ def ui_blank_group_assigner(
         with color_col:
             st.markdown(
                 "<div style='display:flex;justify-content:center;align-items:center;'>"
-                "<span style='display:inline-block;width:35px;height:35px;"
-                f"background:{ss[ck][ss[actk]]};border:1px solid #999;'></span>"
+                "<button type='button' onclick='return false;' "
+                "style='width:35px;height:35px;"
+                f"background:{ss[ck][ss[actk]]};border:1px solid #999;"
+                "border-radius:4px;cursor:default;'></button>"
                 "</div>",
                 unsafe_allow_html=True,
             )
