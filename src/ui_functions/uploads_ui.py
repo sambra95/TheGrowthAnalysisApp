@@ -19,6 +19,7 @@ from src.styling import growth_param_table_style
 from src.ui_functions.blank_grouping_ui import (
     DEFAULT_GROUP,
     color_for_group,
+    darken_hex_color,
     st_selectable_grid,
     ui_blank_group_assigner,
 )
@@ -77,23 +78,6 @@ Click the button to run the analysis. Once complete, navigate to the other pages
 
     st.divider()
 
-
-def _darken_hex_color(color: str, factor: float = 0.88) -> str:
-    """Return a darker shade of a #RRGGBB color."""
-    color = str(color).strip()
-    if len(color) != 7 or not color.startswith("#"):
-        return color or "#ffffff"
-    try:
-        red = int(color[1:3], 16)
-        green = int(color[3:5], 16)
-        blue = int(color[5:7], 16)
-    except ValueError:
-        return color or "#ffffff"
-
-    red = int(max(0, min(255, red * factor)))
-    green = int(max(0, min(255, green * factor)))
-    blue = int(max(0, min(255, blue * factor)))
-    return f"#{red:02x}{green:02x}{blue:02x}"
 
 
 def _strip_html_tags(text: str) -> str:
@@ -166,7 +150,7 @@ def _build_plate_preview_cells(
                 base_color = color_for_group(group_name)
                 cell_data: dict[str, Any] = {
                     "label": cell_label,
-                    "cell_color": _darken_hex_color(base_color) if is_blank_well else base_color,
+                    "cell_color": darken_hex_color(base_color) if is_blank_well else base_color,
                     "tooltip": (
                         f"{well}{sample_suffix}"
                         f"{' · BLANK well' if is_blank_well else ''} · {group_name}"
@@ -176,7 +160,7 @@ def _build_plate_preview_cells(
                     cell_data["html"] = True
                 if is_blank_well:
                     cell_data["cell_border_width"] = 2
-                    cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+                    cell_data["cell_border_color"] = darken_hex_color(base_color, factor=0.72)
                 rendered_row.append(cell_data)
             else:
                 rendered_row.append(
