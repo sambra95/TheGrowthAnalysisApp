@@ -8,3 +8,4 @@ xlrd==2.0.2
 growthcurves
 streamlit_sortables==0.3.1
 streamlit-aggrid==1.2.1
+st_selectable_grid
