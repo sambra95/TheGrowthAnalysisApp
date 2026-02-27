@@ -400,9 +400,7 @@ def ui_preprocessing_params(ss):
 
         selector_col, plate_name_col = st.columns([1.0, 1.35], vertical_alignment="bottom")
         with selector_col:
-            plate_selector_col, _ = st.columns(2, vertical_alignment="bottom")
-            with plate_selector_col:
-                plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+            plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
         with plate_name_col:
             if plate_id:
                 st.markdown(
