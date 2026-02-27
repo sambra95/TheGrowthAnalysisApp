@@ -299,7 +299,7 @@ def ui_blank_group_assigner(
             st.caption(help_caption)
 
         group_col, color_col, add_col, remove_col = st.columns(
-            [2.5, 0.75, 1.5, 1.5], vertical_alignment="center"
+            [2.5, 0.75, 1.5, 1.5], vertical_alignment="bottom"
         )
         selected_group = group_col.selectbox(
             "Blank group",
@@ -314,12 +314,10 @@ def ui_blank_group_assigner(
 
         with color_col:
             st.markdown(
-                "<div style='display:flex;justify-content:center;align-items:center;'>"
                 "<button type='button' onclick='return false;' "
-                "style='width:35px;height:35px;"
+                "style='display:block;width:35px;height:35px;margin:0 auto;"
                 f"background:{ss[ck][ss[actk]]};border:1px solid #999;"
-                "border-radius:4px;cursor:default;'></button>"
-                "</div>",
+                "border-radius:4px;cursor:default;'></button>",
                 unsafe_allow_html=True,
             )
 
