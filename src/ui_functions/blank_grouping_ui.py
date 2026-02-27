@@ -208,6 +208,7 @@ def _reset_pending_selection(prefix: str):
     ss[_state_key(prefix, "first_corner")] = None
     ss[_state_key(prefix, "awaiting_second")] = False
     ss[_state_key(prefix, "pending_clear_mode")] = None
+    ss[_state_key(prefix, "awaiting_sync_retry")] = False
 
 
 def _bump_grid_nonce(prefix: str):
@@ -236,8 +237,8 @@ def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
 
     ss.setdefault(_state_key(prefix, "first_corner"), None)
     ss.setdefault(_state_key(prefix, "awaiting_second"), False)
-    ss.setdefault(_state_key(prefix, "consumed_click"), None)
     ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
+    ss.setdefault(_state_key(prefix, "awaiting_sync_retry"), False)
     ss.setdefault(_state_key(prefix, "grid_nonce"), 0)
 
 
@@ -291,8 +292,8 @@ def ui_blank_group_assigner(
     actk = _state_key(prefix, "active_group")
     await_k = _state_key(prefix, "awaiting_second")
     first_k = _state_key(prefix, "first_corner")
-    cons_k = _state_key(prefix, "consumed_click")
     clear_k = _state_key(prefix, "pending_clear_mode")
+    sync_retry_k = _state_key(prefix, "awaiting_sync_retry")
     nonce_k = _state_key(prefix, "grid_nonce")
 
     if show_caption:
@@ -345,7 +346,6 @@ def ui_blank_group_assigner(
             ss[gk].append(new_group)
             ss[ck][new_group] = color_for_group(new_group)
             ss[actk] = new_group
-            ss[cons_k] = None
             st.rerun()
 
         if remove_clicked:
@@ -355,7 +355,6 @@ def ui_blank_group_assigner(
             ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
             ss[ck].pop(old, None)
             ss[actk] = DEFAULT_GROUP
-            ss[cons_k] = None
             st.rerun()
 
     if show_grid:
@@ -384,27 +383,32 @@ def ui_blank_group_assigner(
 
             if not ss[await_k]:
                 if current_click:
-                    click_key = (current_click["x"], current_click["y"])
-                    if click_key != ss[cons_k]:
-                        x, y = click_key
-                        ss[clear_k] = ss[ak][y][x] == ss[actk]
-                        ss[first_k] = current_click
-                        ss[await_k] = True
-                        ss[cons_k] = click_key
+                    x, y = current_click["x"], current_click["y"]
+                    ss[clear_k] = ss[ak][y][x] == ss[actk]
+                    ss[first_k] = current_click
+                    ss[await_k] = True
+                    ss[sync_retry_k] = False
             else:
                 first_corner = ss[first_k]
                 value = DEFAULT_GROUP if ss[clear_k] else ss[actk]
                 if current_click is None:
                     ss[ak] = fill_rect(ss[ak], first_corner, first_corner, value)
                     _reset_pending_selection(prefix)
-                    ss[cons_k] = None
                     _bump_grid_nonce(prefix)
+                    st.rerun()
                 else:
                     click_key = (current_click["x"], current_click["y"])
-                    if click_key not in ((first_corner["x"], first_corner["y"]), ss[cons_k]):
+                    first_key = (first_corner["x"], first_corner["y"])
+                    if click_key == first_key:
+                        # Some component versions surface the previous click for one rerun.
+                        # Retry once so the actual second-corner click can be consumed.
+                        if not ss[sync_retry_k]:
+                            ss[sync_retry_k] = True
+                            st.rerun()
+                    else:
                         ss[ak] = fill_rect(ss[ak], first_corner, current_click, value)
                         _reset_pending_selection(prefix)
-                        ss[cons_k] = None
                         _bump_grid_nonce(prefix)
+                        st.rerun()
 
     return assignments_to_map(ss[ak])
