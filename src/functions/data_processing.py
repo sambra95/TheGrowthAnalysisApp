@@ -110,7 +110,7 @@ def _analysis_group_for_wells(well_series: pd.Series, group_map: dict[str, str])
     return well_series.map(group_map).fillna(DEFAULT_BLANK_GROUP)
 
 
-def _coerce_outlier_window_size(value, default: int = 5) -> int:
+def _coerce_outlier_window_size(value, default: int = 15) -> int:
     """Return a valid odd outlier window size (>=3)."""
     try:
         window = int(value)
@@ -130,7 +130,7 @@ def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFr
     if processed.empty:
         return processed
 
-    window_size = _coerce_outlier_window_size(params.get("outlier_window_size", 5))
+    window_size = _coerce_outlier_window_size(params.get("outlier_window_size", 15))
     try:
         factor = float(params.get("outlier_threshold", 1.5))
     except (TypeError, ValueError):

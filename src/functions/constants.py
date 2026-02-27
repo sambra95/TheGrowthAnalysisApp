@@ -20,7 +20,7 @@ DEFAULT_PARAMS = {
     "remove_wells": False,
     "blank": True,
     "outlier_detection": False,
-    "outlier_window_size": 5,
+    "outlier_window_size": 15,
     "outlier_threshold": 1.5,
     "window_points": 10,
     "lag_cutoff": 0.5,

@@ -86,7 +86,7 @@ def _strip_html_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", str(text))
 
 
-def _coerce_outlier_window_size(value, default: int = 5) -> int:
+def _coerce_outlier_window_size(value, default: int = 15) -> int:
     """Return a valid odd outlier window size (>=3)."""
     try:
         window = int(value)
@@ -97,6 +97,21 @@ def _coerce_outlier_window_size(value, default: int = 5) -> int:
     if window % 2 == 0:
         window += 1
     return window
+
+
+def _normalize_outlier_window_size_state(state_key: str) -> None:
+    """Normalize a session-state outlier window size to a valid odd integer."""
+    raw_value = st.session_state.get(state_key, 15)
+    normalized_value = _coerce_outlier_window_size(raw_value)
+    st.session_state[state_key] = normalized_value
+
+    try:
+        raw_int = int(raw_value)
+    except (TypeError, ValueError):
+        return
+
+    if raw_int % 2 == 0 and normalized_value != raw_int:
+        st.toast("Window size must be odd.")
 
 
 def _build_plate_preview_cells(
@@ -405,7 +420,7 @@ def ui_preprocessing_params(ss):
     pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
     outlier_detection = bool(DEFAULT_PARAMS.get("outlier_detection", False))
     outlier_window_size = _coerce_outlier_window_size(
-        DEFAULT_PARAMS.get("outlier_window_size", 5)
+        DEFAULT_PARAMS.get("outlier_window_size", 15)
     )
     outlier_threshold = float(DEFAULT_PARAMS.get("outlier_threshold", 1.5))
     plate_map = None
@@ -431,7 +446,7 @@ def ui_preprocessing_params(ss):
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
         outlier_detection = bool(params0.get("outlier_detection", False))
         outlier_window_size = _coerce_outlier_window_size(
-            params0.get("outlier_window_size", 5)
+            params0.get("outlier_window_size", 15)
         )
         try:
             outlier_threshold = float(params0.get("outlier_threshold", 1.5))
@@ -530,21 +545,30 @@ def ui_preprocessing_params(ss):
                 ),
             )
             outlier_controls_disabled = not outlier_detection
-            outlier_window_size = int(
-                outlier_window_col.number_input(
-                    "Outlier window size (points)",
-                    min_value=3,
-                    max_value=999,
-                    value=outlier_window_size,
-                    step=2,
-                    disabled=outlier_controls_disabled,
-                    help=(
-                        "Odd-numbered sliding window used for IQR outlier detection "
-                        "(e.g., 5, 7, 9)."
-                    ),
+            outlier_window_state_key = f"outlier_window_size__{plate_id or 'none'}"
+            if outlier_window_state_key not in st.session_state:
+                st.session_state[outlier_window_state_key] = _coerce_outlier_window_size(
+                    outlier_window_size
                 )
+            else:
+                _normalize_outlier_window_size_state(outlier_window_state_key)
+
+            outlier_window_col.number_input(
+                "Outlier window size (points)",
+                min_value=3,
+                max_value=999,
+                value=int(st.session_state[outlier_window_state_key]),
+                step=1,
+                key=outlier_window_state_key,
+                on_change=_normalize_outlier_window_size_state,
+                args=(outlier_window_state_key,),
+                disabled=outlier_controls_disabled,
+                help=(
+                    "Odd-numbered sliding window used for IQR outlier detection "
+                    "(e.g., 5, 7, 9)."
+                ),
             )
-            outlier_window_size = _coerce_outlier_window_size(outlier_window_size)
+            outlier_window_size = int(st.session_state[outlier_window_state_key])
             outlier_threshold = float(
                 outlier_threshold_col.number_input(
                     "Outlier threshold (IQR factor)",
@@ -936,7 +960,7 @@ def ui_analysis_params(ss):
         step3_params.get("outlier_detection", params0.get("outlier_detection", False))
     )
     outlier_window_size = _coerce_outlier_window_size(
-        step3_params.get("outlier_window_size", params0.get("outlier_window_size", 5))
+        step3_params.get("outlier_window_size", params0.get("outlier_window_size", 15))
     )
     try:
         outlier_threshold = float(
