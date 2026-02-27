@@ -346,7 +346,7 @@ def ui_blank_group_assigner(
             ss[gk].remove(old)
             ss[ak] = [[DEFAULT_GROUP if c == old else c for c in row] for row in ss[ak]]
             ss[ck].pop(old, None)
-            ss[actk] = DEFAULT_GROUP
+            ss[actk] = max(ss[gk], key=_group_sort_key) if ss[gk] else DEFAULT_GROUP
             st.rerun()
 
     if show_grid:
