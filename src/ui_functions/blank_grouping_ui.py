@@ -153,8 +153,19 @@ def build_cells(
     assignments: list[list[str]],
     color_map: dict[str, str],
     name_by_well: dict[str, str] | None = None,
+    present_wells: set[str] | None = None,
+    remove_wells: list[str] | set[str] | bool = False,
+    blank_enabled: bool = True,
 ) -> list[list[dict[str, Any]]]:
     name_by_well = name_by_well or {}
+    present_lookup = (
+        {str(well).strip().upper() for well in present_wells}
+        if present_wells is not None
+        else None
+    )
+    removed_lookup = {str(well).strip().upper() for well in (remove_wells or [])}
+    status_mode = present_lookup is not None or bool(removed_lookup) or not blank_enabled
+
     rows: list[list[dict[str, Any]]] = []
     for y, row in enumerate(assignments):
         rendered_row = []
@@ -162,18 +173,52 @@ def build_cells(
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
             is_blank_well = sample.upper() == "BLANK"
+            has_sample_name = sample not in {"", "False", "BLANK"}
+            is_not_in_plate_map = sample in {"", "False"}
             base_color = color_map.get(group, "#ffffff")
             sample_suffix = f" · {sample}" if sample and sample not in {"False"} else ""
-            cell_data: dict[str, Any] = {
-                "label": well,
-                "cell_color": (
-                    _darken_hex_color(base_color) if is_blank_well else base_color
-                ),
-                "tooltip": f"{well}{sample_suffix} · {group}",
-            }
-            if is_blank_well:
-                cell_data["cell_border_width"] = 2
-                cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+
+            included = True
+            exclusion_reason = ""
+            if status_mode:
+                included = False
+                if well in removed_lookup:
+                    exclusion_reason = "excluded by user"
+                elif is_not_in_plate_map:
+                    exclusion_reason = "not in plate map"
+                elif present_lookup is not None and well not in present_lookup:
+                    exclusion_reason = "missing from data file"
+                elif is_blank_well and not blank_enabled:
+                    exclusion_reason = "blank subtraction disabled"
+                elif is_blank_well and blank_enabled:
+                    included = True
+                elif has_sample_name:
+                    included = True
+                else:
+                    exclusion_reason = "not included"
+
+            if included:
+                cell_data: dict[str, Any] = {
+                    "label": well,
+                    "cell_color": (
+                        _darken_hex_color(base_color) if is_blank_well else base_color
+                    ),
+                    "tooltip": (
+                        f"{well}{sample_suffix} · Included"
+                        f"{' (BLANK well)' if is_blank_well else ''} · {group}"
+                        if status_mode
+                        else f"{well}{sample_suffix} · {group}"
+                    ),
+                }
+                if is_blank_well:
+                    cell_data["cell_border_width"] = 2
+                    cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+            else:
+                cell_data = {
+                    "label": well,
+                    "cell_color": "#e5e7eb",
+                    "tooltip": f"{well}{sample_suffix} · Not included: {exclusion_reason}",
+                }
             rendered_row.append(cell_data)
         rows.append(rendered_row)
     return rows
@@ -216,7 +261,7 @@ def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
     ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
 
 
-def _render_fallback_assigner(prefix: str):
+def _render_fallback_assigner(prefix: str, grid_height: int = 350):
     ss = st.session_state
     assignments_key = _state_key(prefix, "assignments")
     active_key = _state_key(prefix, "active_group")
@@ -255,7 +300,7 @@ def _render_fallback_assigner(prefix: str):
         st.rerun()
 
     df = pd.DataFrame(ss[assignments_key], index=ROWS, columns=COLS)
-    st.dataframe(df, width="stretch", height=350)
+    st.dataframe(df, width="stretch", height=grid_height)
 
 
 def ui_blank_group_assigner(
@@ -263,6 +308,12 @@ def ui_blank_group_assigner(
     plate_id: str,
     initial_group_map: dict[str, str] | None = None,
     name_by_well: dict[str, str] | None = None,
+    present_wells: set[str] | None = None,
+    remove_wells: list[str] | set[str] | bool = False,
+    blank_enabled: bool = True,
+    show_caption: bool = True,
+    grid_height: int = 460,
+    grid_aspect_ratio: float = 1.0,
 ) -> dict[str, str]:
     """Render the analysis-group assignment UI and return well->group mapping."""
     prefix = f"blank_groups::{plate_id}"
@@ -278,10 +329,11 @@ def ui_blank_group_assigner(
     consumed_key = _state_key(prefix, "consumed_click")
     clear_mode_key = _state_key(prefix, "pending_clear_mode")
 
-    st.caption(
-        "Assign plate wells to analysis groups. Each sample well is blank-subtracted "
-        "using BLANK wells from the same group only."
-    )
+    if show_caption:
+        st.caption(
+            "Assign plate wells to analysis groups. Each sample well is blank-subtracted "
+            "using BLANK wells from the same group only."
+        )
 
     group_col, color_col, add_col, remove_col = st.columns(
         [2.5, 0.75, 1.5, 1.5], vertical_alignment="center"
@@ -342,17 +394,24 @@ def ui_blank_group_assigner(
         st.rerun()
 
     if st_selectable_grid is None:
-        _render_fallback_assigner(prefix)
+        _render_fallback_assigner(prefix, grid_height=grid_height)
     else:
         selection = st_selectable_grid(
-            cells=build_cells(ss[assignments_key], ss[colors_key], name_by_well),
+            cells=build_cells(
+                ss[assignments_key],
+                ss[colors_key],
+                name_by_well,
+                present_wells=present_wells,
+                remove_wells=remove_wells,
+                blank_enabled=blank_enabled,
+            ),
             header=[str(c) for c in COLS],
             index=ROWS,
-            aspect_ratio=1.0,
+            aspect_ratio=grid_aspect_ratio,
             allow_secondary_selection=False,
             allow_header_selection=False,
             resize=True,
-            height=460,
+            height=grid_height,
             primary_selection_color="#2563eb",
             key=_state_key(prefix, "well_grid"),
         )

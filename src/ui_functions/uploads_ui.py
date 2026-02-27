@@ -1,20 +1,26 @@
 """UI fragments for the Upload and Analyze page."""
 
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 from growthcurves.models import MODEL_REGISTRY
 
-from src.functions.constants import COLS, DEFAULT_PARAMS, GRAY, ROWS
+from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
 from src.functions.upload_functions import (
-    build_symbol_grid,
     get_plate_preview_data,
     plate_params,
     validate_data_file,
     validate_plate_map_file,
 )
-from src.styling import growth_param_table_style, plate_table_style
-from src.ui_functions.blank_grouping_ui import ui_blank_group_assigner
+from src.styling import growth_param_table_style
+from src.ui_functions.blank_grouping_ui import (
+    DEFAULT_GROUP,
+    color_for_group,
+    st_selectable_grid,
+    ui_blank_group_assigner,
+)
 from src.ui_functions.ui_components import (
     ui_method_visualization,
     ui_phase_boundary_visualization,
@@ -52,7 +58,7 @@ Configure how the data is processed before analysis:
 - **Time range**: Restrict analysis to a specific window of the experiment
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
 
-The plate preview updates live — 🟩 included · 🟦 blank · 🟥 excluded by user · 🟧 missing from data file · ⬜ not in plate map.
+The plate preview updates live — colored wells are included, and gray wells are not included. Hover any well for details.
 
 **Step 5 — Select analysis parameters**
 Choose how growth descriptors are calculated:
@@ -71,31 +77,151 @@ Click the button to run the analysis. Once complete, navigate to the other pages
     st.divider()
 
 
-def render_plate_table(grid: pd.DataFrame):
-    """Render an HTML table showing the plate status grid."""
-    # Apply styling (moved to styling.py)
-    plate_table_style()
+def _darken_hex_color(color: str, factor: float = 0.88) -> str:
+    """Return a darker shade of a #RRGGBB color."""
+    color = str(color).strip()
+    if len(color) != 7 or not color.startswith("#"):
+        return color or "#ffffff"
+    try:
+        red = int(color[1:3], 16)
+        green = int(color[3:5], 16)
+        blue = int(color[5:7], 16)
+    except ValueError:
+        return color or "#ffffff"
 
-    header = "".join(f"<th>{c}</th>" for c in grid.columns)
-    rows_html = []
-    for r in grid.index:
-        cells = "".join(f"<td>{grid.loc[r, c]}</td>" for c in grid.columns)
-        rows_html.append(f"<tr><th class='row'>{r}</th>{cells}</tr>")
+    red = int(max(0, min(255, red * factor)))
+    green = int(max(0, min(255, green * factor)))
+    blue = int(max(0, min(255, blue * factor)))
+    return f"#{red:02x}{green:02x}{blue:02x}"
 
-    html = f"""
-    <div class="plate-wrap">
-      <table class="plate">
-        <thead>
-          <tr><th></th>{header}</tr>
-        </thead>
-        <tbody>
-          {''.join(rows_html)}
-        </tbody>
-      </table>
-    </div>
-    """
 
-    st.markdown(html, unsafe_allow_html=True)
+def _build_plate_preview_cells(
+    *,
+    plate_map: pd.DataFrame | None,
+    present: set[str],
+    remove_wells: list[str] | bool,
+    blank: bool,
+    blank_group_assignments: dict[str, str] | bool,
+) -> list[list[dict[str, Any]]]:
+    """Build st_selectable_grid cell payload for upload preview."""
+    present_wells = {str(well).strip().upper() for well in present}
+    removed_wells = {str(well).strip().upper() for well in (remove_wells or [])}
+    group_map = (
+        {
+            str(well).strip().upper(): str(group).strip() or DEFAULT_GROUP
+            for well, group in blank_group_assignments.items()
+        }
+        if isinstance(blank_group_assignments, dict)
+        else {}
+    )
+
+    cells: list[list[dict[str, Any]]] = []
+    for row in ROWS:
+        rendered_row: list[dict[str, Any]] = []
+        for col in COLS:
+            well = f"{row}{col}"
+            group_name = group_map.get(well, DEFAULT_GROUP)
+
+            if plate_map is None:
+                rendered_row.append(
+                    {
+                        "label": well,
+                        "cell_color": "#e5e7eb",
+                        "tooltip": f"{well} · No uploaded files",
+                    }
+                )
+                continue
+
+            sample = _plate_cell_name(plate_map, row, col).strip()
+            is_blank_well = sample.upper() == "BLANK"
+            has_sample_name = sample not in {"", "False", "BLANK"}
+            is_not_in_plate_map = sample in {"", "False"}
+
+            included = False
+            exclusion_reason = ""
+            if well in removed_wells:
+                exclusion_reason = "excluded by user"
+            elif is_not_in_plate_map:
+                exclusion_reason = "not in plate map"
+            elif well not in present_wells:
+                exclusion_reason = "missing from data file"
+            elif is_blank_well and not blank:
+                exclusion_reason = "blank subtraction disabled"
+            elif is_blank_well and blank:
+                included = True
+            elif has_sample_name:
+                included = True
+            else:
+                exclusion_reason = "not included"
+
+            sample_suffix = f" · {sample}" if sample and sample != "False" else ""
+            if included:
+                base_color = color_for_group(group_name)
+                cell_data: dict[str, Any] = {
+                    "label": well,
+                    "cell_color": _darken_hex_color(base_color) if is_blank_well else base_color,
+                    "tooltip": (
+                        f"{well}{sample_suffix} · Included"
+                        f"{' (BLANK well)' if is_blank_well else ''} · {group_name}"
+                    ),
+                }
+                if is_blank_well:
+                    cell_data["cell_border_width"] = 2
+                    cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+                rendered_row.append(cell_data)
+            else:
+                rendered_row.append(
+                    {
+                        "label": well,
+                        "cell_color": "#e5e7eb",
+                        "tooltip": f"{well}{sample_suffix} · Not included: {exclusion_reason}",
+                    }
+                )
+        cells.append(rendered_row)
+    return cells
+
+
+def render_plate_table(
+    *,
+    key: str,
+    plate_map: pd.DataFrame | None,
+    present: set[str] | None = None,
+    remove_wells: list[str] | bool = False,
+    blank: bool = True,
+    blank_group_assignments: dict[str, str] | bool = False,
+    grid_height: int = 460,
+    grid_aspect_ratio: float = 1.0,
+):
+    """Render plate preview with the blank-linker style table."""
+    cells = _build_plate_preview_cells(
+        plate_map=plate_map,
+        present=present or set(),
+        remove_wells=remove_wells,
+        blank=blank,
+        blank_group_assignments=blank_group_assignments,
+    )
+
+    with st.container(width="stretch"):
+        if st_selectable_grid is None:
+            # Fallback keeps well labels visible when optional dependency is unavailable.
+            fallback_df = pd.DataFrame(
+                [[cell["label"] for cell in row] for row in cells], index=ROWS, columns=COLS
+            )
+            st.dataframe(fallback_df, width="stretch", height=grid_height)
+            return
+
+        st_selectable_grid(
+            cells=cells,
+            header=[str(c) for c in COLS],
+            index=ROWS,
+            aspect_ratio=grid_aspect_ratio,
+            allow_secondary_selection=False,
+            allow_header_selection=False,
+            resize=True,
+            height=grid_height,
+            primary_selection_color="#6b7280",
+            key=f"uploads_preview::{key}",
+        )
 
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
@@ -276,30 +402,30 @@ def ui_preprocessing_params(ss):
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
 
-        pcol, acol = st.columns(2, gap="large")
+        plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+        params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
-        with pcol:
-            plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
-            params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
+        if plate_id:
+            rec = ss.plates.get(plate_id, {})
+            if rec.get("uploads"):
+                uploads = rec["uploads"]
+                plate_map, present = get_plate_preview_data(
+                    plate_bytes=uploads["plate_bytes"],
+                    data_bytes=uploads["data_bytes"],
+                )
+                name_by_well = _name_by_well_from_plate_map(plate_map)
+                has_blank_wells = any(v == "BLANK" for v in name_by_well.values())
 
-            if plate_id:
-                rec = ss.plates.get(plate_id, {})
-                if rec.get("uploads"):
-                    uploads = rec["uploads"]
-                    plate_map, present = get_plate_preview_data(
-                        plate_bytes=uploads["plate_bytes"],
-                        data_bytes=uploads["data_bytes"],
-                    )
-                    name_by_well = _name_by_well_from_plate_map(plate_map)
-                    has_blank_wells = any(v == "BLANK" for v in name_by_well.values())
+        controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
+        plate_grid_height = 460
+        plate_grid_aspect_ratio = 0.65
 
-            a, b, c = st.columns(3, vertical_alignment="center")
+        with controls_col:
+            a, b = st.columns(2, vertical_alignment="center")
             time_unit = a.selectbox(
                 "Time unit in data file",
                 options=["seconds", "minutes", "hours"],
-                index=["seconds", "minutes", "hours"].index(
-                    params0.get("time_unit", "hours")
-                ),
+                index=["seconds", "minutes", "hours"].index(params0.get("time_unit", "hours")),
                 help="Select the unit of time values in your data file's Time column",
             )
             pl_cm = b.number_input(
@@ -309,24 +435,6 @@ def ui_preprocessing_params(ss):
                 format="%.3f",
                 help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
             )
-            with c:
-                if has_blank_wells:
-                    initial_group_map = params0.get("blank_group_assignments", False)
-                    if not isinstance(initial_group_map, dict):
-                        initial_group_map = None
-                    with st.popover("Link blanks", width="stretch"):
-                        blank_group_assignments = ui_blank_group_assigner(
-                            plate_id=plate_id,
-                            initial_group_map=initial_group_map,
-                            name_by_well=name_by_well,
-                        )
-                    blank = True
-                elif plate_id:
-                    st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
-                    blank = False
-                else:
-                    st.caption("Select a plate to configure blank subtraction groups.")
-                    blank = False
 
             a, b = st.columns(2)
             clip_time_series = (
@@ -377,31 +485,50 @@ def ui_preprocessing_params(ss):
                 ss.plates.pop(plate_id, None)
                 st.rerun()
 
-        with acol:
-            # Preview grid in Step 4
-            if plate_id and plate_map is not None:
-                grid = build_symbol_grid(
-                    plate_map=plate_map,
-                    present=present,
+        with plate_col:
+            if has_blank_wells:
+                blank = True
+                initial_group_map = params0.get("blank_group_assignments", False)
+                if not isinstance(initial_group_map, dict):
+                    initial_group_map = None
+                blank_group_assignments = ui_blank_group_assigner(
+                    plate_id=plate_id,
+                    initial_group_map=initial_group_map,
+                    name_by_well=name_by_well,
+                    present_wells=present,
                     remove_wells=remove_wells,
-                    blank=blank,
+                    blank_enabled=blank,
+                    show_caption=False,
+                    grid_height=plate_grid_height,
+                    grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
-
-                st.subheader(plate_id)
-                st.caption(
-                    "**Included:** 🟩 sample · 🟦 blank  |  "
-                    "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
-                )
-                render_plate_table(grid)
+            elif plate_id:
+                st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
+                blank = False
             else:
-                # Show blank plate (all gray) when no files uploaded
-                blank_grid = pd.DataFrame(GRAY, index=ROWS, columns=COLS)
-                st.subheader("Plate Preview")
-                st.caption(
-                    "**Included:** 🟩 sample · 🟦 blank  |  "
-                    "**Excluded:** 🟥 removed by user · 🟧 not in data file · ⬜ not in plate map"
-                )
-                render_plate_table(blank_grid)
+                st.caption("Select a plate to configure blank subtraction groups.")
+                blank = False
+
+            # Preview grid in Step 4
+            if not has_blank_wells:
+                if plate_id and plate_map is not None:
+                    render_plate_table(
+                        key=plate_id,
+                        plate_map=plate_map,
+                        present=present,
+                        remove_wells=remove_wells,
+                        blank=blank,
+                        blank_group_assignments=blank_group_assignments,
+                        grid_height=plate_grid_height,
+                        grid_aspect_ratio=plate_grid_aspect_ratio,
+                    )
+                else:
+                    render_plate_table(
+                        key="empty",
+                        plate_map=None,
+                        grid_height=plate_grid_height,
+                        grid_aspect_ratio=plate_grid_aspect_ratio,
+                    )
 
     # Store selected values in session state for access by other fragments
     if plate_id:
