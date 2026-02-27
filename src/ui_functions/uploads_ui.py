@@ -195,29 +195,28 @@ def render_plate_table(
         blank_group_assignments=blank_group_assignments,
     )
 
-    with st.container(width="stretch"):
-        if st_selectable_grid is None:
-            # Fallback keeps well labels visible when optional dependency is unavailable.
-            fallback_df = pd.DataFrame(
-                [[_strip_html_tags(cell["label"]) for cell in row] for row in cells],
-                index=ROWS,
-                columns=COLS,
-            )
-            st.dataframe(fallback_df, width="stretch", height=grid_height)
-            return
-
-        st_selectable_grid(
-            cells=cells,
-            header=[str(c) for c in COLS],
+    if st_selectable_grid is None:
+        # Fallback keeps well labels visible when optional dependency is unavailable.
+        fallback_df = pd.DataFrame(
+            [[_strip_html_tags(cell["label"]) for cell in row] for row in cells],
             index=ROWS,
-            aspect_ratio=grid_aspect_ratio,
-            allow_secondary_selection=False,
-            allow_header_selection=False,
-            resize=True,
-            height=grid_height,
-            primary_selection_color="#6b7280",
-            key=f"uploads_preview::{key}",
+            columns=COLS,
         )
+        st.dataframe(fallback_df, width="stretch", height=grid_height)
+        return
+
+    st_selectable_grid(
+        cells=cells,
+        header=[str(c) for c in COLS],
+        index=ROWS,
+        aspect_ratio=grid_aspect_ratio,
+        allow_secondary_selection=False,
+        allow_header_selection=False,
+        resize=True,
+        height=grid_height,
+        primary_selection_color="#6b7280",
+        key=f"uploads_preview::{key}",
+    )
 
 
 def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
@@ -399,9 +398,11 @@ def ui_preprocessing_params(ss):
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
 
-        selector_col, plate_name_col = st.columns([1.2, 1.0], vertical_alignment="bottom")
+        selector_col, plate_name_col = st.columns([1.0, 1.35], vertical_alignment="bottom")
         with selector_col:
-            plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+            plate_selector_col, _ = st.columns(2, vertical_alignment="bottom")
+            with plate_selector_col:
+                plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
         with plate_name_col:
             if plate_id:
                 st.subheader(plate_id)
