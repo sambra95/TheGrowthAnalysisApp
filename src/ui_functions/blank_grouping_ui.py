@@ -57,6 +57,23 @@ def color_for_group(group_name: str) -> str:
     return GROUP_PALETTE[(group_number(group_name) - 1) % len(GROUP_PALETTE)]
 
 
+def _darken_hex_color(color: str, factor: float = 0.88) -> str:
+    """Return a darker shade of a #RRGGBB color."""
+    match = re.fullmatch(r"#([0-9a-fA-F]{6})", str(color).strip())
+    if not match:
+        return str(color).strip() or "#ffffff"
+
+    hex_color = match.group(1)
+    red = int(hex_color[0:2], 16)
+    green = int(hex_color[2:4], 16)
+    blue = int(hex_color[4:6], 16)
+
+    red = int(max(0, min(255, red * factor)))
+    green = int(max(0, min(255, green * factor)))
+    blue = int(max(0, min(255, blue * factor)))
+    return f"#{red:02x}{green:02x}{blue:02x}"
+
+
 def make_assignments(fill_value: str = DEFAULT_GROUP) -> list[list[str]]:
     return [[fill_value for _ in COLS] for _ in ROWS]
 
@@ -144,14 +161,20 @@ def build_cells(
         for x, group in enumerate(row):
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
+            is_blank_well = sample.upper() == "BLANK"
+            base_color = color_map.get(group, "#ffffff")
             sample_suffix = f" · {sample}" if sample and sample not in {"False"} else ""
-            rendered_row.append(
-                {
-                    "label": well,
-                    "cell_color": color_map.get(group, "#ffffff"),
-                    "tooltip": f"{well}{sample_suffix} · {group}",
-                }
-            )
+            cell_data: dict[str, Any] = {
+                "label": well,
+                "cell_color": (
+                    _darken_hex_color(base_color) if is_blank_well else base_color
+                ),
+                "tooltip": f"{well}{sample_suffix} · {group}",
+            }
+            if is_blank_well:
+                cell_data["cell_border_width"] = 2
+                cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+            rendered_row.append(cell_data)
         rows.append(rendered_row)
     return rows
 
