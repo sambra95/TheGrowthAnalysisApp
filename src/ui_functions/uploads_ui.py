@@ -523,7 +523,7 @@ def ui_preprocessing_params(ss):
                     present_wells=present,
                     remove_wells=remove_wells,
                     blank_enabled=blank,
-                    show_caption=False,
+                    show_caption=True,
                     show_controls=False,
                     show_grid=True,
                     grid_height=plate_grid_height,

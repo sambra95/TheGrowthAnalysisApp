@@ -288,11 +288,11 @@ def ui_blank_group_assigner(
     clear_k = _state_key(prefix, "pending_clear_mode")
     last_click_k = _state_key(prefix, "last_processed_click")
 
-    if show_caption:
-        st.caption(
-            "Click the table to assign blank wells to specific samples. "
-            "Blanks will be subtracted from samples in the same colour group"
-        )
+    help_caption = (
+        "Click the table to assign blank wells to specific samples. "
+        "Blanks are subtracted from samples in the same colour group. "
+        "BLANK wells are highlighted in the table."
+    )
 
     if show_controls:
         group_col, color_col, add_col, remove_col = st.columns(
@@ -302,10 +302,6 @@ def ui_blank_group_assigner(
             "Blank group",
             ss[gk],
             index=ss[gk].index(ss[actk]),
-            help=(
-                "Click the table to assign blank wells to specific samples. "
-                "Blanks will be subtracted from samples in the same colour group"
-            ),
             key=_state_key(prefix, "assigned_group_select"),
             disabled=controls_disabled,
         )
@@ -401,5 +397,7 @@ def ui_blank_group_assigner(
                     _reset_pending_selection(prefix)
                     ss[last_click_k] = current_click_key
                     st.rerun()
+        if show_caption:
+            st.caption(help_caption)
 
     return assignments_to_map(ss[ak])
