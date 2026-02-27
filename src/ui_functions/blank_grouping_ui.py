@@ -50,7 +50,17 @@ def _group_sort_key(name: str) -> tuple[int, str]:
 
 
 def next_group_name(groups: list[str]) -> str:
-    return f"Group {max(group_number(g) for g in groups) + 1}" if groups else DEFAULT_GROUP
+    if not groups:
+        return DEFAULT_GROUP
+
+    numbers = sorted({group_number(g) for g in groups if group_number(g) >= 1})
+    next_number = 1
+    for number in numbers:
+        if number == next_number:
+            next_number += 1
+        elif number > next_number:
+            break
+    return f"Group {next_number}"
 
 
 def color_for_group(group_name: str) -> str:
@@ -93,7 +103,10 @@ def fill_rect(
 def reassign_group(
     assignments: list[list[str]], from_group: str, to_group: str = DEFAULT_GROUP
 ) -> list[list[str]]:
-    return [[to_group if cell == from_group else cell for cell in row] for row in assignments]
+    return [
+        [to_group if cell == from_group else cell for cell in row]
+        for row in assignments
+    ]
 
 
 def _well_to_point(well: str) -> dict[str, int] | None:
@@ -149,6 +162,30 @@ def _group_names_from_assignments(assignments: list[list[str]]) -> list[str]:
     return groups
 
 
+def _normalize_group_labels(
+    assignments: list[list[str]], groups: list[str]
+) -> tuple[list[list[str]], list[str], dict[str, str]]:
+    """Normalize group labels to contiguous names: Group 1..Group n."""
+    assignment_groups = {
+        str(cell).strip() or DEFAULT_GROUP for row in assignments for cell in row
+    }
+    explicit_groups = {str(group).strip() or DEFAULT_GROUP for group in groups}
+    all_groups = sorted(assignment_groups | explicit_groups, key=_group_sort_key)
+
+    if DEFAULT_GROUP in all_groups:
+        all_groups.remove(DEFAULT_GROUP)
+    all_groups.insert(0, DEFAULT_GROUP)
+
+    rename_map = {old: f"Group {idx}" for idx, old in enumerate(all_groups, start=1)}
+
+    normalized_assignments = [
+        [rename_map.get(str(cell).strip() or DEFAULT_GROUP, DEFAULT_GROUP) for cell in row]
+        for row in assignments
+    ]
+    normalized_groups = [rename_map[group] for group in all_groups]
+    return normalized_assignments, normalized_groups, rename_map
+
+
 def build_cells(
     assignments: list[list[str]],
     color_map: dict[str, str],
@@ -164,7 +201,9 @@ def build_cells(
         else None
     )
     removed_lookup = {str(well).strip().upper() for well in (remove_wells or [])}
-    status_mode = present_lookup is not None or bool(removed_lookup) or not blank_enabled
+    status_mode = (
+        present_lookup is not None or bool(removed_lookup) or not blank_enabled
+    )
 
     rows: list[list[dict[str, Any]]] = []
     for y, row in enumerate(assignments):
@@ -173,6 +212,7 @@ def build_cells(
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
             is_blank_well = sample.upper() == "BLANK"
+            cell_label = f"<b>{well}</b>" if is_blank_well else well
             has_sample_name = sample not in {"", "False", "BLANK"}
             is_not_in_plate_map = sample in {"", "False"}
             base_color = color_map.get(group, "#ffffff")
@@ -199,26 +239,32 @@ def build_cells(
 
             if included:
                 cell_data: dict[str, Any] = {
-                    "label": well,
+                    "label": cell_label,
                     "cell_color": (
                         _darken_hex_color(base_color) if is_blank_well else base_color
                     ),
                     "tooltip": (
-                        f"{well}{sample_suffix} · Included"
-                        f"{' (BLANK well)' if is_blank_well else ''} · {group}"
+                        f"{well}{sample_suffix}"
+                        f"{' · BLANK well' if is_blank_well else ''} · {group}"
                         if status_mode
                         else f"{well}{sample_suffix} · {group}"
                     ),
                 }
                 if is_blank_well:
+                    cell_data["html"] = True
+                if is_blank_well:
                     cell_data["cell_border_width"] = 2
-                    cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
+                    cell_data["cell_border_color"] = _darken_hex_color(
+                        base_color, factor=0.72
+                    )
             else:
                 cell_data = {
-                    "label": well,
+                    "label": cell_label,
                     "cell_color": "#e5e7eb",
-                    "tooltip": f"{well}{sample_suffix} · Not included: {exclusion_reason}",
+                    "tooltip": f"{well}{sample_suffix} · {exclusion_reason}",
                 }
+                if is_blank_well:
+                    cell_data["html"] = True
             rendered_row.append(cell_data)
         rows.append(rendered_row)
     return rows
@@ -229,6 +275,12 @@ def _reset_pending_selection(prefix: str):
     ss[_state_key(prefix, "first_corner")] = None
     ss[_state_key(prefix, "awaiting_second")] = False
     ss[_state_key(prefix, "pending_clear_mode")] = None
+
+
+def _bump_grid_nonce(prefix: str):
+    ss = st.session_state
+    nonce_key = _state_key(prefix, "grid_nonce")
+    ss[nonce_key] = int(ss.get(nonce_key, 0)) + 1
 
 
 def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
@@ -253,12 +305,24 @@ def _init_state(prefix: str, initial_group_map: dict[str, str] | None):
             ss[colors_key].setdefault(g, color_for_group(g))
 
     if active_key not in ss or ss[active_key] not in ss[groups_key]:
-        ss[active_key] = DEFAULT_GROUP if DEFAULT_GROUP in ss[groups_key] else ss[groups_key][0]
+        ss[active_key] = (
+            DEFAULT_GROUP if DEFAULT_GROUP in ss[groups_key] else ss[groups_key][0]
+        )
+
+    current_active = str(ss.get(active_key, DEFAULT_GROUP)).strip() or DEFAULT_GROUP
+    (
+        ss[assignments_key],
+        ss[groups_key],
+        rename_map,
+    ) = _normalize_group_labels(ss[assignments_key], ss[groups_key])
+    ss[colors_key] = {group: color_for_group(group) for group in ss[groups_key]}
+    ss[active_key] = rename_map.get(current_active, DEFAULT_GROUP)
 
     ss.setdefault(_state_key(prefix, "first_corner"), None)
     ss.setdefault(_state_key(prefix, "awaiting_second"), False)
     ss.setdefault(_state_key(prefix, "consumed_click"), None)
     ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
+    ss.setdefault(_state_key(prefix, "grid_nonce"), 0)
 
 
 def _render_fallback_assigner(prefix: str, grid_height: int = 350):
@@ -272,7 +336,9 @@ def _render_fallback_assigner(prefix: str, grid_height: int = 350):
 
     all_wells = [f"{r}{c}" for r in ROWS for c in COLS]
     c1, c2 = st.columns(2)
-    start_well = c1.selectbox("Start well", all_wells, key=_state_key(prefix, "range_start"))
+    start_well = c1.selectbox(
+        "Start well", all_wells, key=_state_key(prefix, "range_start")
+    )
     end_well = c2.selectbox("End well", all_wells, key=_state_key(prefix, "range_end"))
     p1 = _well_to_point(start_well) or {"x": 0, "y": 0}
     p2 = _well_to_point(end_well) or {"x": 0, "y": 0}
@@ -284,9 +350,7 @@ def _render_fallback_assigner(prefix: str, grid_height: int = 350):
         width="stretch",
         key=_state_key(prefix, "assign_range"),
     ):
-        ss[assignments_key] = fill_rect(
-            ss[assignments_key], p1, p2, ss[active_key]
-        )
+        ss[assignments_key] = fill_rect(ss[assignments_key], p1, p2, ss[active_key])
         st.rerun()
     if b.button(
         "Clear range",
@@ -294,9 +358,7 @@ def _render_fallback_assigner(prefix: str, grid_height: int = 350):
         width="stretch",
         key=_state_key(prefix, "clear_range"),
     ):
-        ss[assignments_key] = fill_rect(
-            ss[assignments_key], p1, p2, DEFAULT_GROUP
-        )
+        ss[assignments_key] = fill_rect(ss[assignments_key], p1, p2, DEFAULT_GROUP)
         st.rerun()
 
     df = pd.DataFrame(ss[assignments_key], index=ROWS, columns=COLS)
@@ -312,6 +374,8 @@ def ui_blank_group_assigner(
     remove_wells: list[str] | set[str] | bool = False,
     blank_enabled: bool = True,
     show_caption: bool = True,
+    show_controls: bool = True,
+    show_grid: bool = True,
     grid_height: int = 460,
     grid_aspect_ratio: float = 1.0,
 ) -> dict[str, str]:
@@ -328,126 +392,138 @@ def ui_blank_group_assigner(
     first_key = _state_key(prefix, "first_corner")
     consumed_key = _state_key(prefix, "consumed_click")
     clear_mode_key = _state_key(prefix, "pending_clear_mode")
+    grid_nonce_key = _state_key(prefix, "grid_nonce")
 
     if show_caption:
         st.caption(
-            "Assign plate wells to analysis groups. Each sample well is blank-subtracted "
-            "using BLANK wells from the same group only."
+            "Click the table to assign blank wells to specific samples. "
+            "Blanks will be subtracted from samples in the same colour group"
         )
 
-    group_col, color_col, add_col, remove_col = st.columns(
-        [2.5, 0.75, 1.5, 1.5], vertical_alignment="center"
-    )
-    selected_group = group_col.selectbox(
-        "Assigned group",
-        ss[groups_key],
-        index=ss[groups_key].index(ss[active_key]),
-        key=_state_key(prefix, "assigned_group_select"),
-    )
-    if selected_group != ss[active_key]:
-        ss[active_key] = selected_group
-        _reset_pending_selection(prefix)
-
-    with color_col:
-        assigned_color = ss[colors_key][ss[active_key]]
-        st.markdown(
-            (
-                "<span style='display:inline-block;width:22px;height:22px;"
-                f"background:{assigned_color};border:1px solid #999;'></span>"
+    if show_controls:
+        group_col, color_col, add_col, remove_col = st.columns(
+            [2.5, 0.75, 1.5, 1.5], vertical_alignment="center"
+        )
+        selected_group = group_col.selectbox(
+            "Blank group",
+            ss[groups_key],
+            index=ss[groups_key].index(ss[active_key]),
+            help=(
+                "Click the table to assign blank wells to specific samples. "
+                "Blanks will be subtracted from samples in the same colour group"
             ),
-            unsafe_allow_html=True,
+            key=_state_key(prefix, "assigned_group_select"),
+        )
+        if selected_group != ss[active_key]:
+            ss[active_key] = selected_group
+            _reset_pending_selection(prefix)
+
+        with color_col:
+            assigned_color = ss[colors_key][ss[active_key]]
+            st.markdown(
+                (
+                    "<div style='display:flex;justify-content:center;align-items:center;'>"
+                    "<span style='display:inline-block;width:35px;height:35px;"
+                    f"background:{assigned_color};border:1px solid #999;'></span>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        add_clicked = add_col.button(
+            "Add group",
+            type="primary",
+            width="stretch",
+            key=_state_key(prefix, "add_group"),
+        )
+        remove_clicked = remove_col.button(
+            "Remove group",
+            type="primary",
+            width="stretch",
+            key=_state_key(prefix, "remove_group"),
+            disabled=ss[active_key] == DEFAULT_GROUP,
         )
 
-    add_clicked = add_col.button(
-        "Add group",
-        type="primary",
-        width="stretch",
-        key=_state_key(prefix, "add_group"),
-    )
-    remove_clicked = remove_col.button(
-        "Remove group",
-        type="primary",
-        width="stretch",
-        key=_state_key(prefix, "remove_group"),
-        disabled=ss[active_key] == DEFAULT_GROUP,
-    )
+        if add_clicked:
+            _reset_pending_selection(prefix)
+            new_group = next_group_name(ss[groups_key])
+            ss[groups_key].append(new_group)
+            ss[colors_key][new_group] = color_for_group(new_group)
+            ss[active_key] = new_group
+            ss[consumed_key] = None
+            st.rerun()
 
-    if add_clicked:
-        _reset_pending_selection(prefix)
-        new_group = next_group_name(ss[groups_key])
-        ss[groups_key].append(new_group)
-        ss[colors_key][new_group] = color_for_group(new_group)
-        ss[active_key] = new_group
-        ss[consumed_key] = None
-        st.rerun()
+        if remove_clicked:
+            _reset_pending_selection(prefix)
+            remove_group = ss[active_key]
+            ss[groups_key].remove(remove_group)
+            ss[assignments_key] = reassign_group(
+                ss[assignments_key], remove_group, DEFAULT_GROUP
+            )
+            ss[colors_key].pop(remove_group, None)
+            ss[active_key] = DEFAULT_GROUP
+            ss[consumed_key] = None
+            st.rerun()
 
-    if remove_clicked:
-        _reset_pending_selection(prefix)
-        remove_group = ss[active_key]
-        ss[groups_key].remove(remove_group)
-        ss[assignments_key] = reassign_group(
-            ss[assignments_key], remove_group, DEFAULT_GROUP
-        )
-        ss[colors_key].pop(remove_group, None)
-        ss[active_key] = DEFAULT_GROUP
-        ss[consumed_key] = None
-        st.rerun()
-
-    if st_selectable_grid is None:
-        _render_fallback_assigner(prefix, grid_height=grid_height)
-    else:
-        selection = st_selectable_grid(
-            cells=build_cells(
-                ss[assignments_key],
-                ss[colors_key],
-                name_by_well,
-                present_wells=present_wells,
-                remove_wells=remove_wells,
-                blank_enabled=blank_enabled,
-            ),
-            header=[str(c) for c in COLS],
-            index=ROWS,
-            aspect_ratio=grid_aspect_ratio,
-            allow_secondary_selection=False,
-            allow_header_selection=False,
-            resize=True,
-            height=grid_height,
-            primary_selection_color="#2563eb",
-            key=_state_key(prefix, "well_grid"),
-        )
-
-        current_click = (selection or {}).get("primary")
-
-        if not ss[awaiting_key]:
-            if current_click:
-                click_key = (current_click["x"], current_click["y"])
-                if click_key != ss[consumed_key]:
-                    x, y = click_key
-                    ss[clear_mode_key] = ss[assignments_key][y][x] == ss[active_key]
-                    ss[first_key] = current_click
-                    ss[awaiting_key] = True
-                    ss[consumed_key] = click_key
+    if show_grid:
+        if st_selectable_grid is None:
+            _render_fallback_assigner(prefix, grid_height=grid_height)
         else:
-            first_corner = ss[first_key]
-            value = DEFAULT_GROUP if ss[clear_mode_key] else ss[active_key]
+            selection = st_selectable_grid(
+                cells=build_cells(
+                    ss[assignments_key],
+                    ss[colors_key],
+                    name_by_well,
+                    present_wells=present_wells,
+                    remove_wells=remove_wells,
+                    blank_enabled=blank_enabled,
+                ),
+                header=[str(c) for c in COLS],
+                index=ROWS,
+                aspect_ratio=grid_aspect_ratio,
+                allow_secondary_selection=False,
+                allow_header_selection=False,
+                resize=True,
+                height=grid_height,
+                primary_selection_color="#2563eb",
+                key=_state_key(prefix, f"well_grid::{ss[grid_nonce_key]}"),
+            )
 
-            if current_click is None:
-                ss[assignments_key] = fill_rect(
-                    ss[assignments_key], first_corner, first_corner, value
-                )
-                _reset_pending_selection(prefix)
-                ss[consumed_key] = None
-                st.rerun()
+            current_click = (selection or {}).get("primary")
+
+            if not ss[awaiting_key]:
+                if current_click:
+                    click_key = (current_click["x"], current_click["y"])
+                    if click_key != ss[consumed_key]:
+                        x, y = click_key
+                        ss[clear_mode_key] = ss[assignments_key][y][x] == ss[active_key]
+                        ss[first_key] = current_click
+                        ss[awaiting_key] = True
+                        ss[consumed_key] = click_key
             else:
-                click_key = (current_click["x"], current_click["y"])
-                first_corner_key = (first_corner["x"], first_corner["y"])
-                if click_key not in (first_corner_key, ss[consumed_key]):
+                first_corner = ss[first_key]
+                value = DEFAULT_GROUP if ss[clear_mode_key] else ss[active_key]
+
+                if current_click is None:
+                    # Deselect confirms a single-cell assignment at first corner.
                     ss[assignments_key] = fill_rect(
-                        ss[assignments_key], first_corner, current_click, value
+                        ss[assignments_key], first_corner, first_corner, value
                     )
                     _reset_pending_selection(prefix)
-                    ss[consumed_key] = click_key
+                    ss[consumed_key] = None
+                    _bump_grid_nonce(prefix)
                     st.rerun()
+                else:
+                    click_key = (current_click["x"], current_click["y"])
+                    first_corner_key = (first_corner["x"], first_corner["y"])
+                    if click_key not in (first_corner_key, ss[consumed_key]):
+                        ss[assignments_key] = fill_rect(
+                            ss[assignments_key], first_corner, current_click, value
+                        )
+                        _reset_pending_selection(prefix)
+                        ss[consumed_key] = None
+                        _bump_grid_nonce(prefix)
+                        st.rerun()
 
     assignment_map = assignments_to_map(ss[assignments_key])
     return assignment_map

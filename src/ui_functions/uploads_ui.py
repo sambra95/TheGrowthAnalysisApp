@@ -1,5 +1,6 @@
 """UI fragments for the Upload and Analyze page."""
 
+import re
 from typing import Any
 
 import pandas as pd
@@ -95,6 +96,11 @@ def _darken_hex_color(color: str, factor: float = 0.88) -> str:
     return f"#{red:02x}{green:02x}{blue:02x}"
 
 
+def _strip_html_tags(text: str) -> str:
+    """Strip simple HTML tags from text."""
+    return re.sub(r"<[^>]+>", "", str(text))
+
+
 def _build_plate_preview_cells(
     *,
     plate_map: pd.DataFrame | None,
@@ -134,6 +140,7 @@ def _build_plate_preview_cells(
 
             sample = _plate_cell_name(plate_map, row, col).strip()
             is_blank_well = sample.upper() == "BLANK"
+            cell_label = f"<b>{well}</b>" if is_blank_well else well
             has_sample_name = sample not in {"", "False", "BLANK"}
             is_not_in_plate_map = sample in {"", "False"}
 
@@ -158,13 +165,15 @@ def _build_plate_preview_cells(
             if included:
                 base_color = color_for_group(group_name)
                 cell_data: dict[str, Any] = {
-                    "label": well,
+                    "label": cell_label,
                     "cell_color": _darken_hex_color(base_color) if is_blank_well else base_color,
                     "tooltip": (
-                        f"{well}{sample_suffix} · Included"
-                        f"{' (BLANK well)' if is_blank_well else ''} · {group_name}"
+                        f"{well}{sample_suffix}"
+                        f"{' · BLANK well' if is_blank_well else ''} · {group_name}"
                     ),
                 }
+                if is_blank_well:
+                    cell_data["html"] = True
                 if is_blank_well:
                     cell_data["cell_border_width"] = 2
                     cell_data["cell_border_color"] = _darken_hex_color(base_color, factor=0.72)
@@ -172,9 +181,10 @@ def _build_plate_preview_cells(
             else:
                 rendered_row.append(
                     {
-                        "label": well,
+                        "label": cell_label,
                         "cell_color": "#e5e7eb",
-                        "tooltip": f"{well}{sample_suffix} · Not included: {exclusion_reason}",
+                        "tooltip": f"{well}{sample_suffix} · {exclusion_reason}",
+                        **({"html": True} if is_blank_well else {}),
                     }
                 )
         cells.append(rendered_row)
@@ -205,7 +215,9 @@ def render_plate_table(
         if st_selectable_grid is None:
             # Fallback keeps well labels visible when optional dependency is unavailable.
             fallback_df = pd.DataFrame(
-                [[cell["label"] for cell in row] for row in cells], index=ROWS, columns=COLS
+                [[_strip_html_tags(cell["label"]) for cell in row] for row in cells],
+                index=ROWS,
+                columns=COLS,
             )
             st.dataframe(fallback_df, width="stretch", height=grid_height)
             return
@@ -402,7 +414,14 @@ def ui_preprocessing_params(ss):
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
 
-        plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+        selector_col, plate_name_col = st.columns([1.2, 1.0], vertical_alignment="bottom")
+        with selector_col:
+            plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
+        with plate_name_col:
+            if plate_id:
+                st.subheader(plate_id)
+            else:
+                st.write("")
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
 
         if plate_id:
@@ -419,6 +438,7 @@ def ui_preprocessing_params(ss):
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
         plate_grid_height = 460
         plate_grid_aspect_ratio = 0.65
+        initial_group_map: dict[str, str] | None = None
 
         with controls_col:
             a, b = st.columns(2, vertical_alignment="center")
@@ -460,6 +480,18 @@ def ui_preprocessing_params(ss):
                 ),
             )
 
+            st.divider()
+
+            blank = has_blank_wells
+            initial_group_map = params0.get("blank_group_assignments", False)
+            if not isinstance(initial_group_map, dict):
+                initial_group_map = None
+
+            if plate_id and not has_blank_wells:
+                st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
+            elif not plate_id:
+                st.caption("Select a plate to configure blank subtraction groups.")
+
             # Get default excluded wells from params0
             default_excluded = params0.get("remove_wells", [])
             if default_excluded is False or not default_excluded:
@@ -481,16 +513,12 @@ def ui_preprocessing_params(ss):
                 type="tertiary",
                 width="stretch",
                 disabled=not plate_id,
-            ):
-                ss.plates.pop(plate_id, None)
-                st.rerun()
+                ):
+                    ss.plates.pop(plate_id, None)
+                    st.rerun()
 
         with plate_col:
             if has_blank_wells:
-                blank = True
-                initial_group_map = params0.get("blank_group_assignments", False)
-                if not isinstance(initial_group_map, dict):
-                    initial_group_map = None
                 blank_group_assignments = ui_blank_group_assigner(
                     plate_id=plate_id,
                     initial_group_map=initial_group_map,
@@ -499,15 +527,11 @@ def ui_preprocessing_params(ss):
                     remove_wells=remove_wells,
                     blank_enabled=blank,
                     show_caption=False,
+                    show_controls=True,
+                    show_grid=True,
                     grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
-            elif plate_id:
-                st.caption("No BLANK wells in this plate map. Blank subtraction is disabled.")
-                blank = False
-            else:
-                st.caption("Select a plate to configure blank subtraction groups.")
-                blank = False
 
             # Preview grid in Step 4
             if not has_blank_wells:
