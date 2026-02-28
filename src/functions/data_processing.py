@@ -4,7 +4,7 @@ import io
 
 import numpy as np
 import pandas as pd
-from growthcurves.preprocessing import blank_subtraction, out_of_iqr, path_correct
+from growthcurves.preprocessing import blank_subtraction, detect_outliers, path_correct
 
 from .constants import COLS, ROWS
 from .fitting_pipeline import fit_growth_series
@@ -110,19 +110,6 @@ def _analysis_group_for_wells(well_series: pd.Series, group_map: dict[str, str])
     return well_series.map(group_map).fillna(DEFAULT_BLANK_GROUP)
 
 
-def _coerce_outlier_window_size(value, default: int = 15) -> int:
-    """Return a valid odd outlier window size (>=3)."""
-    try:
-        window = int(value)
-    except (TypeError, ValueError):
-        window = default
-    if window < 3:
-        window = 3
-    if window % 2 == 0:
-        window += 1
-    return window
-
-
 def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFrame:
     """Optionally remove outlier points from a baseline-corrected well trace."""
     if not bool(params.get("outlier_detection", False)):
@@ -130,20 +117,19 @@ def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFr
     if processed.empty:
         return processed
 
-    window_size = _coerce_outlier_window_size(params.get("outlier_window_size", 15))
     try:
-        factor = float(params.get("outlier_threshold", 1.5))
+        factor = float(params.get("outlier_threshold", 3.5))
     except (TypeError, ValueError):
-        factor = 1.5
+        factor = 3.5
     if not np.isfinite(factor) or factor <= 0:
-        factor = 1.5
+        factor = 3.5
 
     y_arr = processed["baseline_corrected"].to_numpy(float)
-    if y_arr.size < window_size:
+    if y_arr.size < 5:
         return processed
 
     try:
-        outlier_mask = out_of_iqr(y_arr, window_size=window_size, factor=factor)
+        outlier_mask = detect_outliers(y_arr, factor=factor)
     except Exception:
         return processed
     if outlier_mask is None or len(outlier_mask) != len(processed):

@@ -86,33 +86,6 @@ def _strip_html_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", str(text))
 
 
-def _coerce_outlier_window_size(value, default: int = 15) -> int:
-    """Return a valid odd outlier window size (>=3)."""
-    try:
-        window = int(value)
-    except (TypeError, ValueError):
-        window = default
-    if window < 3:
-        window = 3
-    if window % 2 == 0:
-        window += 1
-    return window
-
-
-def _normalize_outlier_window_size_state(state_key: str) -> None:
-    """Normalize a session-state outlier window size to a valid odd integer."""
-    raw_value = st.session_state.get(state_key, 15)
-    normalized_value = _coerce_outlier_window_size(raw_value)
-    st.session_state[state_key] = normalized_value
-
-    try:
-        raw_int = int(raw_value)
-    except (TypeError, ValueError):
-        return
-
-    if raw_int % 2 == 0 and normalized_value != raw_int:
-        st.toast("Window size must be odd.")
-
 
 def _build_plate_preview_cells(
     *,
@@ -419,10 +392,7 @@ def ui_preprocessing_params(ss):
     time_unit = "hours"
     pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
     outlier_detection = bool(DEFAULT_PARAMS.get("outlier_detection", False))
-    outlier_window_size = _coerce_outlier_window_size(
-        DEFAULT_PARAMS.get("outlier_window_size", 15)
-    )
-    outlier_threshold = float(DEFAULT_PARAMS.get("outlier_threshold", 1.5))
+    outlier_threshold = float(DEFAULT_PARAMS.get("outlier_threshold", 3.5))
     plate_map = None
     present: set[str] = set()
     name_by_well: dict[str, str] = {}
@@ -445,13 +415,10 @@ def ui_preprocessing_params(ss):
                 st.write("")
         params0 = plate_params(ss, plate_id) if plate_id else DEFAULT_PARAMS
         outlier_detection = bool(params0.get("outlier_detection", False))
-        outlier_window_size = _coerce_outlier_window_size(
-            params0.get("outlier_window_size", 15)
-        )
         try:
-            outlier_threshold = float(params0.get("outlier_threshold", 1.5))
+            outlier_threshold = float(params0.get("outlier_threshold", 3.5))
         except (TypeError, ValueError):
-            outlier_threshold = 1.5
+            outlier_threshold = 3.5
 
         if plate_id:
             rec = ss.plates.get(plate_id, {})
@@ -533,53 +500,30 @@ def ui_preprocessing_params(ss):
             )
 
             outlier_controls_disabled = not outlier_detection
-            outlier_toggle_col, outlier_window_col, outlier_threshold_col = st.columns(
-                [1.2, 1.0, 1.0], vertical_alignment="bottom"
+            outlier_toggle_col, outlier_threshold_col = st.columns(
+                [1.2, 1.0], vertical_alignment="bottom"
             )
             outlier_detection = outlier_toggle_col.checkbox(
-                "Remove ouliers",
+                "Remove outliers",
                 value=outlier_detection,
                 help=(
-                    "Calls growthcurves.preprocessing.out_of_iqr after path correction "
+                    "Calls growthcurves.preprocessing.detect_outliers after path correction "
                     "and blank subtraction, before model fitting."
                 ),
             )
             outlier_controls_disabled = not outlier_detection
-            outlier_window_state_key = f"outlier_window_size__{plate_id or 'none'}"
-            if outlier_window_state_key not in st.session_state:
-                st.session_state[outlier_window_state_key] = _coerce_outlier_window_size(
-                    outlier_window_size
-                )
-            else:
-                _normalize_outlier_window_size_state(outlier_window_state_key)
-
-            outlier_window_col.number_input(
-                "Outlier window size (points)",
-                min_value=3,
-                max_value=999,
-                value=int(st.session_state[outlier_window_state_key]),
-                step=1,
-                key=outlier_window_state_key,
-                on_change=_normalize_outlier_window_size_state,
-                args=(outlier_window_state_key,),
-                disabled=outlier_controls_disabled,
-                help=(
-                    "Odd-numbered sliding window used for IQR outlier detection "
-                    "(e.g., 5, 7, 9)."
-                ),
-            )
-            outlier_window_size = int(st.session_state[outlier_window_state_key])
             outlier_threshold = float(
                 outlier_threshold_col.number_input(
-                    "Outlier threshold (IQR factor)",
-                    min_value=0.1,
+                    "Outlier threshold (MAD z-score)",
+                    min_value=1.0,
+                    max_value=5.0,
                     value=outlier_threshold,
                     step=0.1,
                     format="%.2f",
                     disabled=outlier_controls_disabled,
                     help=(
-                        "IQR multiplier used as outlier threshold. Lower values remove "
-                        "more points; default is 1.5."
+                        "MAD z-score threshold for flagging outliers. Higher values flag "
+                        "fewer, more extreme points; default is 3.5."
                     ),
                 )
             )
@@ -641,7 +585,6 @@ def ui_preprocessing_params(ss):
         ss["step3_params"]["blank"] = blank
         ss["step3_params"]["blank_group_assignments"] = blank_group_assignments
         ss["step3_params"]["outlier_detection"] = bool(outlier_detection)
-        ss["step3_params"]["outlier_window_size"] = int(outlier_window_size)
         ss["step3_params"]["outlier_threshold"] = float(outlier_threshold)
         ss["step3_params"]["clip_time_series"] = clip_time_series
         ss["step3_params"]["remove_wells"] = remove_wells
@@ -959,15 +902,12 @@ def ui_analysis_params(ss):
     outlier_detection = bool(
         step3_params.get("outlier_detection", params0.get("outlier_detection", False))
     )
-    outlier_window_size = _coerce_outlier_window_size(
-        step3_params.get("outlier_window_size", params0.get("outlier_window_size", 15))
-    )
     try:
         outlier_threshold = float(
-            step3_params.get("outlier_threshold", params0.get("outlier_threshold", 1.5))
+            step3_params.get("outlier_threshold", params0.get("outlier_threshold", 3.5))
         )
     except (TypeError, ValueError):
-        outlier_threshold = 1.5
+        outlier_threshold = 3.5
     clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
     remove_wells = step3_params.get("remove_wells", False)
 
@@ -1036,7 +976,6 @@ def ui_analysis_params(ss):
         blank=bool(blank),
         blank_group_assignments=blank_group_assignments if blank else False,
         outlier_detection=bool(outlier_detection),
-        outlier_window_size=int(outlier_window_size),
         outlier_threshold=float(outlier_threshold),
         window_points=int(window_points),
         lag_cutoff=float(lag_cutoff),
