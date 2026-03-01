@@ -575,6 +575,10 @@ def ui_preprocessing_params(ss):
                     grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
+            st.caption(
+                "Note: plate groups are independent, meaning blanks and samples "
+                "on different plates are never linked."
+            )
 
     # Store selected values in session state for access by other fragments
     if plate_id:
