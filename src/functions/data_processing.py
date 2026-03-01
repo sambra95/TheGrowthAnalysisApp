@@ -129,7 +129,7 @@ def _apply_outlier_detection(processed: pd.DataFrame, params: dict) -> pd.DataFr
         return processed
 
     try:
-        outlier_mask = detect_outliers(y_arr, factor=factor)
+        outlier_mask = detect_outliers(y_arr, method="ecod", factor=factor)
     except Exception:
         return processed
     if outlier_mask is None or len(outlier_mask) != len(processed):
