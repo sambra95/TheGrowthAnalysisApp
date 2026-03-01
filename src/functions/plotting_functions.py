@@ -368,7 +368,7 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
     """
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
-        {(nm or "").strip() for *_, nm, __ in items} - {"", "False", "BLANK"}
+        {nm for nm in ({(nm or "").strip() for *_, nm, __ in items} - {"", "False"}) if not nm.upper().startswith("BLANK")}
     )
 
     # Return empty figure if no valid samples found

@@ -20,7 +20,7 @@ Use this page as your **first quality check** after running the analysis on the 
 Browse through your samples and inspect the grouped replicate curves. Consistent replicates should overlap closely — wide spread may indicate variability or issues with specific wells. Use this view to identify samples that may need attention in the Check Growth Fits page.
 
 **Blank wells**
-If blank subtraction is enabled, inspect the OD measurements for all BLANK wells. The mean blank value used for baseline correction is shown — verify it looks reasonable. Large variation across blank wells may affect the quality of baseline correction.
+If blank subtraction is enabled, inspect the OD measurements for all blank wells (any well named BLANK or starting with BLANK). The mean blank value used for baseline correction is shown — verify it looks reasonable. Large variation across blank wells may affect the quality of baseline correction.
 
 **Plate map fit overview (bottom section)**
 A colour-coded plate map shows the predicted growth descriptor values across all wells. Use this to quickly spot problematic wells or patterns across the plate (e.g. edge effects, failed wells).

@@ -170,7 +170,7 @@ def analyse_plate(record: dict):
     grouped_baseline = pd.DataFrame()
     blank_group_map = _normalize_blank_group_map(p.get("blank_group_assignments", False))
     if p.get("blank", True):
-        blanks_long = long.query("name == 'BLANK'").copy()
+        blanks_long = long[long["name"].str.upper().str.startswith("BLANK")].copy()
 
         # one column per blank well (values are Mean), indexed by Time
         blanks_wide = blanks_long.pivot_table(
@@ -201,7 +201,7 @@ def analyse_plate(record: dict):
             cols = ["Mean"] + [c for c in baseline.columns if c != "Mean"]
             baseline = baseline[cols]
 
-        long = long.query("name != 'BLANK'").copy()
+        long = long[~long["name"].str.upper().str.startswith("BLANK")].copy()
 
     # Blank subtraction using growthcurves preprocessing function
     if not baseline.empty:

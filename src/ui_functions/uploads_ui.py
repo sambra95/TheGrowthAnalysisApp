@@ -47,7 +47,7 @@ This is your starting point. Follow the 6 steps in order to upload your data and
 Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
 
 **Step 2 — Upload plate map**
-Upload a plate map Excel file that assigns sample names to each well. Wells with the same name are treated as replicates. Use **BLANK** for blank wells and leave cells empty to ignore wells. Click "Requirements" for the expected format and an example download.
+Upload a plate map Excel file that assigns sample names to each well. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK, e.g. BLANK1, BLANK_A) for blank wells and leave cells empty to ignore wells. Click "Requirements" for the expected format and an example download.
 
 **Step 3 — Match samples with names**
 Click the button to load both files and match well IDs between the data and the plate map. The plate preview on the right will update to confirm which wells are included.
@@ -56,7 +56,7 @@ Click the button to load both files and match well IDs between the data and the 
 Configure how the data is processed before analysis:
 - **Time unit**: Set to match the unit in your data file (seconds, minutes, or hours)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
-- **Blank subtraction groups**: Link sample wells to BLANK wells by analysis group so subtraction uses only matched BLANK wells
+- **Blank subtraction groups**: Link sample wells to blank wells by analysis group so subtraction uses only matched blank wells (any well named BLANK or starting with BLANK)
 - **Time range**: Restrict analysis to a specific window of the experiment
 - **Outlier detection**: Optionally detect/remove outliers with a sliding IQR window (window size + threshold)
 - **Exclude wells**: Manually remove specific wells (e.g. contaminated or failed wells)
@@ -125,9 +125,9 @@ def _build_plate_preview_cells(
                 continue
 
             sample = _plate_cell_name(plate_map, row, col).strip()
-            is_blank_well = sample.upper() == "BLANK"
+            is_blank_well = sample.upper().startswith("BLANK")
             cell_label = f"<b>{well}</b>" if is_blank_well else well
-            has_sample_name = sample not in {"", "False", "BLANK"}
+            has_sample_name = sample not in {"", "False"} and not sample.upper().startswith("BLANK")
             is_not_in_plate_map = sample in {"", "False"}
 
             included = False
@@ -292,7 +292,7 @@ def ui_upload_files(ss):
 
                     st.markdown("**Well labels:**")
                     st.markdown("- Samples with the same name = replicates")
-                    st.markdown("- Use **'BLANK'** for blank wells")
+                    st.markdown("- Use **'BLANK'** (or any name starting with BLANK, e.g. BLANK1) for blank wells")
                     st.markdown("- Empty cells = wells to ignore")
                     st.markdown("- First **'_'** splits strain and condition labels")
 
@@ -429,7 +429,7 @@ def ui_preprocessing_params(ss):
                     data_bytes=uploads["data_bytes"],
                 )
                 name_by_well = _name_by_well_from_plate_map(plate_map)
-                blank_well_count = sum(1 for v in name_by_well.values() if v.upper() == "BLANK")
+                blank_well_count = sum(1 for v in name_by_well.values() if v.upper().startswith("BLANK"))
                 has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")

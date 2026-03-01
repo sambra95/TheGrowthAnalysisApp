@@ -105,7 +105,7 @@ def _build_growth_curves_long_df(plates: dict, sample_names: list[str]) -> pd.Da
 
     for pid, _, well, nm, d, key in _iter_wells(plates):
         nm = (nm or "").strip()
-        if nm in {"", "False", "BLANK"}:
+        if nm in {"", "False"} or nm.upper().startswith("BLANK"):
             continue
         if nm not in sel:
             continue

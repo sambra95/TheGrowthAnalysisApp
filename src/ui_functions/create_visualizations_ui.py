@@ -17,7 +17,7 @@ def ui_growth_selection_container(plates: dict) -> dict:
         by_name = {}
         for well, nm in (p.get("name") or {}).items():
             nm = (nm or "").strip()
-            if not nm or nm in {"False", "BLANK"}:
+            if not nm or nm in {"False"} or nm.upper().startswith("BLANK"):
                 continue
             by_name.setdefault(nm, []).append(well)
 

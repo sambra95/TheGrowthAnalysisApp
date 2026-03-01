@@ -44,8 +44,8 @@ def build_symbol_grid(
         for c in COLS:
             w = f"{r}{c}"
             nm = name_by_well.get(w, "")
-            is_blank = nm == "BLANK"
-            has_valid_name = nm not in {"", "False", "BLANK"}
+            is_blank = nm.upper().startswith("BLANK")
+            has_valid_name = nm not in {"", "False"} and not nm.upper().startswith("BLANK")
 
             if w in removed:
                 sym = RED

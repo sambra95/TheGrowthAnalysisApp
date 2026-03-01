@@ -154,8 +154,8 @@ def build_cells(
         for x, group in enumerate(row):
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
-            is_blank = sample.upper() == "BLANK"
-            has_sample = sample not in {"", "False", "BLANK"}
+            is_blank = sample.upper().startswith("BLANK")
+            has_sample = sample not in {"", "False"} and not sample.upper().startswith("BLANK")
             not_in_map = sample in {"", "False"}
             base_color = color_map.get(group, "#ffffff")
             sample_suffix = f" · {sample}" if sample and sample != "False" else ""
