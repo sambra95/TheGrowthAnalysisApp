@@ -1,3 +1,7 @@
+## Live App
+
+**[thegrowthanalysisapp.streamlit.app](https://thegrowthanalysisapp.streamlit.app/)**
+
 ## Abstract
 
 TheGrowthAnalysisApp is a Streamlit-based application for analyzing microbial growth curves from plate reader time-series data. Users upload raw optical density measurements and a plate map, configure analysis parameters, and the app computes baseline-corrected growth statistics including maximum OD, maximum specific growth rate (μ_max), lag time, and exponential phase boundaries across all wells.
