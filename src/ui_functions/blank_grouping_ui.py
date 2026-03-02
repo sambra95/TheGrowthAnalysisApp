@@ -321,14 +321,20 @@ def ui_blank_group_assigner(
                 unsafe_allow_html=True,
             )
 
+        _disabled_help = (
+            "When there are fewer than two blanks, there can be only one blank group."
+            if controls_disabled else None
+        )
         add_clicked = add_col.button(
             "Add", type="primary", width="stretch",
             key=_state_key(prefix, "add_group"), disabled=controls_disabled,
+            help=_disabled_help,
         )
         remove_clicked = remove_col.button(
             "Remove", type="primary", width="stretch",
             key=_state_key(prefix, "remove_group"),
             disabled=controls_disabled or ss[actk] == DEFAULT_GROUP,
+            help=_disabled_help,
         )
 
         if add_clicked:
