@@ -155,7 +155,7 @@ def build_export_zip(
     include_baseline_plots: bool,
     include_replicates: bool,
     include_well_plots: bool,
-    well_graphs: list[str] | None = None,  # e.g. ["OD", "1st Derivative", "μ"]
+    well_graphs: list[str] | None = None,  # e.g. ["Raw OD", "dOD/dt", "Specific Growth Rate"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,
@@ -310,7 +310,7 @@ def build_export_zip(
 
                     plate_dir = f"plots/{pid}/wells"
 
-                    if "OD" in well_graphs:
+                    if "Raw OD" in well_graphs:
                         all_growth_stats = p.get("growth_stats") or {}
                         gs = all_growth_stats.get(well) or {}
                         fit_parameters = p.get("fit_parameters") or {}
@@ -379,21 +379,18 @@ def build_export_zip(
                                 )
 
                     # Export derivative and growth rate plots
-                    if "1st Derivative" in well_graphs or "μ" in well_graphs:
-                        # Get the processed data for this well
+                    if "dOD/dt" in well_graphs or "Specific Growth Rate" in well_graphs:
                         d = processed.get(well)
                         all_growth_stats = p.get("growth_stats") or {}
                         gs = all_growth_stats.get(well) or {}
                         fit_parameters = p.get("fit_parameters") or {}
 
                         if d is not None and not d.empty:
-                            # Get time and OD data
                             t_raw, y_raw = _finite_sorted_xy(
                                 d["Time"].to_numpy(), d["baseline_corrected"].to_numpy()
                             )
 
                             if t_raw.size > 0:
-                                # Prepare phase boundaries if available
                                 phase_boundaries = None
                                 if not is_bad_fit(gs) and gs:
                                     exp_phase_start = gs.get("exp_phase_start")
@@ -407,13 +404,12 @@ def build_export_zip(
                                             exp_phase_end,
                                         )
 
-                                # Get fit result for model overlay
                                 fit_result = fit_parameters.get(well)
 
-                                if "1st Derivative" in well_graphs:
+                                if "dOD/dt" in well_graphs:
                                     fig = plot_derivative_metric(
                                         t=t_raw,
-                                        y=y_raw,
+                                        N=y_raw,
                                         metric="dndt",
                                         fit_result=fit_result,
                                         sg_window=sg_w,
@@ -427,10 +423,10 @@ def build_export_zip(
                                             _png(fig, well_width, well_height),
                                         )
 
-                                if "μ" in well_graphs:
+                                if "Specific Growth Rate" in well_graphs:
                                     fig = plot_derivative_metric(
                                         t=t_raw,
-                                        y=y_raw,
+                                        N=y_raw,
                                         metric="mu",
                                         fit_result=fit_result,
                                         sg_window=sg_w,

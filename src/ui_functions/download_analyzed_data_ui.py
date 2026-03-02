@@ -110,9 +110,9 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
 
             with graph_col:
                 well_graphs = st.multiselect(
-                    "Well graphs to include",
-                    options=["OD", "1st Derivative", "μ"],
-                    default=["OD", "1st Derivative", "μ"],
+                    "Well traces to include",
+                    options=["Raw OD", "dOD/dt", "Specific Growth Rate"],
+                    default=["Raw OD", "dOD/dt", "Specific Growth Rate"],
                     key="well_graphs",
                 )
 
