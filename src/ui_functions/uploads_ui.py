@@ -864,6 +864,7 @@ def ui_calculation_table(
         exp_phase_end_calc = "μ<sub>max</sub> tangent intersec with OD(max)"
 
     if growth_method == "Model Fitting" and model_type in {
+        "mech_baranyi",
         "phenom_logistic",
         "phenom_gompertz",
         "phenom_gompertz_modified",
