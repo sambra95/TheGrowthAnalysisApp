@@ -207,6 +207,8 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         exp0 = growth_stats.get("exp_phase_end")
         lag0 = float(lag0) if pd.notna(lag0) else t_min
         exp0 = float(exp0) if pd.notna(exp0) else t_min
+        lag0 = max(t_min, min(t_max, lag0))
+        exp0 = max(t_min, min(t_max, exp0))
         st.session_state[ss_key] = (lag0, exp0)
 
         # Clamp max_od to the actual max in the processed data to avoid slider errors
@@ -234,7 +236,9 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
         st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
-        smooth_default = plate_params.get("smooth", plate_params.get("spline_s", "fast"))
+        smooth_default = plate_params.get(
+            "smooth", plate_params.get("spline_s", "fast")
+        )
         st.session_state[_rp_smooth_key] = _normalize_smooth(smooth_default)
 
     # Initialise re-analysis params the first time this well is shown
