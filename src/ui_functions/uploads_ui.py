@@ -9,21 +9,28 @@ from growthcurves.models import MODEL_REGISTRY
 
 from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
-from src.functions.upload_functions import (detect_plate_map_format,
-                                            get_plate_preview_data,
-                                            long_plate_map_to_wide_bytes,
-                                            plate_params,
-                                            validate_data_columns_are_wells,
-                                            validate_data_file,
-                                            validate_long_plate_map_file,
-                                            validate_plate_map_file)
+from src.functions.upload_functions import (
+    detect_plate_map_format,
+    get_plate_preview_data,
+    long_plate_map_to_wide_bytes,
+    plate_params,
+    validate_data_columns_are_wells,
+    validate_data_file,
+    validate_long_plate_map_file,
+    validate_plate_map_file,
+)
 from src.styling import growth_param_table_style
-from src.ui_functions.blank_grouping_ui import (DEFAULT_GROUP, color_for_group,
-                                                darken_hex_color,
-                                                st_selectable_grid,
-                                                ui_blank_group_assigner)
-from src.ui_functions.ui_components import (ui_method_visualization,
-                                            ui_phase_boundary_visualization)
+from src.ui_functions.blank_grouping_ui import (
+    DEFAULT_GROUP,
+    color_for_group,
+    darken_hex_color,
+    st_selectable_grid,
+    ui_blank_group_assigner,
+)
+from src.ui_functions.ui_components import (
+    ui_method_visualization,
+    ui_phase_boundary_visualization,
+)
 
 
 def ui_upload_and_analyse_header():
@@ -34,7 +41,8 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown("""
+            st.markdown(
+                """
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -42,7 +50,7 @@ This is your starting point. Follow the 6 steps in order to upload your data and
 **Step 1 — Upload data file**
 Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
 
-**Step 2 — Upload plate map (optional)**
+**Step 2 — Upload sample names**
 Optionally upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
 
 **Step 3 — Match samples with names**
@@ -70,7 +78,8 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-""")
+"""
+            )
 
     st.divider()
 
@@ -281,7 +290,7 @@ def ui_upload_files(ss):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 2. Upload plate map (optional)")
+                st.header("Step 2. Upload samples names")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
