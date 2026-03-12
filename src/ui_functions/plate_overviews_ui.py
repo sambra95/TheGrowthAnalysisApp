@@ -2,12 +2,10 @@
 
 import streamlit as st
 
-from src.functions.plotting_functions import (
-    plot_baseline_by_group,
-    plot_replicates_by_sample,
-    plot_rmse_heatmap,
-    plot_window_plate,
-)
+from src.functions.plotting_functions import (plot_baseline_by_group,
+                                              plot_replicates_by_sample,
+                                              plot_rmse_heatmap,
+                                              plot_window_plate)
 
 
 @st.fragment

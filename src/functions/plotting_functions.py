@@ -8,25 +8,16 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.inference import (
-    compute_first_derivative,
-    compute_instantaneous_mu,
-    compute_sliding_window_growth_rate,
-    is_no_growth,
-    smooth,
-)
-from growthcurves.models import (
-    MODEL_REGISTRY,
-    mech_baranyi_model,
-    mech_gompertz_model,
-    mech_logistic_model,
-    mech_richards_model,
-    phenom_gompertz_model,
-    phenom_gompertz_modified_model,
-    phenom_logistic_model,
-    phenom_richards_model,
-    spline_from_params,
-)
+from growthcurves.inference import (compute_first_derivative,
+                                    compute_instantaneous_mu,
+                                    compute_sliding_window_growth_rate,
+                                    is_no_growth, smooth)
+from growthcurves.models import (MODEL_REGISTRY, mech_baranyi_model,
+                                 mech_gompertz_model, mech_logistic_model,
+                                 mech_richards_model, phenom_gompertz_model,
+                                 phenom_gompertz_modified_model,
+                                 phenom_logistic_model, phenom_richards_model,
+                                 spline_from_params)
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 
@@ -156,9 +147,7 @@ def plot_baseline_by_group(
     group_mean_cols = [
         c for c in baseline.columns if str(c).endswith(" Mean") and str(c) != "Mean"
     ]
-    mean_col_to_group = {
-        c: str(c)[: -len(" Mean")].strip() for c in group_mean_cols
-    }
+    mean_col_to_group = {c: str(c)[: -len(" Mean")].strip() for c in group_mean_cols}
     group_names = sorted(set(mean_col_to_group.values()), key=_group_sort_key)
 
     excluded_cols = {"Mean"} | set(group_mean_cols)
@@ -368,7 +357,11 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
     """
     items = [(pid, well, nm, d) for pid, _, well, nm, d, _ in _iter_wells(plates)]
     names = sorted(
-        {nm for nm in ({(nm or "").strip() for *_, nm, __ in items} - {"", "False"}) if not nm.upper().startswith("BLANK")}
+        {
+            nm
+            for nm in ({(nm or "").strip() for *_, nm, __ in items} - {"", "False"})
+            if not nm.upper().startswith("BLANK")
+        }
     )
 
     # Return empty figure if no valid samples found

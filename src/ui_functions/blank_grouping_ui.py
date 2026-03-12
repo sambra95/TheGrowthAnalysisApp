@@ -18,8 +18,17 @@ except ImportError:  # pragma: no cover - optional dependency
 
 DEFAULT_GROUP = "Group 1"
 GROUP_PALETTE = [
-    "#ccebc5", "#8dd3c7", "#ffffb3", "#bebada", "#fb8072",
-    "#80b1d3", "#fdb462", "#b3de69", "#fccde5", "#bc80bd", "#ffed6f",
+    "#ccebc5",
+    "#8dd3c7",
+    "#ffffb3",
+    "#bebada",
+    "#fb8072",
+    "#80b1d3",
+    "#fdb462",
+    "#b3de69",
+    "#fccde5",
+    "#bc80bd",
+    "#ffed6f",
 ]
 
 
@@ -55,7 +64,7 @@ def darken_hex_color(color: str, factor: float = 0.88) -> str:
     if not match:
         return str(color).strip() or "#ffffff"
     h = match.group(1)
-    r, g, b = (max(0, min(255, int(int(h[i:i + 2], 16) * factor))) for i in (0, 2, 4))
+    r, g, b = (max(0, min(255, int(int(h[i : i + 2], 16) * factor))) for i in (0, 2, 4))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
@@ -92,7 +101,6 @@ def _assignments_from_map(group_map: dict[str, str] | None) -> list[list[str]]:
             if pt:
                 grid[pt["y"]][pt["x"]] = str(group).strip() or DEFAULT_GROUP
     return grid
-
 
 
 def assignments_to_map(assignments: list[list[str]]) -> dict[str, str]:
@@ -143,10 +151,14 @@ def build_cells(
 ) -> list[list[dict[str, Any]]]:
     name_by_well = name_by_well or {}
     present_lookup = (
-        {str(w).strip().upper() for w in present_wells} if present_wells is not None else None
+        {str(w).strip().upper() for w in present_wells}
+        if present_wells is not None
+        else None
     )
     removed_lookup = {str(w).strip().upper() for w in (remove_wells or [])}
-    status_mode = present_lookup is not None or bool(removed_lookup) or not blank_enabled
+    status_mode = (
+        present_lookup is not None or bool(removed_lookup) or not blank_enabled
+    )
 
     rows: list[list[dict[str, Any]]] = []
     for y, row in enumerate(assignments):
@@ -155,7 +167,9 @@ def build_cells(
             well = f"{ROWS[y]}{COLS[x]}"
             sample = str(name_by_well.get(well, "")).strip()
             is_blank = sample.upper().startswith("BLANK")
-            has_sample = sample not in {"", "False"} and not sample.upper().startswith("BLANK")
+            has_sample = sample not in {"", "False"} and not sample.upper().startswith(
+                "BLANK"
+            )
             not_in_map = sample in {"", "False"}
             base_color = color_map.get(group, "#ffffff")
             sample_suffix = f" · {sample}" if sample and sample != "False" else ""
@@ -182,15 +196,21 @@ def build_cells(
                 blank_tag = " · BLANK well" if is_blank and status_mode else ""
                 cell_data: dict[str, Any] = {
                     "label": label,
-                    "cell_color": darken_hex_color(base_color) if is_blank else base_color,
+                    "cell_color": (
+                        darken_hex_color(base_color) if is_blank else base_color
+                    ),
                     "tooltip": f"{well}{sample_suffix}{blank_tag} · {group}",
                 }
                 if is_blank:
-                    cell_data.update({
-                        "html": True,
-                        "cell_border_width": 2,
-                        "cell_border_color": darken_hex_color(base_color, factor=0.72),
-                    })
+                    cell_data.update(
+                        {
+                            "html": True,
+                            "cell_border_width": 2,
+                            "cell_border_color": darken_hex_color(
+                                base_color, factor=0.72
+                            ),
+                        }
+                    )
             else:
                 cell_data = {
                     "label": label,
@@ -240,23 +260,42 @@ def _render_fallback_assigner(prefix: str, grid_height: int = 350):
     ak = _state_key(prefix, "assignments")
     actk = _state_key(prefix, "active_group")
 
-    st.caption("`st_selectable_grid` is not installed. Using range controls for group assignment.")
+    st.caption(
+        "`st_selectable_grid` is not installed. Using range controls for group assignment."
+    )
 
     all_wells = [f"{r}{c}" for r in ROWS for c in COLS]
     c1, c2 = st.columns(2)
-    p1 = _well_to_point(c1.selectbox("Start well", all_wells, key=_state_key(prefix, "range_start"))) or {"x": 0, "y": 0}
-    p2 = _well_to_point(c2.selectbox("End well", all_wells, key=_state_key(prefix, "range_end"))) or {"x": 0, "y": 0}
+    p1 = _well_to_point(
+        c1.selectbox("Start well", all_wells, key=_state_key(prefix, "range_start"))
+    ) or {"x": 0, "y": 0}
+    p2 = _well_to_point(
+        c2.selectbox("End well", all_wells, key=_state_key(prefix, "range_end"))
+    ) or {"x": 0, "y": 0}
 
     a, b = st.columns(2)
-    if a.button("Assign range", type="primary", width="stretch", key=_state_key(prefix, "assign_range")):
+    if a.button(
+        "Assign range",
+        type="primary",
+        width="stretch",
+        key=_state_key(prefix, "assign_range"),
+    ):
         ss[ak] = fill_rect(ss[ak], p1, p2, ss[actk])
         st.rerun()
-    if b.button("Clear range", type="primary", width="stretch", key=_state_key(prefix, "clear_range")):
+    if b.button(
+        "Clear range",
+        type="primary",
+        width="stretch",
+        key=_state_key(prefix, "clear_range"),
+    ):
         ss[ak] = fill_rect(ss[ak], p1, p2, DEFAULT_GROUP)
         st.rerun()
 
-    st.dataframe(pd.DataFrame(ss[ak], index=ROWS, columns=COLS), width="stretch", height=grid_height)
-
+    st.dataframe(
+        pd.DataFrame(ss[ak], index=ROWS, columns=COLS),
+        width="stretch",
+        height=grid_height,
+    )
 
 
 def ui_blank_group_assigner(
@@ -323,15 +362,21 @@ def ui_blank_group_assigner(
 
         _disabled_help = (
             "When there are fewer than two blanks, there can be only one blank group."
-            if controls_disabled else None
+            if controls_disabled
+            else None
         )
         add_clicked = add_col.button(
-            "Add", type="primary", width="stretch",
-            key=_state_key(prefix, "add_group"), disabled=controls_disabled,
+            "Add",
+            type="primary",
+            width="stretch",
+            key=_state_key(prefix, "add_group"),
+            disabled=controls_disabled,
             help=_disabled_help,
         )
         remove_clicked = remove_col.button(
-            "Remove", type="primary", width="stretch",
+            "Remove",
+            type="primary",
+            width="stretch",
             key=_state_key(prefix, "remove_group"),
             disabled=controls_disabled or ss[actk] == DEFAULT_GROUP,
             help=_disabled_help,
@@ -360,7 +405,9 @@ def ui_blank_group_assigner(
         else:
             selection = st_selectable_grid(
                 cells=build_cells(
-                    ss[ak], ss[ck], name_by_well,
+                    ss[ak],
+                    ss[ck],
+                    name_by_well,
                     present_wells=present_wells,
                     remove_wells=remove_wells,
                     blank_enabled=blank_enabled,

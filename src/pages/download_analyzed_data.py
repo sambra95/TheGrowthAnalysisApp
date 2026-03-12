@@ -4,11 +4,8 @@ import streamlit as st
 
 from src.functions.common import require_plates
 from src.ui_functions.download_analyzed_data_ui import (
-    _render_global_plots_container,
-    _render_tabulated_data_container,
-    _render_well_level_plots_container,
-    get_export_zip,
-)
+    _render_global_plots_container, _render_tabulated_data_container,
+    _render_well_level_plots_container, get_export_zip)
 from src.ui_functions.ui_components import page_header_with_help
 
 page_header_with_help(

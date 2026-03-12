@@ -4,7 +4,8 @@ import io
 
 import numpy as np
 import pandas as pd
-from growthcurves.preprocessing import blank_subtraction, detect_outliers, path_correct
+from growthcurves.preprocessing import (blank_subtraction, detect_outliers,
+                                        path_correct)
 
 from .constants import COLS, ROWS
 from .fitting_pipeline import fit_growth_series
@@ -24,15 +25,19 @@ def _plate_name_map(plate_bytes):
     return plate, {f"{r}{c}": str(plate.loc[r, c]).strip() for r in ROWS for c in COLS}
 
 
-def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:
+def _read_table(
+    data_bytes: bytes, time_unit: str = "hours", filter_to_wells: bool = True
+) -> pd.DataFrame:
     """Read plate time series data (rows=timepoints, cols=wells) with Time in hours.
 
     Args:
         data_bytes: Excel file bytes
         time_unit: Unit of time in the data file ("seconds", "minutes", or "hours")
+        filter_to_wells: If True, keep only valid well columns (A1–H12) and uppercase them.
+                         If False, keep all non-Time columns with their original names.
 
     Returns:
-        DataFrame with Time column in hours and well columns
+        DataFrame with Time column in hours and sample columns
 
     Raises:
         ValueError: If no Time column is found in the data file
@@ -49,19 +54,18 @@ def _read_table(data_bytes: bytes, time_unit: str = "hours") -> pd.DataFrame:
     t = pd.to_numeric(df["Time"], errors="coerce")
     df = df.drop(columns=["Time"])
 
-    # Convert time to hours based on selected unit
     if time_unit == "seconds":
         t_hours = t / 3600.0
     elif time_unit == "minutes":
         t_hours = t / 60.0
-    else:  # hours
+    else:
         t_hours = t
 
-    # keep only well-like columns (A1..H12) if extras exist
-    valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}
-    well_cols = [c for c in df.columns if str(c).strip().upper() in valid_wells]
-    df = df[well_cols].copy()
-    df.columns = [str(c).strip().upper() for c in df.columns]
+    if filter_to_wells:
+        valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}
+        well_cols = [c for c in df.columns if str(c).strip().upper() in valid_wells]
+        df = df[well_cols].copy()
+        df.columns = [str(c).strip().upper() for c in df.columns]
 
     df.insert(0, "Time", t_hours)
     for c in df.columns[1:]:
@@ -81,7 +85,12 @@ def _empty_plate():
 
 
 def load_plate(
-    plates: dict, plate_id: str, *, data_bytes: bytes, plate_bytes: bytes, params: dict
+    plates: dict,
+    plate_id: str,
+    *,
+    data_bytes: bytes,
+    plate_bytes: bytes | None,
+    params: dict,
 ):
     """Store uploads and params for a plate and return the record."""
     rec = plates.setdefault(plate_id, {})
@@ -103,7 +112,9 @@ def _normalize_blank_group_map(group_map) -> dict[str, str]:
     return normalized
 
 
-def _analysis_group_for_wells(well_series: pd.Series, group_map: dict[str, str]) -> pd.Series:
+def _analysis_group_for_wells(
+    well_series: pd.Series, group_map: dict[str, str]
+) -> pd.Series:
     """Return per-row analysis group for each well, defaulting to Group 1."""
     if not group_map:
         return pd.Series(DEFAULT_BLANK_GROUP, index=well_series.index, dtype="object")
@@ -144,13 +155,21 @@ def analyse_plate(record: dict):
     u = (record or {}).get("uploads") or {}
     p = (record or {}).get("params") or {}
 
-    plate_map, name_map = _plate_name_map(u["plate_bytes"])
-    df = _read_table(u["data_bytes"], p.get("time_unit", "hours"))
-
-    long = df.melt(id_vars="Time", var_name="well", value_name="value")
-    long["well"] = long["well"].astype(str).str.upper()
-    long["name"] = long["well"].map(name_map).fillna("False")
-    long = long[long["name"] != "False"].copy()
+    plate_bytes = u.get("plate_bytes")
+    if plate_bytes is not None:
+        plate_map, name_map = _plate_name_map(plate_bytes)
+        df = _read_table(u["data_bytes"], p.get("time_unit", "hours"))
+        long = df.melt(id_vars="Time", var_name="well", value_name="value")
+        long["well"] = long["well"].astype(str).str.upper()
+        long["name"] = long["well"].map(name_map).fillna("False")
+        long = long[long["name"] != "False"].copy()
+    else:
+        plate_map = None
+        df = _read_table(
+            u["data_bytes"], p.get("time_unit", "hours"), filter_to_wells=False
+        )
+        long = df.melt(id_vars="Time", var_name="well", value_name="value")
+        long["name"] = long["well"]
 
     long["value"] = pd.to_numeric(long["value"], errors="coerce")
 
@@ -168,7 +187,9 @@ def analyse_plate(record: dict):
 
     baseline = pd.DataFrame()
     grouped_baseline = pd.DataFrame()
-    blank_group_map = _normalize_blank_group_map(p.get("blank_group_assignments", False))
+    blank_group_map = _normalize_blank_group_map(
+        p.get("blank_group_assignments", False)
+    )
     if p.get("blank", True):
         blanks_long = long[long["name"].str.upper().str.startswith("BLANK")].copy()
 

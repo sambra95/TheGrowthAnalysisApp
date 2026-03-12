@@ -228,12 +228,20 @@ def update_growth_stats_from_lasso(
         smooth_key = f"rp_smooth__{well_key}"
         if smooth_key in st.session_state:
             smooth_mode = str(st.session_state[smooth_key]).strip().lower()
-            params["smooth"] = smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
+            params["smooth"] = (
+                smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
+            )
         else:
-            smooth_mode = str(params.get("smooth", params.get("spline_s", "fast"))).strip().lower()
+            smooth_mode = (
+                str(params.get("smooth", params.get("spline_s", "fast")))
+                .strip()
+                .lower()
+            )
             if smooth_mode == "auto":
                 smooth_mode = "slow"
-            params["smooth"] = smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
+            params["smooth"] = (
+                smooth_mode if smooth_mode in {"fast", "slow"} else "fast"
+            )
 
     fit, fit_result = _analyse_series_with_plate_params(refit_t, refit_y, params)
 

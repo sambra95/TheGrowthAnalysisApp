@@ -7,22 +7,16 @@ import plotly.graph_objects as go
 import streamlit as st
 from growthcurves.inference import bad_fit_stats
 
-from src.functions.check_growth_fits import (
-    _add_lasso_selected_points,
-    _analyse_series_with_plate_params,
-    _collect_lasso_series,
-    _cycle,
-    _delete_well_from_plate,
-    _sg_params_for_plate,
-    analyse_well,
-    update_growth_stats_from_lasso,
-    well_order_A1_to_H12,
-)
-from src.functions.plotting_functions import (
-    _finite_sorted_xy,
-    is_bad_fit,
-    plot_derivative_metric,
-)
+from src.functions.check_growth_fits import (_add_lasso_selected_points,
+                                             _analyse_series_with_plate_params,
+                                             _collect_lasso_series, _cycle,
+                                             _delete_well_from_plate,
+                                             _sg_params_for_plate,
+                                             analyse_well,
+                                             update_growth_stats_from_lasso,
+                                             well_order_A1_to_H12)
+from src.functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+                                              plot_derivative_metric)
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:

@@ -8,13 +8,10 @@ import pandas as pd
 from growthcurves.plot import plot_derivative_metric
 
 from src.functions.check_growth_fits import _add_lasso_selected_points
-from src.functions.plotting_functions import (
-    _finite_sorted_xy,
-    is_bad_fit,
-    plot_baseline,
-    plot_replicates_by_sample,
-    plot_window_plate,
-)
+from src.functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+                                              plot_baseline,
+                                              plot_replicates_by_sample,
+                                              plot_window_plate)
 
 
 # ---------------- Export helpers ----------------
@@ -155,7 +152,9 @@ def build_export_zip(
     include_baseline_plots: bool,
     include_replicates: bool,
     include_well_plots: bool,
-    well_graphs: list[str] | None = None,  # e.g. ["Raw OD", "dOD/dt", "Specific Growth Rate"]
+    well_graphs: (
+        list[str] | None
+    ) = None,  # e.g. ["Raw OD", "dOD/dt", "Specific Growth Rate"]
     selected_plate_ids: list[str] | None = None,  # plates to include for well plots
     wells_by_plate: dict[str, list[str]] | None = None,  # {plate_id: [well,...]}
     add_annotations: bool = True,

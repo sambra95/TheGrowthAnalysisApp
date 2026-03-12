@@ -9,24 +9,21 @@ from growthcurves.models import MODEL_REGISTRY
 
 from src.functions.constants import COLS, DEFAULT_PARAMS, ROWS
 from src.functions.data_processing import analyse_plate, load_plate
-from src.functions.upload_functions import (
-    get_plate_preview_data,
-    plate_params,
-    validate_data_file,
-    validate_plate_map_file,
-)
+from src.functions.upload_functions import (detect_plate_map_format,
+                                            get_plate_preview_data,
+                                            long_plate_map_to_wide_bytes,
+                                            plate_params,
+                                            validate_data_columns_are_wells,
+                                            validate_data_file,
+                                            validate_long_plate_map_file,
+                                            validate_plate_map_file)
 from src.styling import growth_param_table_style
-from src.ui_functions.blank_grouping_ui import (
-    DEFAULT_GROUP,
-    color_for_group,
-    darken_hex_color,
-    st_selectable_grid,
-    ui_blank_group_assigner,
-)
-from src.ui_functions.ui_components import (
-    ui_method_visualization,
-    ui_phase_boundary_visualization,
-)
+from src.ui_functions.blank_grouping_ui import (DEFAULT_GROUP, color_for_group,
+                                                darken_hex_color,
+                                                st_selectable_grid,
+                                                ui_blank_group_assigner)
+from src.ui_functions.ui_components import (ui_method_visualization,
+                                            ui_phase_boundary_visualization)
 
 
 def ui_upload_and_analyse_header():
@@ -37,8 +34,7 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown(
-                """
+            st.markdown("""
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -46,11 +42,11 @@ This is your starting point. Follow the 6 steps in order to upload your data and
 **Step 1 — Upload data file**
 Upload your plate reader Excel file. Click "Requirements" to see the expected format and download an example. Your file must have a **Time** column plus one column per well (e.g. A1, A2, ...).
 
-**Step 2 — Upload plate map**
-Upload a plate map Excel file that assigns sample names to each well. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK, e.g. BLANK1, BLANK_A) for blank wells and leave cells empty to ignore wells. Click "Requirements" for the expected format and an example download.
+**Step 2 — Upload plate map (optional)**
+Optionally upload a plate map Excel file that assigns sample names to each well. If provided, data column names must be well IDs (A1–H12) and the plate map is used to label each well. If omitted, the data column names are used directly as sample names. Wells with the same name are treated as replicates. Use **BLANK** (or any name starting with BLANK) for blank wells. Click "Requirements" for the expected format and an example download.
 
 **Step 3 — Match samples with names**
-Click the button to load both files and match well IDs between the data and the plate map. The plate preview on the right will update to confirm which wells are included.
+Click the button to load your file(s). If a plate map is provided it will be matched to the data; otherwise column names are used as sample names directly.
 
 **Step 4 — Select preprocessing parameters**
 Configure how the data is processed before analysis:
@@ -74,17 +70,14 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-"""
-            )
+""")
 
     st.divider()
-
 
 
 def _strip_html_tags(text: str) -> str:
     """Strip simple HTML tags from text."""
     return re.sub(r"<[^>]+>", "", str(text))
-
 
 
 def _build_plate_preview_cells(
@@ -127,7 +120,10 @@ def _build_plate_preview_cells(
             sample = _plate_cell_name(plate_map, row, col).strip()
             is_blank_well = sample.upper().startswith("BLANK")
             cell_label = f"<b>{well}</b>" if is_blank_well else well
-            has_sample_name = sample not in {"", "False"} and not sample.upper().startswith("BLANK")
+            has_sample_name = sample not in {
+                "",
+                "False",
+            } and not sample.upper().startswith("BLANK")
             is_not_in_plate_map = sample in {"", "False"}
 
             included = False
@@ -152,7 +148,9 @@ def _build_plate_preview_cells(
                 base_color = color_for_group(group_name)
                 cell_data: dict[str, Any] = {
                     "label": cell_label,
-                    "cell_color": darken_hex_color(base_color) if is_blank_well else base_color,
+                    "cell_color": (
+                        darken_hex_color(base_color) if is_blank_well else base_color
+                    ),
                     "tooltip": (
                         f"{well}{sample_suffix}"
                         f"{' · BLANK well' if is_blank_well else ''} · {group_name}"
@@ -162,7 +160,9 @@ def _build_plate_preview_cells(
                     cell_data["html"] = True
                 if is_blank_well:
                     cell_data["cell_border_width"] = 2
-                    cell_data["cell_border_color"] = darken_hex_color(base_color, factor=0.72)
+                    cell_data["cell_border_color"] = darken_hex_color(
+                        base_color, factor=0.72
+                    )
                 rendered_row.append(cell_data)
             else:
                 rendered_row.append(
@@ -234,7 +234,11 @@ def _plate_cell_name(plate_map: pd.DataFrame, row: str, col: int) -> str:
 
 def _name_by_well_from_plate_map(plate_map: pd.DataFrame) -> dict[str, str]:
     """Return well->sample-name mapping from a preview plate map."""
-    return {f"{row}{col}": _plate_cell_name(plate_map, row, col) for row in ROWS for col in COLS}
+    return {
+        f"{row}{col}": _plate_cell_name(plate_map, row, col)
+        for row in ROWS
+        for col in COLS
+    }
 
 
 def ui_upload_files(ss):
@@ -248,16 +252,14 @@ def ui_upload_files(ss):
                 st.header("Step 1. Upload data file")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
-                    example_data = pd.DataFrame(
-                        {
-                            "Time": [0, 12, 24, 36],
-                            "A1": [0.05, 0.08, 0.15, 0.28],
-                            "A2": [0.06, 0.09, 0.18, 0.32],
-                            "B1": [0.05, 0.07, 0.14, 0.26],
-                            "...": ["...", "...", "...", "..."],
-                        }
+                    st.caption(
+                        "Here you can upload your time series data. "
+                        "You can choose to name the samples using column headings in "
+                        "the data file, or upload a separate plate map to assign "
+                        "sample names to wells. If you upload a plate map, column "
+                        "names in the data file must be well IDs (e.g. A1, B3)."
                     )
-                    st.dataframe(example_data, hide_index=True, width="stretch")
+                    st.image("info_plots/data_upload.png", width="stretch")
 
                     st.markdown("")
                     with open("example_data/example_data.xlsx", "rb") as f:
@@ -279,56 +281,32 @@ def ui_upload_files(ss):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 2. Upload plate map")
+                st.header("Step 2. Upload plate map (optional)")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
-                    st.markdown("**Format:**")
-                    st.markdown("- Excel file (.xlsx or .xls)")
-                    st.markdown("- 96-well plate layout")
-
-                    st.markdown("**Required structure:**")
-                    st.markdown("- **'rows'** column with labels A-H")
-                    st.markdown("- Columns **1-12** for well positions")
-
-                    st.markdown("**Well labels:**")
-                    st.markdown("- Samples with the same name = replicates")
-                    st.markdown("- Use **'BLANK'** (or any name starting with BLANK, e.g. BLANK1) for blank wells")
-                    st.markdown("- Empty cells = wells to ignore")
-                    st.markdown("- First **'_'** splits strain and condition labels")
+                    st.caption(
+                        "The plate map assigns sample names to each well. "
+                        "If provided, data column names must be well IDs (A1–H12) and the "
+                        "plate map is used to label each well. If omitted, the data "
+                        "column names are used directly as sample names. Wells with the same "
+                        "name are treated as replicates in the app. Use BLANK (or any name "
+                        "starting with BLANK) for blank wells."
+                    )
+                    st.image("info_plots/naming_upload.png", width="stretch")
 
                     st.divider()
-                    st.markdown("**Example format:**")
-
-                    example_map = pd.DataFrame(
-                        {
-                            "rows": ["A", "B", "C", "D"],
-                            "1": [
-                                "Sample1_Condition1",
-                                "Sample3_Condition2",
-                                "",
-                                "Sample6_Condition3",
-                            ],
-                            "2": [
-                                "Sample1_Condition2",
-                                "BLANK",
-                                "Sample5_Condition2",
-                                "Sample7_Condition2",
-                            ],
-                            "3": [
-                                "Sample2_Condition1",
-                                "Sample4_Condition3",
-                                "Sample5_Condition2",
-                                "BLANK",
-                            ],
-                            "...": ["...", "...", "...", "..."],
-                        }
+                    st.caption(
+                        "Sample names can optionally include a strain and a condition, "
+                        "separated by the first underscore (e.g. **Strain1_Condition1**). "
+                        "The Create Visualizations page uses this to group and color samples "
+                        "by strain or condition."
                     )
-                    st.dataframe(example_map, hide_index=True, width="stretch")
+                    st.image("info_plots/naming_convention.png", width="stretch")
 
                     st.markdown("")
                     with open("example_data/example_plate_map.xls", "rb") as f:
                         st.download_button(
-                            "Download example plate map",
+                            "Download example plate map (wide)",
                             data=f.read(),
                             file_name="example_plate_map.xls",
                             mime="application/vnd.ms-excel",
@@ -338,7 +316,7 @@ def ui_upload_files(ss):
                         )
 
             map_file = st.file_uploader(
-                "Plate map (.xls/.xlsx) with 'rows' column",
+                "Plate map (.xls/.xlsx) — wide or long format (optional)",
                 ["xlsx", "xls"],
                 key="map_up",
             )
@@ -349,21 +327,44 @@ def ui_upload_files(ss):
             "Match samples with names",
             type="primary",
             width="stretch",
-            disabled=not (data_file and map_file),
+            disabled=not data_file,
         ):
-            # Validate data file
             is_valid_data, data_error = validate_data_file(data_file.getvalue())
             if not is_valid_data:
                 st.toast(f"❌ Data file validation failed: {data_error}", icon="🚫")
                 st.stop()
 
-            # Validate plate map file
-            is_valid_map, map_error = validate_plate_map_file(map_file.getvalue())
-            if not is_valid_map:
-                st.toast(f"❌ Plate map validation failed: {map_error}", icon="🚫")
-                st.stop()
+            plate_bytes = None
+            if map_file:
+                map_format = detect_plate_map_format(map_file.getvalue())
+                if map_format == "long":
+                    is_valid_map, map_error = validate_long_plate_map_file(
+                        map_file.getvalue()
+                    )
+                    if not is_valid_map:
+                        st.toast(
+                            f"❌ Plate map validation failed: {map_error}", icon="🚫"
+                        )
+                        st.stop()
+                    plate_bytes = long_plate_map_to_wide_bytes(map_file.getvalue())
+                else:
+                    is_valid_map, map_error = validate_plate_map_file(
+                        map_file.getvalue()
+                    )
+                    if not is_valid_map:
+                        st.toast(
+                            f"❌ Plate map validation failed: {map_error}", icon="🚫"
+                        )
+                        st.stop()
+                    plate_bytes = map_file.getvalue()
 
-            # If both validations pass, load the plate
+                is_valid_cols, cols_error = validate_data_columns_are_wells(
+                    data_file.getvalue()
+                )
+                if not is_valid_cols:
+                    st.toast(f"❌ {cols_error}", icon="🚫")
+                    st.stop()
+
             plate_id = (
                 data_file.name.rsplit(".", 1)[0]
                 if getattr(data_file, "name", None)
@@ -373,7 +374,7 @@ def ui_upload_files(ss):
                 ss.plates,
                 plate_id,
                 data_bytes=data_file.getvalue(),
-                plate_bytes=map_file.getvalue(),
+                plate_bytes=plate_bytes,
                 params=DEFAULT_PARAMS,
             )
             st.toast(f"✅ Successfully loaded {plate_id}")
@@ -402,7 +403,9 @@ def ui_preprocessing_params(ss):
     with st.container(border=True):
         st.header("Step 4. Select plate and preprocessing parameters")
 
-        selector_col, plate_name_col = st.columns([1.0, 1.35], vertical_alignment="bottom")
+        selector_col, plate_name_col = st.columns(
+            [1.0, 1.35], vertical_alignment="bottom"
+        )
         with selector_col:
             plate_id = st.selectbox("Plate to analyse", ready, disabled=not ready)
         with plate_name_col:
@@ -428,9 +431,14 @@ def ui_preprocessing_params(ss):
                     plate_bytes=uploads["plate_bytes"],
                     data_bytes=uploads["data_bytes"],
                 )
-                name_by_well = _name_by_well_from_plate_map(plate_map)
-                blank_well_count = sum(1 for v in name_by_well.values() if v.upper().startswith("BLANK"))
-                has_blank_wells = blank_well_count > 0
+                if plate_map is not None:
+                    name_by_well = _name_by_well_from_plate_map(plate_map)
+                    blank_well_count = sum(
+                        1
+                        for v in name_by_well.values()
+                        if v.upper().startswith("BLANK")
+                    )
+                    has_blank_wells = blank_well_count > 0
 
         controls_col, plate_col = st.columns([1.0, 1.35], gap="large")
         plate_grid_height = 400
@@ -442,7 +450,9 @@ def ui_preprocessing_params(ss):
             time_unit = a.selectbox(
                 "Time unit in data file",
                 options=["seconds", "minutes", "hours"],
-                index=["seconds", "minutes", "hours"].index(params0.get("time_unit", "hours")),
+                index=["seconds", "minutes", "hours"].index(
+                    params0.get("time_unit", "hours")
+                ),
                 help="Select the unit of time values in your data file's Time column",
             )
             pl_cm = b.number_input(
@@ -549,9 +559,9 @@ def ui_preprocessing_params(ss):
                 type="tertiary",
                 width="stretch",
                 disabled=not plate_id,
-                ):
-                    ss.plates.pop(plate_id, None)
-                    st.rerun()
+            ):
+                ss.plates.pop(plate_id, None)
+                st.rerun()
 
         with plate_col:
             if plate_id and plate_map is not None:
@@ -710,7 +720,9 @@ def _ui_model_selection(params0: dict):
 
 def ui_model_params(growth_method: str, params0: dict, step4_prev: dict, param_col):
     """Render method-specific parameters (window size or spline mode)."""
-    smooth_default = str(step4_prev.get("smooth", params0.get("smooth", "fast"))).strip().lower()
+    smooth_default = (
+        str(step4_prev.get("smooth", params0.get("smooth", "fast"))).strip().lower()
+    )
     if smooth_default not in {"fast", "slow"}:
         smooth_default = "fast"
 
