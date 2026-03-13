@@ -313,16 +313,29 @@ def ui_upload_files(ss):
                     st.image("info_plots/naming_convention.png", width="stretch")
 
                     st.markdown("")
-                    with open("example_data/example_plate_map.xls", "rb") as f:
-                        st.download_button(
-                            "Download example plate map (wide)",
-                            data=f.read(),
-                            file_name="example_plate_map.xls",
-                            mime="application/vnd.ms-excel",
-                            width="stretch",
-                            type="primary",
-                            key="download_example_plate_map",
-                        )
+                    dl_wide_col, dl_long_col = st.columns(2)
+                    with dl_wide_col:
+                        with open("example_data/example_plate_map.xls", "rb") as f:
+                            st.download_button(
+                                "Download example plate map (wide)",
+                                data=f.read(),
+                                file_name="example_plate_map.xls",
+                                mime="application/vnd.ms-excel",
+                                width="stretch",
+                                type="primary",
+                                key="download_example_plate_map",
+                            )
+                    with dl_long_col:
+                        with open("example_data/example_long_form_plate_map.xls", "rb") as f:
+                            st.download_button(
+                                "Download example plate map (long)",
+                                data=f.read(),
+                                file_name="example_long_form_plate_map.xls",
+                                mime="application/vnd.ms-excel",
+                                width="stretch",
+                                type="primary",
+                                key="download_example_long_plate_map",
+                            )
 
             map_file = st.file_uploader(
                 "Plate map (.xls/.xlsx) — wide or long format (optional)",
