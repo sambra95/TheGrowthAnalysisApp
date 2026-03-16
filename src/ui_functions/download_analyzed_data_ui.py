@@ -52,10 +52,6 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
         with cb_col:
             c_well = st.checkbox("Include well plots", value=False, key="well_checkbox")
 
-        st.caption(
-            "Individual well growth curves with annotations and derivative plots"
-        )
-
         if c_well:
             c_add_annotations = True
             wells_by_plate: dict[str, list[str]] = {}
@@ -63,6 +59,9 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
             options_col, map_col = st.columns([1, 2])
 
             with options_col:
+                st.caption(
+                    "Individual well growth curves with annotations and derivative plots"
+                )
                 with st.popover("Choose annotations to include", width="stretch"):
                     st.caption("Choose which annotations to include on well plots:")
                     plot_col, checkbox_col = st.columns([2, 1])
@@ -168,8 +167,8 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     plate_idx = 0
 
                 st.caption(
-                    "Click a well to toggle it; click a second well to select a rectangle. "
-                    "Green = included · blue = blank · red = excluded · dark grey = no data."
+                    "Click a well to toggle it for including in the zip file; click a second well to select a rectangle. "
+                    "Green = included · red = excluded · dark grey = no sample."
                 )
 
             with map_col:
@@ -196,6 +195,9 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                                 stored if stored is not None else available
                             )
         else:
+            st.caption(
+                "Individual well growth curves with annotations and derivative plots"
+            )
             # Set defaults when well plots are not included
             c_add_annotations = True
             annot_phase = True
