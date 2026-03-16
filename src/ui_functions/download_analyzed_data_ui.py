@@ -106,6 +106,7 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     default=["Raw OD", "dOD/dt", "Specific Growth Rate"],
                     selection_mode="multi",
                     key="well_graphs",
+                    width="stretch",
                 )
 
                 ww_col, wh_col = st.columns(2)
