@@ -5,49 +5,48 @@ from src.ui_functions.blank_grouping_ui import get_well_selector_wells, ui_well_
 
 
 def _render_tabulated_data_container():
-    with st.container(border=True):
-        st.header("Tabulated Data")
+    st.header("Tabulated Data")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_baseline_corrected = st.checkbox(
-                "Baseline-corrected", value=True, key="table_baseline_corrected"
-            )
-        with desc_col:
-            st.caption("Time series OD600 values for each well")
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_baseline_corrected = st.checkbox(
+            "Baseline-corrected", value=True, key="table_baseline_corrected"
+        )
+    with desc_col:
+        st.caption("Time series OD600 values for each well")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_stats_per_well = st.checkbox(
-                "Stats per well", value=True, key="table_stats_per_well"
-            )
-        with desc_col:
-            st.caption(
-                "Max growth rate, lag time, max OD, and phase boundaries per well"
-            )
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_stats_per_well = st.checkbox(
+            "Stats per well", value=True, key="table_stats_per_well"
+        )
+    with desc_col:
+        st.caption("Max growth rate, lag time, max OD, and phase boundaries per well")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_stats_per_sample = st.checkbox(
-                "Stats per sample", value=True, key="table_stats_per_sample"
-            )
-        with desc_col:
-            st.caption("Statistics averaged across replicates")
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_stats_per_sample = st.checkbox(
+            "Stats per sample", value=True, key="table_stats_per_sample"
+        )
+    with desc_col:
+        st.caption("Statistics averaged across replicates")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_params = st.checkbox(
-                "Analysis parameters", value=True, key="table_params"
-            )
-        with desc_col:
-            st.caption("All analysis settings used (read interval, pathlength, etc.)")
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_params = st.checkbox("Analysis parameters", value=True, key="table_params")
+    with desc_col:
+        st.caption("All analysis settings used (read interval, pathlength, etc.)")
 
     return c_baseline_corrected, c_stats_per_well, c_stats_per_sample, c_params
 
 
 def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
     with st.container(border=True):
-        title_col, cb_col = st.columns([1, 2], vertical_alignment="center")
+        title_col, cb_col = st.columns(
+            [1, 4],
+            vertical_alignment="center",
+        )
+
         with title_col:
             st.header("Well Level Plots")
         with cb_col:
@@ -167,6 +166,11 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                 else:
                     plate_idx = 0
 
+                st.caption(
+                    "Click a well to toggle it; click a second well to select a rectangle. "
+                    "Green = included · blue = blank · red = excluded · dark grey = no data."
+                )
+
             with map_col:
                 if selected_plate_ids:
                     pid = selected_plate_ids[plate_idx]
@@ -182,9 +186,9 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     # otherwise fall back to all wells (plate never visited)
                     for other_pid in selected_plate_ids:
                         if other_pid not in wells_by_plate:
-                            other_processed = (
-                                (plates.get(other_pid) or {}).get("processed_data") or {}
-                            )
+                            other_processed = (plates.get(other_pid) or {}).get(
+                                "processed_data"
+                            ) or {}
                             available = sorted(other_processed.keys())
                             stored = get_well_selector_wells(other_pid, available)
                             wells_by_plate[other_pid] = (
@@ -223,52 +227,47 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
 
 
 def _render_global_plots_container():
-    with st.container(border=True):
-        st.header("Global Plots")
+    st.header("Global Plots")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_base = st.checkbox("Baseline", value=True, key="baseline_checkbox")
-        with desc_col:
-            st.caption("Blank well OD measurements and mean baseline over time")
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_base = st.checkbox("Baseline", value=True, key="baseline_checkbox")
+    with desc_col:
+        st.caption("Blank well OD measurements and mean baseline over time")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_plate = st.checkbox("Plate view", value=True, key="plate_checkbox")
-        with desc_col:
-            st.caption(
-                "96-well plate overview showing all wells with fitted growth curves"
-            )
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_plate = st.checkbox("Plate view", value=True, key="plate_checkbox")
+    with desc_col:
+        st.caption("96-well plate overview showing all wells with fitted growth curves")
 
-        cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
-        with cb_col:
-            c_replicates = st.checkbox(
-                "Replicates", value=True, key="replicates_checkbox"
-            )
-        with desc_col:
-            st.caption("Replicate growth curves grouped by sample name")
+    cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
+    with cb_col:
+        c_replicates = st.checkbox("Replicates", value=True, key="replicates_checkbox")
+    with desc_col:
+        st.caption("Replicate growth curves grouped by sample name")
 
-        if c_base or c_plate or c_replicates:
-            col_w, col_h = st.columns(2)
-            global_width = col_w.number_input(
-                "Width (px)",
-                min_value=400,
-                max_value=3000,
-                value=1200,
-                step=100,
-                key="global_plot_width",
-            )
-            global_height = col_h.number_input(
-                "Height (px)",
-                min_value=300,
-                max_value=2500,
-                value=800,
-                step=100,
-                key="global_plot_height",
-            )
-        else:
-            global_width = 1200
-            global_height = 800
+    if c_base or c_plate or c_replicates:
+        col_w, col_h = st.columns(2)
+        global_width = col_w.number_input(
+            "Width (px)",
+            min_value=400,
+            max_value=3000,
+            value=1200,
+            step=100,
+            key="global_plot_width",
+        )
+        global_height = col_h.number_input(
+            "Height (px)",
+            min_value=300,
+            max_value=2500,
+            value=800,
+            step=100,
+            key="global_plot_height",
+        )
+    else:
+        global_width = 1200
+        global_height = 800
 
     return c_base, c_plate, c_replicates, global_width, global_height
 

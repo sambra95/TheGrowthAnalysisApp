@@ -42,25 +42,26 @@ plate_ids = list(plates.keys())
 if "export_zip_bytes" not in st.session_state:
     st.session_state.export_zip_bytes = None
 
-# ---- Tabulated Data + Global Plots side by side ----
-top_left, top_right = st.columns(2)
+# ---- Tabulated Data + Global Plots in one container ----
+with st.container(border=True):
+    top_left, top_right = st.columns(2)
 
-with top_left:
-    (
-        c_baseline_corrected,
-        c_stats_per_well,
-        c_stats_per_sample,
-        c_params,
-    ) = _render_tabulated_data_container()
+    with top_left:
+        (
+            c_baseline_corrected,
+            c_stats_per_well,
+            c_stats_per_sample,
+            c_params,
+        ) = _render_tabulated_data_container()
 
-with top_right:
-    (
-        c_base,
-        c_plate,
-        c_replicates,
-        global_width,
-        global_height,
-    ) = _render_global_plots_container()
+    with top_right:
+        (
+            c_base,
+            c_plate,
+            c_replicates,
+            global_width,
+            global_height,
+        ) = _render_global_plots_container()
 
 # ---- Well Level Plots full-width below ----
 (

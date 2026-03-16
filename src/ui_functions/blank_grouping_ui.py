@@ -569,11 +569,6 @@ def ui_well_selector(
     clear_k = _state_key(prefix, "pending_clear_mode")
     last_click_k = _state_key(prefix, "last_processed_click")
 
-    st.caption(
-        "Click a well to toggle it; click a second well to select a rectangle. "
-        "Green = included · blue = blank · red = excluded · dark grey = no data."
-    )
-
     if st_selectable_grid is None:
         st.caption(
             "`st_selectable_grid` is not installed – using multiselect fallback."
