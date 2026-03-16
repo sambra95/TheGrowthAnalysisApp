@@ -238,7 +238,7 @@ def _render_global_plots_container():
 
     cb_col, desc_col = st.columns([1, 3], vertical_alignment="center")
     with cb_col:
-        c_plate = st.checkbox("Plate view", value=True, key="plate_checkbox")
+        c_plate = st.checkbox("Plate view", value=False, key="plate_checkbox")
     with desc_col:
         st.caption("96-well plate overview showing all wells with fitted growth curves")
 
