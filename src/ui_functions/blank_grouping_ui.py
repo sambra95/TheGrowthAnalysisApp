@@ -454,3 +454,207 @@ def ui_blank_group_assigner(
                     ss[last_click_k] = current_click_key
                     st.rerun()
     return assignments_to_map(ss[ak])
+
+
+# ---------------------------------------------------------------------------
+# Single-group well selector (used on the download page)
+# ---------------------------------------------------------------------------
+
+_WELL_SEL_INCLUDED = "included"
+_WELL_SEL_EXCLUDED = "excluded"
+
+
+def _init_well_selector_state(prefix: str, available_set: set[str]) -> None:
+    ss = st.session_state
+    ak = _state_key(prefix, "grid")
+    if ak not in ss:
+        ss[ak] = [
+            [
+                (
+                    _WELL_SEL_INCLUDED
+                    if f"{ROWS[y]}{COLS[x]}" in available_set
+                    else _WELL_SEL_EXCLUDED
+                )
+                for x in range(len(COLS))
+            ]
+            for y in range(len(ROWS))
+        ]
+    ss.setdefault(_state_key(prefix, "first_corner"), None)
+    ss.setdefault(_state_key(prefix, "awaiting_second"), False)
+    ss.setdefault(_state_key(prefix, "pending_clear_mode"), None)
+    ss.setdefault(_state_key(prefix, "last_processed_click"), None)
+
+
+def _build_well_selector_cells(
+    grid: list[list[str]],
+    available_set: set[str],
+    name_by_well: dict[str, str] | None = None,
+) -> list[list[dict[str, Any]]]:
+    name_by_well = name_by_well or {}
+    rows: list[list[dict[str, Any]]] = []
+    for y, row in enumerate(grid):
+        rendered_row: list[dict[str, Any]] = []
+        for x, state in enumerate(row):
+            well = f"{ROWS[y]}{COLS[x]}"
+            sample = str(name_by_well.get(well, "")).strip()
+            is_blank = sample.upper().startswith("BLANK")
+            if well not in available_set:
+                cell: dict[str, Any] = {
+                    "label": well,
+                    "cell_color": "#d1d5db",
+                    "tooltip": f"{well} · no data",
+                }
+            elif state == _WELL_SEL_EXCLUDED:
+                cell = {
+                    "label": well,
+                    "cell_color": "#fb8072",
+                    "tooltip": f"{well} · excluded",
+                }
+            elif is_blank:
+                cell = {
+                    "label": well,
+                    "cell_color": "#80b1d3",
+                    "tooltip": f"{well} · blank · included",
+                }
+            else:
+                cell = {
+                    "label": well,
+                    "cell_color": "#ccebc5",
+                    "tooltip": f"{well} · included",
+                }
+            rendered_row.append(cell)
+        rows.append(rendered_row)
+    return rows
+
+
+def _fill_rect_available(
+    grid: list[list[str]],
+    p1: dict[str, int],
+    p2: dict[str, int],
+    value: str,
+    available_set: set[str],
+) -> list[list[str]]:
+    left, right = sorted((p1["x"], p2["x"]))
+    top, bottom = sorted((p1["y"], p2["y"]))
+    out = [row[:] for row in grid]
+    for r in range(top, bottom + 1):
+        for c in range(left, right + 1):
+            well = f"{ROWS[r]}{COLS[c]}"
+            if well in available_set:
+                out[r][c] = value
+    return out
+
+
+def ui_well_selector(
+    *,
+    plate_id: str,
+    available_wells: list[str],
+    name_by_well: dict[str, str] | None = None,
+    grid_height: int = 400,
+    grid_aspect_ratio: float = 0.75,
+) -> list[str]:
+    """Render a single-group well selector and return the list of included wells.
+
+    Green = included · blue = blank (included) · red = excluded · dark grey = no data.
+    Click once to start a selection, click again to finish a rectangle.
+    """
+    prefix = f"well_selector::{plate_id}"
+    available_set = {str(w).strip().upper() for w in available_wells}
+    _init_well_selector_state(prefix, available_set)
+    ss = st.session_state
+
+    ak = _state_key(prefix, "grid")
+    await_k = _state_key(prefix, "awaiting_second")
+    first_k = _state_key(prefix, "first_corner")
+    clear_k = _state_key(prefix, "pending_clear_mode")
+    last_click_k = _state_key(prefix, "last_processed_click")
+
+    st.caption(
+        "Click a well to toggle it; click a second well to select a rectangle. "
+        "Green = included · blue = blank · red = excluded · dark grey = no data."
+    )
+
+    if st_selectable_grid is None:
+        st.caption(
+            "`st_selectable_grid` is not installed – using multiselect fallback."
+        )
+        return st.multiselect(
+            "Wells to include",
+            options=sorted(available_set),
+            default=sorted(available_set),
+            key=_state_key(prefix, "fallback"),
+        )
+
+    selection = st_selectable_grid(
+        cells=_build_well_selector_cells(ss[ak], available_set, name_by_well),
+        header=[str(c) for c in COLS],
+        index=ROWS,
+        aspect_ratio=grid_aspect_ratio,
+        allow_secondary_selection=False,
+        allow_header_selection=False,
+        resize=True,
+        height=grid_height,
+        primary_selection_color="#2563eb",
+        key=_state_key(prefix, "well_grid"),
+    )
+
+    current_click = (selection or {}).get("primary")
+    current_click_key = (
+        (current_click["x"], current_click["y"]) if current_click else None
+    )
+
+    if current_click_key is None and not ss[await_k]:
+        ss[last_click_k] = None
+
+    if not ss[await_k]:
+        if current_click and current_click_key != ss[last_click_k]:
+            x, y = current_click["x"], current_click["y"]
+            ss[clear_k] = ss[ak][y][x] == _WELL_SEL_INCLUDED
+            ss[first_k] = current_click
+            ss[await_k] = True
+            ss[last_click_k] = current_click_key
+    else:
+        first_corner = ss[first_k]
+        if current_click is None:
+            value = _WELL_SEL_EXCLUDED if ss[clear_k] else _WELL_SEL_INCLUDED
+            ss[ak] = _fill_rect_available(
+                ss[ak], first_corner, first_corner, value, available_set
+            )
+            _reset_pending_selection(prefix)
+            st.rerun()
+        elif current_click_key != ss[last_click_k]:
+            value = _WELL_SEL_EXCLUDED if ss[clear_k] else _WELL_SEL_INCLUDED
+            ss[ak] = _fill_rect_available(
+                ss[ak], first_corner, current_click, value, available_set
+            )
+            _reset_pending_selection(prefix)
+            ss[last_click_k] = current_click_key
+            st.rerun()
+
+    return [
+        f"{ROWS[y]}{COLS[x]}"
+        for y, row in enumerate(ss[ak])
+        for x, state in enumerate(row)
+        if state == _WELL_SEL_INCLUDED and f"{ROWS[y]}{COLS[x]}" in available_set
+    ]
+
+
+def get_well_selector_wells(
+    plate_id: str, available_wells: list[str]
+) -> list[str] | None:
+    """Return the stored well selection for a plate without rendering the grid.
+
+    Returns the list of included wells if the plate has been visited (i.e. its
+    grid state exists in session state), or None if it has never been shown
+    (caller should default to all available wells).
+    """
+    ak = _state_key(f"well_selector::{plate_id}", "grid")
+    if ak not in st.session_state:
+        return None
+    available_set = {str(w).strip().upper() for w in available_wells}
+    return [
+        f"{ROWS[y]}{COLS[x]}"
+        for y, row in enumerate(st.session_state[ak])
+        for x, state in enumerate(row)
+        if state == _WELL_SEL_INCLUDED and f"{ROWS[y]}{COLS[x]}" in available_set
+    ]

@@ -42,11 +42,10 @@ plate_ids = list(plates.keys())
 if "export_zip_bytes" not in st.session_state:
     st.session_state.export_zip_bytes = None
 
-# ---- Plot Options in 2x2 Grid ----
-row1_col1, row1_col2 = st.columns(2)
+# ---- Tabulated Data + Global Plots side by side ----
+top_left, top_right = st.columns(2)
 
-# Tables
-with row1_col1:
+with top_left:
     (
         c_baseline_corrected,
         c_stats_per_well,
@@ -54,26 +53,7 @@ with row1_col1:
         c_params,
     ) = _render_tabulated_data_container()
 
-# Well Level Plots
-with row1_col2:
-    (
-        c_well,
-        c_add_annotations,
-        annot_phase,
-        annot_umax_point,
-        annot_od_max,
-        annot_baseline_od,
-        annot_tangent,
-        annot_fitted_model,
-        well_width,
-        well_height,
-        well_graphs,
-        selected_plate_ids,
-        wells_by_plate,
-    ) = _render_well_level_plots_container(plates, plate_ids)
-
-# Global Plots
-with row1_col1:
+with top_right:
     (
         c_base,
         c_plate,
@@ -81,6 +61,23 @@ with row1_col1:
         global_width,
         global_height,
     ) = _render_global_plots_container()
+
+# ---- Well Level Plots full-width below ----
+(
+    c_well,
+    c_add_annotations,
+    annot_phase,
+    annot_umax_point,
+    annot_od_max,
+    annot_baseline_od,
+    annot_tangent,
+    annot_fitted_model,
+    well_width,
+    well_height,
+    well_graphs,
+    selected_plate_ids,
+    wells_by_plate,
+) = _render_well_level_plots_container(plates, plate_ids)
 
 
 # Convert lists/dicts to tuples for caching

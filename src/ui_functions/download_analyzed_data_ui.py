@@ -1,6 +1,7 @@
 import streamlit as st
 
 from src.functions.export_functions import build_export_zip
+from src.ui_functions.blank_grouping_ui import get_well_selector_wells, ui_well_selector
 
 
 def _render_tabulated_data_container():
@@ -46,69 +47,60 @@ def _render_tabulated_data_container():
 
 def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
     with st.container(border=True):
-        # Title and checkbox on the same line
         title_col, cb_col = st.columns([1, 2], vertical_alignment="center")
         with title_col:
             st.header("Well Level Plots")
         with cb_col:
             c_well = st.checkbox("Include well plots", value=False, key="well_checkbox")
 
-        # Caption underneath the title
         st.caption(
             "Individual well growth curves with annotations and derivative plots"
         )
 
         if c_well:
-            c_add_annotations = (
-                True  # Always add annotations when well plots are enabled
-            )
+            c_add_annotations = True
+            wells_by_plate: dict[str, list[str]] = {}
 
-            with st.popover("Choose annotations to include", width="stretch"):
-                st.caption("Choose which annotations to include on well plots:")
+            options_col, map_col = st.columns([1, 2])
 
-                # Create two columns: plot on left, checkboxes on right
-                plot_col, checkbox_col = st.columns([2, 1])
+            with options_col:
+                with st.popover("Choose annotations to include", width="stretch"):
+                    st.caption("Choose which annotations to include on well plots:")
+                    plot_col, checkbox_col = st.columns([2, 1])
+                    with plot_col:
+                        st.image("info_plots/annotations.png", width="stretch")
+                    with checkbox_col:
+                        annot_phase = st.checkbox(
+                            "Phase boundaries",
+                            value=True,
+                            key="annot_phase_boundaries",
+                        )
+                        annot_umax_point = st.checkbox(
+                            "Max growth rate point",
+                            value=True,
+                            key="annot_umax_point",
+                        )
+                        annot_od_max = st.checkbox(
+                            "Max OD",
+                            value=True,
+                            key="annot_od_max",
+                        )
+                        annot_baseline_od = st.checkbox(
+                            "Baseline OD",
+                            value=True,
+                            key="annot_baseline_od",
+                        )
+                        annot_tangent = st.checkbox(
+                            "Tangent line at max growth",
+                            value=False,
+                            key="annot_tangent",
+                        )
+                        annot_fitted_model = st.checkbox(
+                            "Fitted model curve",
+                            value=True,
+                            key="annot_fitted_model",
+                        )
 
-                with plot_col:
-                    # Show pre-generated demo plot image
-                    st.image("info_plots/annotations.png", width="stretch")
-
-                with checkbox_col:
-                    annot_phase = st.checkbox(
-                        "Phase boundaries",
-                        value=True,
-                        key="annot_phase_boundaries",
-                    )
-                    annot_umax_point = st.checkbox(
-                        "Max growth rate point",
-                        value=True,
-                        key="annot_umax_point",
-                    )
-                    annot_od_max = st.checkbox(
-                        "Max OD",
-                        value=True,
-                        key="annot_od_max",
-                    )
-                    annot_baseline_od = st.checkbox(
-                        "Baseline OD",
-                        value=True,
-                        key="annot_baseline_od",
-                    )
-                    annot_tangent = st.checkbox(
-                        "Tangent line at max growth",
-                        value=False,
-                        key="annot_tangent",
-                    )
-                    annot_fitted_model = st.checkbox(
-                        "Fitted model curve",
-                        value=True,
-                        key="annot_fitted_model",
-                    )
-
-            # Single row for graph types, width, and height
-            graph_col, width_col, height_col = st.columns([3, 1, 1])
-
-            with graph_col:
                 well_graphs = st.segmented_control(
                     "Well traces to include",
                     options=["Raw OD", "dOD/dt", "Specific Growth Rate"],
@@ -117,8 +109,8 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     key="well_graphs",
                 )
 
-            with width_col:
-                well_width = st.number_input(
+                ww_col, wh_col = st.columns(2)
+                well_width = ww_col.number_input(
                     "Width (px)",
                     min_value=400,
                     max_value=3000,
@@ -126,9 +118,7 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     step=100,
                     key="well_width",
                 )
-
-            with height_col:
-                well_height = st.number_input(
+                well_height = wh_col.number_input(
                     "Height (px)",
                     min_value=300,
                     max_value=2500,
@@ -136,39 +126,70 @@ def _render_well_level_plots_container(plates: dict, plate_ids: list[str]):
                     step=100,
                     key="well_height",
                 )
-            col1, col2 = st.columns((4, 1), vertical_alignment="center")
-            selected_plate_ids = col1.multiselect(
-                "Plates to include",
-                options=plate_ids,
-                default=plate_ids,
-                key="selected_plates",
-            )
 
-            # Well selection within the same container
-            wells_by_plate: dict[str, list[str]] = {}
-
-            if selected_plate_ids:
-
-                include_all_wells = col2.checkbox(
-                    "Include all wells",
-                    value=True,
-                    key="include_all_wells_global",
+                selected_plate_ids = st.multiselect(
+                    "Plates to include",
+                    options=plate_ids,
+                    default=plate_ids,
+                    key="selected_plates",
                 )
 
-                if not include_all_wells:
-                    for pid in selected_plate_ids:
-                        processed = (plates.get(pid) or {}).get("processed_data") or {}
-                        available_wells = sorted(processed.keys())
+                # Navigation buttons at the bottom of the options column
+                if selected_plate_ids:
+                    plate_idx = st.session_state.get("well_plot_plate_idx", 0)
+                    plate_idx = min(plate_idx, len(selected_plate_ids) - 1)
+                    st.session_state["well_plot_plate_idx"] = plate_idx
 
-                        wells_by_plate[pid] = st.multiselect(
-                            f"Wells for {pid}",
-                            options=available_wells,
-                            default=available_wells[: min(3, len(available_wells))],
-                            key=f"wells__{pid}",
+                    if len(selected_plate_ids) > 1:
+                        prev_col, label_col, next_col = st.columns(
+                            [1, 4, 1], vertical_alignment="center"
                         )
+                        if prev_col.button(
+                            "← Prev",
+                            disabled=plate_idx == 0,
+                            key="well_plot_prev",
+                            width="stretch",
+                        ):
+                            st.session_state["well_plot_plate_idx"] = plate_idx - 1
+                            st.rerun()
+                        label_col.markdown(
+                            f"**{selected_plate_ids[plate_idx]}**  "
+                            f"({plate_idx + 1} / {len(selected_plate_ids)})"
+                        )
+                        if next_col.button(
+                            "Next →",
+                            disabled=plate_idx == len(selected_plate_ids) - 1,
+                            key="well_plot_next",
+                            width="stretch",
+                        ):
+                            st.session_state["well_plot_plate_idx"] = plate_idx + 1
+                            st.rerun()
                 else:
-                    for pid in selected_plate_ids:
-                        wells_by_plate[pid] = []  # empty means "all"
+                    plate_idx = 0
+
+            with map_col:
+                if selected_plate_ids:
+                    pid = selected_plate_ids[plate_idx]
+                    plate_data = plates.get(pid) or {}
+                    processed = plate_data.get("processed_data") or {}
+                    available_wells = sorted(processed.keys())
+                    wells_by_plate[pid] = ui_well_selector(
+                        plate_id=pid,
+                        available_wells=available_wells,
+                        name_by_well=plate_data.get("name") or {},
+                    )
+                    # Plates not currently displayed: use stored selection if available,
+                    # otherwise fall back to all wells (plate never visited)
+                    for other_pid in selected_plate_ids:
+                        if other_pid not in wells_by_plate:
+                            other_processed = (
+                                (plates.get(other_pid) or {}).get("processed_data") or {}
+                            )
+                            available = sorted(other_processed.keys())
+                            stored = get_well_selector_wells(other_pid, available)
+                            wells_by_plate[other_pid] = (
+                                stored if stored is not None else available
+                            )
         else:
             # Set defaults when well plots are not included
             c_add_annotations = True

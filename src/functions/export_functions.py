@@ -300,8 +300,8 @@ def build_export_zip(
                 sg_w = int(params.get("sg_window", 11))
                 sg_p = int(params.get("sg_poly", 2))
 
-                # use requested wells; default to all available if empty
-                wells = wells_by_plate.get(pid) or list(processed.keys())
+                # use requested wells; default to all available only if plate absent from dict
+                wells = wells_by_plate.get(pid, list(processed.keys()))
 
                 for well in wells:
                     if well not in processed:
