@@ -12,11 +12,6 @@ from src.functions.fitting_pipeline import fit_growth_series
 
 
 # ---------------- Selection + stats helpers ----------------
-def well_order_A1_to_H12() -> list[str]:
-    """Return standard well ordering A1..H12."""
-    rows = "ABCDEFGH"
-    cols = range(1, 13)
-    return [f"{r}{c}" for r in rows for c in cols]  # A1..A12, B1..B12, ...
 
 
 def _cycle(items: list[str], current: str, step: int) -> str:
