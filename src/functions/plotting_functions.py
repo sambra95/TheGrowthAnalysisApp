@@ -28,7 +28,6 @@ from growthcurves.models import (
     spline_from_params,
 )
 from plotly.subplots import make_subplots
-from scipy.optimize import curve_fit
 
 from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
@@ -908,29 +907,6 @@ def d2_model(t, A, r, t0):
     """Idealized second-derivative model for growth curves."""
     u = np.exp(-r * (t - t0))
     return A * r * (u * (u - 1) / (1 + u) ** 3)
-
-
-@st.cache_data
-def _fit_idealised_derivatives(t, dy):
-    """Fit the idealized derivative model to a gradient series."""
-    mask = np.isfinite(t) & np.isfinite(dy)
-    t_fit, dy_fit = t[mask], dy[mask]
-    if t_fit.size < 10:
-        return None
-
-    t0_guess = float(t_fit[np.argmax(dy_fit)])
-    dy_max = float(np.max(dy_fit))
-    if not np.isfinite(dy_max) or dy_max <= 0:
-        return None
-
-    p0 = [4.0 * dy_max, 0.05, t0_guess]
-    bounds = ([0.0, 1e-6, float(np.min(t_fit))], [np.inf, 10.0, float(np.max(t_fit))])
-
-    try:
-        popt, _ = curve_fit(d1_model, t_fit, dy_fit, p0=p0, bounds=bounds, maxfev=20000)
-        return popt
-    except Exception:
-        return None
 
 
 def plot_derivative_metric(
