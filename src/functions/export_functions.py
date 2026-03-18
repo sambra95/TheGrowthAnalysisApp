@@ -78,7 +78,6 @@ def _growth_stats_mean_for_sample_df(p: dict) -> pd.DataFrame:
     num = [c for c in gs.columns if pd.api.types.is_numeric_dtype(gs[c])]
 
     # Calculate both mean and std
-    {col: ["mean", "std"] for col in num}
     result = gs.groupby("Sample Name")[num].agg(["mean", "std"])
 
     # Flatten the multi-level columns: convert (col, 'mean') to 'col_mean'
