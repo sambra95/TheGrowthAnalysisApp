@@ -289,7 +289,7 @@ def ui_upload_files(ss):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 2. Upload sample names")
+                st.header("Step 2. Upload names")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
