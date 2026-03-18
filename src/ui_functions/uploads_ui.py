@@ -257,7 +257,7 @@ def ui_upload_files(ss):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 1. Upload data file")
+                st.header("Step 1. Upload data")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
@@ -289,7 +289,7 @@ def ui_upload_files(ss):
             # Header row with requirements in top right
             header_col, req_col = st.columns([3, 1])
             with header_col:
-                st.header("Step 2. Upload samples names")
+                st.header("Step 2. Upload sample names")
             with req_col:
                 with st.popover("Requirements", width="stretch"):
                     st.caption(
@@ -508,7 +508,7 @@ def ui_preprocessing_params(ss):
                         format="%.2f",
                         help=(
                             "MAD z-score threshold for flagging outliers. Higher values flag "
-                            "fewer, more extreme points; default is 3.5."
+                            "fewer, more extreme points."
                         ),
                     )
                 )
