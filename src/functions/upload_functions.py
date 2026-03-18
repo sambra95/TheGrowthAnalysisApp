@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from .constants import BLUE, COLS, DEFAULT_PARAMS, GRAY, GREEN, ORANGE, RED, ROWS
+from .constants import DEFAULT_PARAMS
 
 
 def init_state():
@@ -17,53 +17,6 @@ def init_state():
 def plate_params(ss, plate_id: str) -> dict:
     """Return stored params for a plate or the defaults."""
     return (ss.plates.get(plate_id, {}) or {}).get("params", DEFAULT_PARAMS)
-
-
-def build_symbol_grid(
-    *, plate_map: pd.DataFrame, present: set[str], remove_wells=False, blank=True
-):
-    """Build a grid of well status symbols for the plate preview.
-
-    Args:
-        plate_map: DataFrame with plate map layout
-        present: Set of wells present in the data file
-        remove_wells: List/set of wells to exclude, or False
-        blank: Whether blank subtraction is enabled
-
-    Returns:
-        DataFrame grid with status symbols (GREEN/ORANGE/RED/BLUE/GRAY)
-    """
-    removed = {w.upper() for w in remove_wells} if remove_wells else set()
-    name_by_well = {
-        f"{r}{c}": str(plate_map.loc[r, c]).strip() for r in ROWS for c in COLS
-    }
-    ignored = {w for w, nm in name_by_well.items() if nm == "False"}
-
-    grid = pd.DataFrame(index=ROWS, columns=COLS, dtype="object")
-    for r in ROWS:
-        for c in COLS:
-            w = f"{r}{c}"
-            nm = name_by_well.get(w, "")
-            is_blank = nm.upper().startswith("BLANK")
-            has_valid_name = nm not in {"", "False"} and not nm.upper().startswith(
-                "BLANK"
-            )
-
-            if w in removed:
-                sym = RED
-            elif w in ignored:
-                sym = GRAY
-            elif w not in present:
-                sym = ORANGE
-            elif blank and is_blank:
-                sym = BLUE
-            elif has_valid_name:
-                sym = GREEN
-            else:
-                sym = ORANGE
-
-            grid.loc[r, c] = sym
-    return grid
 
 
 def validate_data_file(file_bytes):

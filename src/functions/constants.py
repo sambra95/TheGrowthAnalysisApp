@@ -5,13 +5,6 @@ ROWS = list("ABCDEFGH")
 COLS = list(range(1, 13))
 ALL_WELLS = [f"{r}{c}" for r in ROWS for c in COLS]
 
-# UI color symbols for plate status
-GREEN = "🟩"  # Sample present
-ORANGE = "🟧"  # Not in data file
-RED = "🟥"  # Excluded by user
-BLUE = "🟦"  # Blank well
-GRAY = "⬜"  # Not in plate map
-
 # Default parameters
 DEFAULT_PARAMS = {
     "time_unit": "minutes",
