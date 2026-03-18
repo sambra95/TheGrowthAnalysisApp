@@ -475,7 +475,7 @@ def ui_preprocessing_params(ss):
 
         with controls_col:
             _outlier_key = f"outlier_cb_{plate_id}"
-            _row_cols = st.columns([1.2, 0.8, 1.0, 1.0], vertical_alignment="bottom")
+            _row_cols = st.columns([0.8, 0.8, 1.0, 1.0], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
             time_unit = a.selectbox(
                 "Time unit",
