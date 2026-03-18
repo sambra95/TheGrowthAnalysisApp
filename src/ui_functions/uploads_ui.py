@@ -478,7 +478,7 @@ def ui_preprocessing_params(ss):
             _row_cols = st.columns([1.2, 0.8, 1.0, 1.0], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
             time_unit = a.selectbox(
-                "Time unit in data file",
+                "Time unit",
                 options=["seconds", "minutes", "hours"],
                 index=["seconds", "minutes", "hours"].index(
                     params0.get("time_unit", "hours")
@@ -486,7 +486,7 @@ def ui_preprocessing_params(ss):
                 help="Select the unit of time values in your data file's Time column",
             )
             pl_cm = b.number_input(
-                "Pathlength (cm)",
+                "Path (cm)",
                 value=float(params0["pathlength_cm_"]),
                 step=0.01,
                 format="%.3f",
