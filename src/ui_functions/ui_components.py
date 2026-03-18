@@ -14,21 +14,6 @@ def page_header_with_help(title: str, help_text: str):
             st.markdown(help_text)
 
 
-def render_sliding_window_viz() -> str:
-    """Return path to the pre-generated PNG for the sliding window method."""
-    return "info_plots/sliding_window.png"
-
-
-def render_spline_viz() -> str:
-    """Return path to the pre-generated PNG for the spline method."""
-    return "info_plots/spline.png"
-
-
-def render_parametric_model_viz(model_type: str) -> str:
-    """Return path to the pre-generated PNG for the given parametric model."""
-    return f"info_plots/{model_type}.png"
-
-
 def ui_method_visualization(growth_method: str, model_type: str = None):
     """
     Render visualization for selected growth method with description and equation.
@@ -46,7 +31,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
         st.caption(
             "Local linear regression in moving windows. Calculates growth rate from nearby data points without assuming global curve shape."
         )
-        return render_sliding_window_viz()
+        return "info_plots/sliding_window.png"
 
     elif growth_method == "Spline":
         st.markdown("**Spline Method** (Currently Selected)")
@@ -54,7 +39,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
         st.caption(
             "Fitted smoothed curve without underlying shape assumptions. Flexible non-parametric approach."
         )
-        return render_spline_viz()
+        return "info_plots/spline.png"
 
     elif growth_method == "Model Fitting" and model_type:
         if "logistic" in str(model_type):
@@ -111,7 +96,7 @@ def ui_method_visualization(growth_method: str, model_type: str = None):
                 "Baranyi-Roberts model with physiological lag parameter λ. Mechanistic model accounting for cell adaptation during lag phase."
             )
 
-        return render_parametric_model_viz(model_type)
+        return f"info_plots/{model_type}.png"
 
     return None
 
