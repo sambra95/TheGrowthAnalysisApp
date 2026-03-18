@@ -194,6 +194,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
     _rp_min_dp_key = f"rp_min_dp__{key}"
     _rp_window_key = f"rp_window__{key}"
     _rp_smooth_key = f"rp_smooth__{key}"
+    _rp_spline_s_key = f"rp_spline_s__{key}"
 
     def _sync_widgets_from_growth_stats():
         """Sync widget state from the current growth_stats dict."""
@@ -234,6 +235,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             "smooth", plate_params.get("spline_s", "fast")
         )
         st.session_state[_rp_smooth_key] = _normalize_smooth(smooth_default)
+        st.session_state[_rp_spline_s_key] = None
 
     # Initialise re-analysis params the first time this well is shown
     if _rp_min_od_key not in st.session_state:
@@ -323,12 +325,13 @@ def _phase_controls(plate: dict, well: str, *, key: str):
                 )
             )
         elif growth_method == "Spline":
-            params_override["smooth"] = _normalize_smooth(
-                st.session_state.get(
-                    _rp_smooth_key,
-                    plate_params.get("smooth", plate_params.get("spline_s", "fast")),
+            smooth_mode = st.session_state.get(_rp_smooth_key, "fast")
+            if smooth_mode == "manual":
+                params_override["smooth"] = float(
+                    st.session_state.get(_rp_spline_s_key) or 0.0
                 )
-            )
+            else:
+                params_override["smooth"] = _normalize_smooth(smooth_mode)
 
         effective_p = dict(plate_params)
         effective_p.update(params_override)
@@ -402,6 +405,7 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             _rp_min_dp_key,
             _rp_window_key,
             _rp_smooth_key,
+            _rp_spline_s_key,
         ):
             st.session_state.pop(k, None)
 
@@ -467,15 +471,29 @@ def _phase_controls(plate: dict, well: str, *, key: str):
             elif growth_method == "Spline":
                 st.radio(
                     "Spline fitting mode",
-                    options=["fast", "slow"],
+                    options=["fast", "slow", "manual"],
                     key=_rp_smooth_key,
                     horizontal=True,
                     format_func=lambda v: v.capitalize(),
                     help=(
                         "Fast uses auto-default smoothing with OD weights. "
-                        "Slow uses weighted GCV smoothing and is typically slower."
+                        "Slow uses weighted GCV smoothing and is typically slower. "
+                        "Manual lets you set the smoothing factor (λ) directly."
                     ),
                 )
+                if st.session_state.get(_rp_smooth_key) == "manual":
+                    st.number_input(
+                        "Smoothing factor (λ)",
+                        min_value=0.0,
+                        value=st.session_state.get(_rp_spline_s_key),
+                        step=0.01,
+                        format="%.4f",
+                        key=_rp_spline_s_key,
+                        help=(
+                            "Spline smoothing factor λ. "
+                            "Larger values produce a smoother (less wiggly) spline."
+                        ),
+                    )
             btn_col, restore_col = st.columns(2)
             with btn_col:
                 st.button(
