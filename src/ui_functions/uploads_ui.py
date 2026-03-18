@@ -354,7 +354,10 @@ def ui_upload_files(ss):
         ):
             is_valid_data, data_error = validate_data_file(data_file.getvalue())
             if not is_valid_data:
-                st.toast(f"❌ Data file validation failed: {data_error}", icon="🚫")
+                st.toast(
+                    f"❌ Data file validation failed: {data_error}",
+                    duration="inifinite",
+                )
                 st.stop()
 
             plate_bytes = None
@@ -366,7 +369,8 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}", icon="🚫"
+                            f"❌ Plate map validation failed: {map_error}",
+                            duration="inifinite",
                         )
                         st.stop()
                     plate_bytes = long_plate_map_to_wide_bytes(map_file.getvalue())
@@ -376,7 +380,8 @@ def ui_upload_files(ss):
                     )
                     if not is_valid_map:
                         st.toast(
-                            f"❌ Plate map validation failed: {map_error}", icon="🚫"
+                            f"❌ Plate map validation failed: {map_error}",
+                            duration="inifinite",
                         )
                         st.stop()
                     plate_bytes = map_file.getvalue()
@@ -385,7 +390,7 @@ def ui_upload_files(ss):
                     data_file.getvalue()
                 )
                 if not is_valid_cols:
-                    st.toast(f"❌ {cols_error}", icon="🚫")
+                    st.toast(f"❌ {cols_error}", duration="inifinite")
                     st.stop()
 
             plate_id = (
@@ -400,7 +405,7 @@ def ui_upload_files(ss):
                 plate_bytes=plate_bytes,
                 params=DEFAULT_PARAMS,
             )
-            st.toast(f"✅ Successfully loaded {plate_id}")
+            st.toast(f"Successfully loaded {plate_id}", duration="inifinite")
 
 
 @st.fragment
@@ -469,7 +474,9 @@ def ui_preprocessing_params(ss):
         initial_group_map: dict[str, str] | None = None
 
         with controls_col:
-            a, b = st.columns(2, vertical_alignment="center")
+            _outlier_key = f"outlier_cb_{plate_id}"
+            _row_cols = st.columns([1.2, 0.8, 1.0, 1.0], vertical_alignment="bottom")
+            a, b = _row_cols[0], _row_cols[1]
             time_unit = a.selectbox(
                 "Time unit in data file",
                 options=["seconds", "minutes", "hours"],
@@ -485,6 +492,26 @@ def ui_preprocessing_params(ss):
                 format="%.3f",
                 help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
             )
+            outlier_detection = _row_cols[2].checkbox(
+                "Remove outliers",
+                value=outlier_detection,
+                key=_outlier_key,
+            )
+            if outlier_detection:
+                outlier_threshold = float(
+                    _row_cols[3].number_input(
+                        "Outlier threshold",
+                        min_value=1.0,
+                        max_value=5.0,
+                        value=outlier_threshold,
+                        step=0.1,
+                        format="%.2f",
+                        help=(
+                            "MAD z-score threshold for flagging outliers. Higher values flag "
+                            "fewer, more extreme points; default is 3.5."
+                        ),
+                    )
+                )
 
             # Derive min/max time in hours from the uploaded data file
             _min_time_h = 0.0
@@ -531,6 +558,21 @@ def ui_preprocessing_params(ss):
                 help="Time range for analysis — data points outside this window will be excluded",
             )
 
+            # Get default excluded wells from params0
+            default_excluded = params0.get("remove_wells", [])
+            if default_excluded is False or not default_excluded:
+                default_excluded = []
+
+            remove_wells = st.multiselect(
+                "Exclude wells",
+                options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
+                default=default_excluded,
+                help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
+            )
+
+            # Preserve the False sentinel behavior used elsewhere.
+            remove_wells = remove_wells if remove_wells else False
+
             st.divider()
 
             blank = has_blank_wells
@@ -552,60 +594,6 @@ def ui_preprocessing_params(ss):
                 grid_height=plate_grid_height,
                 grid_aspect_ratio=plate_grid_aspect_ratio,
             )
-
-            outlier_controls_disabled = not outlier_detection
-            outlier_toggle_col, outlier_threshold_col = st.columns(
-                [1.2, 1.0], vertical_alignment="bottom"
-            )
-            outlier_detection = outlier_toggle_col.checkbox(
-                "Remove outliers",
-                value=outlier_detection,
-                help=(
-                    "Calls growthcurves.preprocessing.detect_outliers after path correction "
-                    "and blank subtraction, before model fitting."
-                ),
-            )
-            outlier_controls_disabled = not outlier_detection
-            outlier_threshold = float(
-                outlier_threshold_col.number_input(
-                    "Outlier threshold (MAD z-score)",
-                    min_value=1.0,
-                    max_value=5.0,
-                    value=outlier_threshold,
-                    step=0.1,
-                    format="%.2f",
-                    disabled=outlier_controls_disabled,
-                    help=(
-                        "MAD z-score threshold for flagging outliers. Higher values flag "
-                        "fewer, more extreme points; default is 3.5."
-                    ),
-                )
-            )
-
-            # Get default excluded wells from params0
-            default_excluded = params0.get("remove_wells", [])
-            if default_excluded is False or not default_excluded:
-                default_excluded = []
-
-            remove_wells = st.multiselect(
-                "Exclude wells",
-                options=[f"{r}{c}" for r in "ABCDEFGH" for c in range(1, 13)],
-                default=default_excluded,
-                help="Manually exclude specific wells from analysis (e.g., contaminated samples)",
-            )
-
-            # Preserve the False sentinel behavior used elsewhere.
-            remove_wells = remove_wells if remove_wells else False
-
-            st.write("")
-            if st.button(
-                "Remove selected plate",
-                type="tertiary",
-                width="stretch",
-                disabled=not plate_id,
-            ):
-                ss.plates.pop(plate_id, None)
-                st.rerun()
 
         with plate_col:
             if plate_id and plate_map is not None:
@@ -629,10 +617,14 @@ def ui_preprocessing_params(ss):
                     grid_height=plate_grid_height,
                     grid_aspect_ratio=plate_grid_aspect_ratio,
                 )
-            st.caption(
-                "Note: plate groups are independent, meaning blanks and samples "
-                "on different plates are never linked."
-            )
+            if st.button(
+                "Remove selected plate",
+                type="tertiary",
+                width="stretch",
+                disabled=not plate_id,
+            ):
+                ss.plates.pop(plate_id, None)
+                st.rerun()
 
     # Store selected values in session state for access by other fragments
     if plate_id:

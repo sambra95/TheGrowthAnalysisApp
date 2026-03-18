@@ -330,7 +330,9 @@ def ui_blank_group_assigner(
     help_caption = (
         "Click the table to link blanks and sample wells. "
         "Blanks are subtracted from samples in the same colour group. "
-        "Blank wells are highlighted in the table."
+        "Blank wells are highlighted in the table. "
+        "Note: plate groups are independent, meaning blanks and samples "
+        "on different plates are never linked."
     )
 
     if show_controls:
