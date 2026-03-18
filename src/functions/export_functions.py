@@ -113,8 +113,6 @@ def _analysis_params_df(p: dict) -> pd.DataFrame:
         "model_type": "Growth model",
         "phase_boundary_method": "Phase boundary calculation",
         "window_points": "Window size (points)",
-        "sg_window": "Savitzky-Golay window",
-        "sg_poly": "Savitzky-Golay polynomial order",
         "lag_cutoff": "Lag phase cutoff (fraction of μ_max)",
         "exp_cutoff": "Exponential phase cutoff (fraction of μ_max)",
         "min_data_points": "Minimum data points",
