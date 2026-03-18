@@ -176,7 +176,12 @@ def analyse_plate(record: dict):
     clip = p.get("clip_time_series", False)
     if clip:
         a, b = clip
-        long = long.query("@a <= Time <= @b").copy()
+        if a is not None and b is not None:
+            long = long.query("@a <= Time <= @b").copy()
+        elif a is not None:
+            long = long[long["Time"] >= a].copy()
+        elif b is not None:
+            long = long[long["Time"] <= b].copy()
 
     rm = p.get("remove_wells", False)
     if rm:

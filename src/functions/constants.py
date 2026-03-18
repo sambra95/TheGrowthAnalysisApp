@@ -16,7 +16,7 @@ GRAY = "⬜"  # Not in plate map
 DEFAULT_PARAMS = {
     "time_unit": "minutes",
     "pathlength_cm_": 1.0,
-    "clip_time_series": (0.0, 72.0),
+    "clip_time_series": (None, None),
     "remove_wells": False,
     "blank": True,
     "outlier_detection": False,

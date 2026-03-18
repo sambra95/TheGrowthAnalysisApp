@@ -326,7 +326,9 @@ def ui_upload_files(ss):
                                 key="download_example_plate_map",
                             )
                     with dl_long_col:
-                        with open("example_data/example_long_form_plate_map.xls", "rb") as f:
+                        with open(
+                            "example_data/example_long_form_plate_map.xls", "rb"
+                        ) as f:
                             st.download_button(
                                 "Download example plate map (long)",
                                 data=f.read(),
@@ -411,7 +413,7 @@ def ui_preprocessing_params(ss):
     blank = False
     blank_group_assignments: dict[str, str] | bool = False
     remove_wells = False
-    clip_time_series = (0.0, 72.0)
+    clip_time_series = (None, None)
     time_unit = "hours"
     pl_cm = float(DEFAULT_PARAMS["pathlength_cm_"])
     outlier_detection = bool(DEFAULT_PARAMS.get("outlier_detection", False))
@@ -486,26 +488,25 @@ def ui_preprocessing_params(ss):
             )
 
             a, b = st.columns(2)
+            _clip = params0.get("clip_time_series") or (None, None)
+            _clip_start = _clip[0]
+            _clip_end = _clip[1]
             clip_time_series = (
-                float(
-                    a.number_input(
-                        "Start (h)",
-                        0.0,
-                        1e6,
-                        float(params0["clip_time_series"][0]),
-                        0.5,
-                        help="Starting time for analysis (earlier time points will be excluded)",
-                    )
+                a.number_input(
+                    "Start time for analysis (h)",
+                    min_value=0.0,
+                    max_value=1e6,
+                    value=_clip_start,
+                    step=0.5,
+                    help="Starting time for analysis (earlier time points will be excluded)",
                 ),
-                float(
-                    b.number_input(
-                        "End (h)",
-                        0.0,
-                        1e6,
-                        float(params0["clip_time_series"][1]),
-                        0.5,
-                        help="Ending time for analysis (later time points will be excluded)",
-                    )
+                b.number_input(
+                    "End time for analysis (h)",
+                    min_value=0.0,
+                    max_value=1e6,
+                    value=_clip_end,
+                    step=0.5,
+                    help="Ending time for analysis (later time points will be excluded)",
                 ),
             )
 
@@ -947,7 +948,7 @@ def ui_analysis_params(ss):
         )
     except (TypeError, ValueError):
         outlier_threshold = 3.5
-    clip_time_series = step3_params.get("clip_time_series", (0.0, 72.0))
+    clip_time_series = step3_params.get("clip_time_series", (None, None))
     remove_wells = step3_params.get("remove_wells", False)
 
     with st.container(border=True):
