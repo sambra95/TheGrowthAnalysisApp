@@ -15,7 +15,9 @@ from src.functions.check_growth_fits import (_add_lasso_selected_points,
                                              analyse_well,
                                              update_growth_stats_from_lasso,
                                              well_order_A1_to_H12)
-from src.functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
+from growthcurves.inference import is_no_growth
+
+from src.functions.plotting_functions import (_finite_sorted_xy,
                                               plot_derivative_metric)
 
 
@@ -61,7 +63,7 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
     ]
 
     rows = []
-    if is_bad_fit(gs):
+    if is_no_growth(gs):
         reason = gs.get("no_growth_reason", "--")
         rows.append({"Metric": "No growth reason", "Value": reason})
 
@@ -650,7 +652,7 @@ def ui_window_fits_well_editor(plates: dict):
 
     with status_col:
         # Visual indicator for growth detection
-        if is_bad_fit(gs):
+        if is_no_growth(gs):
             reason = gs.get("no_growth_reason", "No growth detected")
             st.container(border=True).error(f"**No Growth:** {reason}")
         else:
@@ -738,7 +740,7 @@ def ui_window_fits_well_editor(plates: dict):
             )
 
             # Annotate plot with growth stats if available
-            if not is_bad_fit(gs) and gs:
+            if not is_no_growth(gs) and gs:
                 # Get fit result from session state
                 fit_result = fit_parameters.get(well)
 

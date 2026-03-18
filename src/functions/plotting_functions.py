@@ -25,12 +25,6 @@ from src.functions.common import _iter_wells
 from src.functions.constants import ALL_WELLS
 
 
-# --- time unit helpers --------------------------------------------------------
-def get_time_label(time_unit: str = "hours") -> str:
-    """Get the x-axis label for time based on the unit."""
-    return f"Time ({time_unit})"
-
-
 def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
     """Convert time from hours to the specified display unit.
 
@@ -50,12 +44,6 @@ def convert_hours_to_unit(hours: float | np.ndarray, time_unit: str = "hours"):
 
 
 # --- helpers ------------------------------------------------------------------
-# Alias for backward compatibility - use is_no_growth from python_package
-def is_bad_fit(gs: dict) -> bool:
-    """Return True when growth stats indicate a failed or missing fit."""
-    return is_no_growth(gs)
-
-
 def _finite_sorted_xy(time_s, y_s):
     """Return finite x/y arrays sorted by x."""
     t = np.asarray(time_s, float)
@@ -103,7 +91,7 @@ def plot_baseline(baseline, name_by_well: dict | None = None, time_unit: str = "
             marker=dict(color=color) if col != "Mean" else None,
             line=dict(color=color) if col == "Mean" else None,
         )
-    fig.update_xaxes(title=get_time_label(time_unit))
+    fig.update_xaxes(title=f"Time ({time_unit})")
     fig.update_yaxes(showgrid=False)
 
     return fig
@@ -132,7 +120,7 @@ def plot_baseline_by_group(
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
     fig = go.Figure()
-    fig.update_xaxes(title=get_time_label(time_unit))
+    fig.update_xaxes(title=f"Time ({time_unit})")
     fig.update_yaxes(showgrid=False)
 
     if baseline is None or baseline.empty:
@@ -249,7 +237,7 @@ def plot_replicates_scatter(
         t_end: End time for filtering (in hours)
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
-    time_label = get_time_label(time_unit)
+    time_label = f"Time ({time_unit})"
     fig = go.Figure()
     fig.update_layout(
         xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
@@ -291,7 +279,7 @@ def plot_mean_growth(
         t_end: End time for filtering (in hours)
         time_unit: Unit for time axis display ("seconds", "minutes", or "hours")
     """
-    time_label = get_time_label(time_unit)
+    time_label = f"Time ({time_unit})"
     fig = go.Figure()
     fig.update_layout(
         xaxis_title=time_label, yaxis_title="OD600 (baseline-corrected)", height=600
@@ -386,7 +374,7 @@ def plot_replicates_by_sample(plates: dict, time_unit: str = "hours"):
     rows = (len(names) + cols - 1) // cols
     pos = {n: divmod(i, cols) for i, n in enumerate(names)}
 
-    time_label = get_time_label(time_unit)
+    time_label = f"Time ({time_unit})"
     fig = make_subplots(
         rows=rows,
         cols=cols,
@@ -771,8 +759,6 @@ def plot_window_plate(
     else:
         y_range = [y_min - 0.05 * yr, y_max + 0.05 * yr]
 
-    get_time_label(time_unit)
-
     for i, well in enumerate(ALL_WELLS, 1):
         d = proc.get(well)
         gs = gs_all.get(well) or {}
@@ -825,7 +811,7 @@ def plot_window_plate(
         stats_converted = None
         fitted_model = None
 
-        if not is_bad_fit(gs):
+        if not is_no_growth(gs):
             # Create a copy of growth stats with time values converted to display unit
             stats_converted = {}
 
@@ -1162,7 +1148,7 @@ def plot_derivative_metric(
 
     # Add phase boundary annotations
     stats_converted = None
-    if gs and not is_bad_fit(gs):
+    if gs and not is_no_growth(gs):
         exp_start = gs.get("exp_phase_start")
         exp_end = gs.get("exp_phase_end")
         if exp_start is not None and exp_end is not None:
@@ -1197,7 +1183,7 @@ def plot_derivative_metric(
         paper_bgcolor="white",
         margin=dict(l=40, r=20, t=60, b=40),
     )
-    fig.update_xaxes(showgrid=False, title=get_time_label(time_unit), range=x_range)
+    fig.update_xaxes(showgrid=False, title=f"Time ({time_unit})", range=x_range)
     fig.update_yaxes(showgrid=False, title=y_axis_title)
     return fig
 

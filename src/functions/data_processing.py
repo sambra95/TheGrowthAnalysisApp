@@ -14,14 +14,9 @@ DEFAULT_BLANK_GROUP = "Group 1"
 
 
 # ---------- I/O + shaping ----------
-def _read_excel_bytes(b, **kw):
-    """Read Excel bytes into a DataFrame."""
-    return pd.read_excel(io.BytesIO(b), **kw)
-
-
 def _plate_name_map(plate_bytes):
     """Return (plate_df, well_name_map) from a plate map Excel file."""
-    plate = _read_excel_bytes(plate_bytes).fillna("False").set_index("rows")
+    plate = pd.read_excel(io.BytesIO(plate_bytes)).fillna("False").set_index("rows")
     return plate, {f"{r}{c}": str(plate.loc[r, c]).strip() for r in ROWS for c in COLS}
 
 
@@ -42,7 +37,7 @@ def _read_table(
     Raises:
         ValueError: If no Time column is found in the data file
     """
-    df = _read_excel_bytes(data_bytes, header=0)
+    df = pd.read_excel(io.BytesIO(data_bytes), header=0)
     df = df.replace(",", ".", regex=True)
 
     if "Time" not in df.columns:

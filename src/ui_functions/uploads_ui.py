@@ -84,10 +84,6 @@ Click the button to run the analysis. Once complete, navigate to the other pages
     st.divider()
 
 
-def _strip_html_tags(text: str) -> str:
-    """Strip simple HTML tags from text."""
-    return re.sub(r"<[^>]+>", "", str(text))
-
 
 def _build_plate_preview_cells(
     *,
@@ -209,7 +205,7 @@ def render_plate_table(
     if st_selectable_grid is None:
         # Fallback keeps well labels visible when optional dependency is unavailable.
         fallback_df = pd.DataFrame(
-            [[_strip_html_tags(cell["label"]) for cell in row] for row in cells],
+            [[re.sub(r"<[^>]+>", "", str(cell["label"])) for cell in row] for row in cells],
             index=ROWS,
             columns=COLS,
         )

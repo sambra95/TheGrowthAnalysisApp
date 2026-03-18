@@ -8,8 +8,9 @@ import pandas as pd
 from growthcurves.plot import plot_derivative_metric
 
 from src.functions.check_growth_fits import _add_lasso_selected_points
-from src.functions.plotting_functions import (_finite_sorted_xy, is_bad_fit,
-                                              plot_baseline,
+from growthcurves.inference import is_no_growth
+
+from src.functions.plotting_functions import (_finite_sorted_xy, plot_baseline,
                                               plot_replicates_by_sample,
                                               plot_window_plate)
 
@@ -345,7 +346,7 @@ def build_export_zip(
                                 )
 
                                 # Annotate plot if requested
-                                if add_annotations and not is_bad_fit(gs) and gs:
+                                if add_annotations and not is_no_growth(gs) and gs:
                                     # Get fit result from stored parameters
                                     fit_result = fit_parameters.get(well)
 
@@ -391,7 +392,7 @@ def build_export_zip(
 
                             if t_raw.size > 0:
                                 phase_boundaries = None
-                                if not is_bad_fit(gs) and gs:
+                                if not is_no_growth(gs) and gs:
                                     exp_phase_start = gs.get("exp_phase_start")
                                     exp_phase_end = gs.get("exp_phase_end")
                                     if (
