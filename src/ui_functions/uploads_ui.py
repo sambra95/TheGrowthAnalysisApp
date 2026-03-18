@@ -1,5 +1,6 @@
 """UI fragments for the Upload and Analyze page."""
 
+import io
 import re
 from typing import Any
 
@@ -41,7 +42,8 @@ def ui_upload_and_analyse_header():
     with popover_col:
         st.write("")
         with st.popover("Help", width="stretch"):
-            st.markdown("""
+            st.markdown(
+                """
 **Workflow Overview — Upload & Analyse**
 
 This is your starting point. Follow the 6 steps in order to upload your data and run the growth analysis.
@@ -77,7 +79,8 @@ The table at the bottom shows exactly how each growth parameter will be calculat
 
 **Step 6 — Analyse**
 Click the button to run the analysis. Once complete, navigate to the other pages using the top navigation bar to review and download your results.
-""")
+"""
+            )
 
     st.divider()
 
@@ -483,27 +486,49 @@ def ui_preprocessing_params(ss):
                 help="Optical pathlength of the plate reader (used to normalize OD600 values to 1 cm pathlength)",
             )
 
-            a, b = st.columns(2)
+            # Derive min/max time in hours from the uploaded data file
+            _min_time_h = 0.0
+            _max_time_h = 1e6
+            if plate_id:
+                _data_bytes = (
+                    (ss.plates.get(plate_id) or {}).get("uploads", {}).get("data_bytes")
+                )
+                if _data_bytes:
+                    try:
+                        _t_raw = pd.to_numeric(
+                            pd.read_excel(io.BytesIO(_data_bytes), header=0)["Time"],
+                            errors="coerce",
+                        ).dropna()
+                        if not _t_raw.empty:
+                            _divisor = (
+                                3600.0
+                                if time_unit == "seconds"
+                                else 60.0 if time_unit == "minutes" else 1.0
+                            )
+                            _min_time_h = float(_t_raw.min()) / _divisor
+                            _max_time_h = float(_t_raw.max()) / _divisor
+                    except Exception:
+                        pass
+
             _clip = params0.get("clip_time_series") or (None, None)
-            _clip_start = _clip[0]
-            _clip_end = _clip[1]
-            clip_time_series = (
-                a.number_input(
-                    "Start time for analysis (h)",
-                    min_value=0.0,
-                    max_value=1e6,
-                    value=_clip_start,
-                    step=0.5,
-                    help="Starting time for analysis (earlier time points will be excluded)",
-                ),
-                b.number_input(
-                    "End time for analysis (h)",
-                    min_value=0.0,
-                    max_value=1e6,
-                    value=_clip_end,
-                    step=0.5,
-                    help="Ending time for analysis (later time points will be excluded)",
-                ),
+            _clip_start = (
+                float(max(_min_time_h, min(_clip[0], _max_time_h)))
+                if _clip[0] is not None
+                else _min_time_h
+            )
+            _clip_end = (
+                float(max(_min_time_h, min(_clip[1], _max_time_h)))
+                if _clip[1] is not None
+                else _max_time_h
+            )
+            _clip_start = min(_clip_start, _clip_end)
+            clip_time_series = st.slider(
+                "Define analysis window (h)",
+                min_value=_min_time_h,
+                max_value=_max_time_h,
+                value=(_clip_start, _clip_end),
+                step=0.5,
+                help="Time range for analysis — data points outside this window will be excluded",
             )
 
             st.divider()
