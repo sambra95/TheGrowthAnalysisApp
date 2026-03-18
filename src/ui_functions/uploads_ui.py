@@ -500,7 +500,7 @@ def ui_preprocessing_params(ss):
             if outlier_detection:
                 outlier_threshold = float(
                     _row_cols[3].number_input(
-                        "Outlier threshold",
+                        "Threshold",
                         min_value=1.0,
                         max_value=5.0,
                         value=outlier_threshold,
