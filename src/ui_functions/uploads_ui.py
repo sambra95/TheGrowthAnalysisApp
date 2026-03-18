@@ -356,7 +356,7 @@ def ui_upload_files(ss):
             if not is_valid_data:
                 st.toast(
                     f"❌ Data file validation failed: {data_error}",
-                    duration="inifinite",
+                    duration="infinite",
                 )
                 st.stop()
 
@@ -370,7 +370,7 @@ def ui_upload_files(ss):
                     if not is_valid_map:
                         st.toast(
                             f"❌ Plate map validation failed: {map_error}",
-                            duration="inifinite",
+                            duration="infinite",
                         )
                         st.stop()
                     plate_bytes = long_plate_map_to_wide_bytes(map_file.getvalue())
@@ -381,7 +381,7 @@ def ui_upload_files(ss):
                     if not is_valid_map:
                         st.toast(
                             f"❌ Plate map validation failed: {map_error}",
-                            duration="inifinite",
+                            duration="infinite",
                         )
                         st.stop()
                     plate_bytes = map_file.getvalue()
@@ -390,7 +390,7 @@ def ui_upload_files(ss):
                     data_file.getvalue()
                 )
                 if not is_valid_cols:
-                    st.toast(f"❌ {cols_error}", duration="inifinite")
+                    st.toast(f"❌ {cols_error}", duration="infinite")
                     st.stop()
 
             plate_id = (
@@ -405,7 +405,7 @@ def ui_upload_files(ss):
                 plate_bytes=plate_bytes,
                 params=DEFAULT_PARAMS,
             )
-            st.toast(f"Successfully loaded {plate_id}", duration="inifinite")
+            st.toast(f"Successfully loaded {plate_id}", duration="infinite")
 
 
 @st.fragment
