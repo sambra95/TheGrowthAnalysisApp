@@ -5,8 +5,7 @@ Extracted from duplicated logic in:
 - check_growth_fits.py:_analyse_series_with_plate_params (lines 195-265)
 """
 
-from growthcurves.inference import (bad_fit_stats, detect_no_growth,
-                                    extract_stats)
+from growthcurves.inference import bad_fit_stats, detect_no_growth, extract_stats
 from growthcurves.non_parametric import fit_non_parametric
 from growthcurves.parametric import fit_parametric
 

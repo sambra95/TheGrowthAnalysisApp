@@ -4,8 +4,7 @@ import io
 
 import numpy as np
 import pandas as pd
-from growthcurves.preprocessing import (blank_subtraction, detect_outliers,
-                                        path_correct)
+from growthcurves.preprocessing import blank_subtraction, detect_outliers, path_correct
 
 from .constants import COLS, ROWS
 from .fitting_pipeline import fit_growth_series

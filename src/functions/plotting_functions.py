@@ -8,16 +8,25 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.inference import (compute_first_derivative,
-                                    compute_instantaneous_mu,
-                                    compute_sliding_window_growth_rate,
-                                    is_no_growth, smooth)
-from growthcurves.models import (MODEL_REGISTRY, mech_baranyi_model,
-                                 mech_gompertz_model, mech_logistic_model,
-                                 mech_richards_model, phenom_gompertz_model,
-                                 phenom_gompertz_modified_model,
-                                 phenom_logistic_model, phenom_richards_model,
-                                 spline_from_params)
+from growthcurves.inference import (
+    compute_first_derivative,
+    compute_instantaneous_mu,
+    compute_sliding_window_growth_rate,
+    is_no_growth,
+    smooth,
+)
+from growthcurves.models import (
+    MODEL_REGISTRY,
+    mech_baranyi_model,
+    mech_gompertz_model,
+    mech_logistic_model,
+    mech_richards_model,
+    phenom_gompertz_model,
+    phenom_gompertz_modified_model,
+    phenom_logistic_model,
+    phenom_richards_model,
+    spline_from_params,
+)
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
 

@@ -5,20 +5,20 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from growthcurves.inference import bad_fit_stats
+from growthcurves.inference import bad_fit_stats, is_no_growth
 
-from src.functions.check_growth_fits import (_add_lasso_selected_points,
-                                             _analyse_series_with_plate_params,
-                                             _collect_lasso_series, _cycle,
-                                             _delete_well_from_plate,
-                                             _sg_params_for_plate,
-                                             analyse_well,
-                                             update_growth_stats_from_lasso,
-                                             well_order_A1_to_H12)
-from growthcurves.inference import is_no_growth
-
-from src.functions.plotting_functions import (_finite_sorted_xy,
-                                              plot_derivative_metric)
+from src.functions.check_growth_fits import (
+    _add_lasso_selected_points,
+    _analyse_series_with_plate_params,
+    _collect_lasso_series,
+    _cycle,
+    _delete_well_from_plate,
+    _sg_params_for_plate,
+    analyse_well,
+    update_growth_stats_from_lasso,
+    well_order_A1_to_H12,
+)
+from src.functions.plotting_functions import _finite_sorted_xy, plot_derivative_metric
 
 
 def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
@@ -79,7 +79,6 @@ def _format_growth_stats_table(gs: dict) -> pd.DataFrame:
         rows.append({"Metric": label, "Value": formatted_value})
 
     return pd.DataFrame(rows)
-
 
 
 def _format_analysis_params_table(
@@ -219,13 +218,15 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         )
         st.session_state[_rp_min_dp_key] = int(plate_params.get("min_data_points", 5))
         st.session_state[_rp_window_key] = int(plate_params.get("window_points", 15))
-        smooth_default = str(
-            plate_params.get("smooth", plate_params.get("spline_s", "fast"))
-        ).strip().lower()
+        smooth_default = (
+            str(plate_params.get("smooth", plate_params.get("spline_s", "fast")))
+            .strip()
+            .lower()
+        )
         st.session_state[_rp_smooth_key] = (
-            "slow" if smooth_default == "auto"
-            else smooth_default if smooth_default in {"fast", "slow"}
-            else "fast"
+            "slow"
+            if smooth_default == "auto"
+            else smooth_default if smooth_default in {"fast", "slow"} else "fast"
         )
         st.session_state[_rp_spline_s_key] = None
 
@@ -366,9 +367,16 @@ def _phase_controls(plate: dict, well: str, *, key: str):
         if growth_method == "Sliding Window":
             analysis_params["window_points"] = effective_p.get("window_points")
         elif growth_method == "Spline":
-            _sv = str(
-                growth_stats.get("smooth", effective_p.get("smooth", effective_p.get("spline_s", "fast")))
-            ).strip().lower()
+            _sv = (
+                str(
+                    growth_stats.get(
+                        "smooth",
+                        effective_p.get("smooth", effective_p.get("spline_s", "fast")),
+                    )
+                )
+                .strip()
+                .lower()
+            )
             analysis_params["smooth"] = (
                 "slow" if _sv == "auto" else _sv if _sv in {"fast", "slow"} else "fast"
             )
