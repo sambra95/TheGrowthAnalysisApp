@@ -333,7 +333,8 @@ def ui_blank_group_assigner(
         " them the same colour group. "
         "Blanks are then subtracted from samples in the same colour group. "
         "Note: plate groups are independent, meaning blanks and samples "
-        "on different plates are never linked."
+        "on different plates are never linked. Multiple blanks in the same group will be "
+        "averaged at each time point before subtraction."
     )
 
     if show_controls:
@@ -343,11 +344,11 @@ def ui_blank_group_assigner(
                 st.image("info_plots/blank_group.png")
                 st.caption(
                     "This example shows a plate with four different blank wells (darker wells) "
-                    'identified in the plate map as the well names start with "BLANK_". '
+                    'identified in the plate map where the well names start with "BLANK_". '
                     "Four coloured blank groups have been created and assigned to wells with "
                     "one blank per group. The blank will be subtracted from "
-                    "samples in the same group only. Multiple blanks in the same group will be "
-                    "averaged at each time point before subtraction."
+                    "samples in the same group only - e.g. A3 will be subtracted from green samples"
+                    " in columns 1, 2 and 3."
                 )
 
         group_col, color_col, add_col, remove_col = st.columns(
