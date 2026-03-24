@@ -337,7 +337,17 @@ def ui_blank_group_assigner(
 
     if show_controls:
         if show_caption:
-            st.caption(help_caption)
+            with st.popover("How blank groups work", width="stretch"):
+                st.markdown(help_caption)
+                st.image("info_plots/blank_group.png")
+                st.caption(
+                    "This example shows a plate with four different blank wells (darker wells) "
+                    'identified in the plate map as the well names start with "BLANK_". '
+                    "Four coloured blank groups have been created and assigned to wells with "
+                    "one blank per group. The blank will be subtracted from "
+                    "samples in the same group only. Multiple blanks in the same group will be "
+                    "averaged at each time point before subtraction."
+                )
 
         group_col, color_col, add_col, remove_col = st.columns(
             [2.5, 0.75, 1.5, 1.5], vertical_alignment="bottom"
