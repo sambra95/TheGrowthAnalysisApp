@@ -330,7 +330,7 @@ def ui_blank_group_assigner(
     help_caption = (
         "When you have more than one blank, you may want to subtract certain blanks from only "
         "certain wells on the plate. Click the table to link blanks and sample wells by assigning"
-        "them the same colour group. "
+        " them the same colour group. "
         "Blanks are then subtracted from samples in the same colour group. "
         "Note: plate groups are independent, meaning blanks and samples "
         "on different plates are never linked."
