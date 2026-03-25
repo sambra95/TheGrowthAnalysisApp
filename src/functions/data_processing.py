@@ -26,7 +26,7 @@ def _read_table(
 
     Args:
         data_bytes: Excel file bytes
-        time_unit: Unit of time in the data file ("seconds", "minutes", "hours", or "HH:MM:SS")
+        time_unit: Unit of time in the data file ("seconds", "minutes", "hours", "days", or "HH:MM:SS")
         filter_to_wells: If True, keep only valid well columns (A1–H12) and uppercase them.
                          If False, keep all non-Time columns with their original names.
 
@@ -61,6 +61,8 @@ def _read_table(
             t_hours = t / 3600.0
         elif time_unit == "minutes":
             t_hours = t / 60.0
+        elif time_unit == "days":
+            t_hours = t * 24.0
         else:
             t_hours = t
 

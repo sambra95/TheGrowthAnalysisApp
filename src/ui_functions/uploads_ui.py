@@ -59,7 +59,7 @@ Click the button to load your file(s). If a plate map is provided it will be mat
 
 **Step 4 — Select preprocessing parameters**
 Configure how the data is processed before analysis:
-- **Time unit**: Set to match the unit in your data file (seconds, minutes, hours, or HH:MM:SS)
+- **Time unit**: Set to match the unit in your data file (seconds, minutes, hours, days, or HH:MM:SS)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
 - **Blank subtraction groups**: Link sample wells to blank wells by analysis group so subtraction uses only matched blank wells (any well named BLANK or starting with BLANK)
 - **Time range**: Restrict analysis to a specific window of the experiment
@@ -477,7 +477,7 @@ def ui_preprocessing_params(ss):
             _outlier_key = f"outlier_cb_{plate_id}"
             _row_cols = st.columns([1.0, 0.8, 1.0, 0.8], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
-            _time_unit_options = ["seconds", "minutes", "hours", "HH:MM:SS"]
+            _time_unit_options = ["seconds", "minutes", "hours", "days", "HH:MM:SS"]
             _saved_time_unit = params0.get("time_unit", "hours")
             time_unit = a.selectbox(
                 "Time unit",
@@ -537,7 +537,11 @@ def ui_preprocessing_params(ss):
                             _divisor = (
                                 3600.0
                                 if time_unit == "seconds"
-                                else 60.0 if time_unit == "minutes" else 1.0
+                                else 60.0
+                                if time_unit == "minutes"
+                                else 1 / 24.0
+                                if time_unit == "days"
+                                else 1.0
                             )
                             _t_hours = _t_raw / _divisor
                         if not _t_hours.empty:
