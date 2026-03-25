@@ -26,7 +26,7 @@ def _read_table(
 
     Args:
         data_bytes: Excel file bytes
-        time_unit: Unit of time in the data file ("seconds", "minutes", or "hours")
+        time_unit: Unit of time in the data file ("seconds", "minutes", "hours", or "HH:MM:SS")
         filter_to_wells: If True, keep only valid well columns (A1–H12) and uppercase them.
                          If False, keep all non-Time columns with their original names.
 
@@ -45,15 +45,24 @@ def _read_table(
             "Please add a Time column with numeric values."
         )
 
-    t = pd.to_numeric(df["Time"], errors="coerce")
+    t_raw = df["Time"]
     df = df.drop(columns=["Time"])
 
-    if time_unit == "seconds":
-        t_hours = t / 3600.0
-    elif time_unit == "minutes":
-        t_hours = t / 60.0
+    if time_unit == "HH:MM:SS":
+        def _hhmmss_to_hours(val):
+            parts = str(val).strip().split(":")
+            if len(parts) == 3:
+                return int(parts[0]) + int(parts[1]) / 60.0 + float(parts[2]) / 3600.0
+            return float("nan")
+        t_hours = t_raw.map(_hhmmss_to_hours)
     else:
-        t_hours = t
+        t = pd.to_numeric(t_raw, errors="coerce")
+        if time_unit == "seconds":
+            t_hours = t / 3600.0
+        elif time_unit == "minutes":
+            t_hours = t / 60.0
+        else:
+            t_hours = t
 
     if filter_to_wells:
         valid_wells = {f"{r}{c}" for r in ROWS for c in COLS}

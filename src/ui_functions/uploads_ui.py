@@ -59,7 +59,7 @@ Click the button to load your file(s). If a plate map is provided it will be mat
 
 **Step 4 — Select preprocessing parameters**
 Configure how the data is processed before analysis:
-- **Time unit**: Set to match the unit in your data file (seconds, minutes, or hours)
+- **Time unit**: Set to match the unit in your data file (seconds, minutes, hours, or HH:MM:SS)
 - **Pathlength**: Your plate reader's optical path length, used to normalise OD to 1 cm
 - **Blank subtraction groups**: Link sample wells to blank wells by analysis group so subtraction uses only matched blank wells (any well named BLANK or starting with BLANK)
 - **Time range**: Restrict analysis to a specific window of the experiment
@@ -477,13 +477,15 @@ def ui_preprocessing_params(ss):
             _outlier_key = f"outlier_cb_{plate_id}"
             _row_cols = st.columns([1.0, 0.8, 1.0, 0.8], vertical_alignment="bottom")
             a, b = _row_cols[0], _row_cols[1]
+            _time_unit_options = ["seconds", "minutes", "hours", "HH:MM:SS"]
+            _saved_time_unit = params0.get("time_unit", "hours")
             time_unit = a.selectbox(
                 "Time unit",
-                options=["seconds", "minutes", "hours"],
-                index=["seconds", "minutes", "hours"].index(
-                    params0.get("time_unit", "hours")
+                options=_time_unit_options,
+                index=_time_unit_options.index(
+                    _saved_time_unit if _saved_time_unit in _time_unit_options else "hours"
                 ),
-                help="Select the unit of time values in your data file's Time column",
+                help="Select the unit of time values in your data file's Time column. Use HH:MM:SS if your Time column contains values like 01:30:00.",
             )
             pl_cm = b.number_input(
                 "Path (cm)",
@@ -522,18 +524,25 @@ def ui_preprocessing_params(ss):
                 )
                 if _data_bytes:
                     try:
-                        _t_raw = pd.to_numeric(
-                            pd.read_excel(io.BytesIO(_data_bytes), header=0)["Time"],
-                            errors="coerce",
-                        ).dropna()
-                        if not _t_raw.empty:
+                        _t_col = pd.read_excel(io.BytesIO(_data_bytes), header=0)["Time"]
+                        if time_unit == "HH:MM:SS":
+                            def _hhmmss_to_hours(val):
+                                parts = str(val).strip().split(":")
+                                if len(parts) == 3:
+                                    return int(parts[0]) + int(parts[1]) / 60.0 + float(parts[2]) / 3600.0
+                                return float("nan")
+                            _t_hours = _t_col.map(_hhmmss_to_hours).dropna()
+                        else:
+                            _t_raw = pd.to_numeric(_t_col, errors="coerce").dropna()
                             _divisor = (
                                 3600.0
                                 if time_unit == "seconds"
                                 else 60.0 if time_unit == "minutes" else 1.0
                             )
-                            _min_time_h = float(_t_raw.min()) / _divisor
-                            _max_time_h = float(_t_raw.max()) / _divisor
+                            _t_hours = _t_raw / _divisor
+                        if not _t_hours.empty:
+                            _min_time_h = float(_t_hours.min())
+                            _max_time_h = float(_t_hours.max())
                     except Exception:
                         pass
 
