@@ -269,6 +269,11 @@ def ui_upload_files(ss):
                     )
                     st.image("info_plots/data_upload.png", width="stretch")
 
+                    st.caption(
+                        "The Time column format can be either a float (e.g. 0, 0.5, 1.0) or HH:MM:SS "
+                        "(e.g. 00:00:00, 00:30:00, 01:00:00). The units can be selected below in Step 4."
+                    )
+
                     st.markdown("")
                     with open("example_data/example_data.xlsx", "rb") as f:
                         st.download_button(
@@ -483,7 +488,9 @@ def ui_preprocessing_params(ss):
                 "Time unit",
                 options=_time_unit_options,
                 index=_time_unit_options.index(
-                    _saved_time_unit if _saved_time_unit in _time_unit_options else "hours"
+                    _saved_time_unit
+                    if _saved_time_unit in _time_unit_options
+                    else "hours"
                 ),
                 help="Select the unit of time values in your data file's Time column. Use HH:MM:SS if your Time column contains values like 01:30:00.",
             )
@@ -524,24 +531,32 @@ def ui_preprocessing_params(ss):
                 )
                 if _data_bytes:
                     try:
-                        _t_col = pd.read_excel(io.BytesIO(_data_bytes), header=0)["Time"]
+                        _t_col = pd.read_excel(io.BytesIO(_data_bytes), header=0)[
+                            "Time"
+                        ]
                         if time_unit == "HH:MM:SS":
+
                             def _hhmmss_to_hours(val):
                                 parts = str(val).strip().split(":")
                                 if len(parts) == 3:
-                                    return int(parts[0]) + int(parts[1]) / 60.0 + float(parts[2]) / 3600.0
+                                    return (
+                                        int(parts[0])
+                                        + int(parts[1]) / 60.0
+                                        + float(parts[2]) / 3600.0
+                                    )
                                 return float("nan")
+
                             _t_hours = _t_col.map(_hhmmss_to_hours).dropna()
                         else:
                             _t_raw = pd.to_numeric(_t_col, errors="coerce").dropna()
                             _divisor = (
                                 3600.0
                                 if time_unit == "seconds"
-                                else 60.0
-                                if time_unit == "minutes"
-                                else 1 / 24.0
-                                if time_unit == "days"
-                                else 1.0
+                                else (
+                                    60.0
+                                    if time_unit == "minutes"
+                                    else 1 / 24.0 if time_unit == "days" else 1.0
+                                )
                             )
                             _t_hours = _t_raw / _divisor
                         if not _t_hours.empty:
